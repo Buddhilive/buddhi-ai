@@ -1,131 +1,208 @@
 "use client";
-import Image from "next/image";
+import { useEffect, useRef } from "react";
+import { useChatStore } from "@/stores/chatStore";
+import { chatApi } from "@/lib/api";
+import { Message } from "@/types/chat";
 
 export default function Home() {
-  const downloadModel = async () => {
-    // Check for user activation.
-    if (navigator.userActivation.isActive) {
-      console.log(await (window as any).LanguageModel.availability());
+  const {
+    messages,
+    isLoading,
+    error,
+    inputValue,
+    setInputValue,
+    addMessage,
+    setIsLoading,
+    setError,
+  } = useChatStore();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-      const session = await (window as any).LanguageModel.create({
-        monitor(m: any) {
-          m.addEventListener("downloadprogress", (e: any) => {
-            console.log(`Downloaded ${e.loaded * 100}%`);
-          });
-        },
+  // Auto-scroll to the latest message when messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isLoading]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handleSendMessage = async () => {
+    if (inputValue.trim() === "") return;
+
+    // Add user message
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      content: inputValue,
+      role: "user",
+      timestamp: new Date(),
+    };
+
+    addMessage(userMessage);
+    setInputValue("");
+    setIsLoading(true);
+    setError(null); // Clear any previous errors
+
+    try {
+      // Transform messages for API request (only include content that is not null)
+      const systemMessage: Message = {
+        role: "system",
+        content: "You are a helpful assistant.",
+      };
+
+      const apiMessages = [
+        systemMessage,
+        ...messages
+          .filter((msg) => msg.content !== null) // Filter out messages with null content
+          .map((msg) => ({
+            role: msg.role as "user" | "assistant",
+            content: msg.content,
+          })),
+      ];
+
+      // Add the new user message to the API request
+      apiMessages.push({
+        role: "user",
+        content: userMessage.content,
       });
 
-      // Prompt the model and stream the result:
-      const stream = session.promptStreaming("Write me an extra-long poem!");
-      for await (const chunk of stream) {
-        console.log(chunk);
+      // Call the API
+      const response = await chatApi.getCompletion({
+        messages: apiMessages,
+      });
+
+      // Extract the assistant's response
+      if (response.message) {
+        const assistantMessageContent = response.message;
+
+        if (assistantMessageContent) {
+          const aiMessage: Message = {
+            id: `ai-${Date.now()}`,
+            content: assistantMessageContent,
+            role: "assistant",
+            timestamp: new Date(),
+          };
+
+          addMessage(aiMessage);
+        } else {
+          throw new Error("Received empty response from AI model");
+        }
+      } else {
+        throw new Error("No choices returned from AI model");
       }
+    } catch (err) {
+      console.error("Error getting AI response:", err);
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : "An error occurred while getting response";
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
     }
   };
 
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-          <button
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            onClick={downloadModel}
+    <div className="flex flex-col h-[calc(100vh-56px)] max-h-[calc(100vh-56px)] overflow-hidden">
+      {/* Chat messages area */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 flex-grow">
+        {error && (
+          <div className="flex justify-start">
+            <div className="bg-destructive text-destructive-foreground rounded-xl rounded-bl-none px-4 py-2 max-w-[80%]">
+              <div className="text-sm">Error: {error}</div>
+            </div>
+          </div>
+        )}
+        {messages.map((message) => (
+          <div
+            key={message.id}
+            className={`flex ${
+              message.role === "user" ? "justify-end" : "justify-start"
+            }`}
           >
-            Download
-          </button>
-        </ol>
+            <div
+              className={`max-w-[80%] rounded-xl px-4 py-2 ${
+                message.role === "user"
+                  ? "bg-primary text-primary-foreground rounded-br-none"
+                  : "bg-secondary text-secondary-foreground rounded-bl-none"
+              }`}
+            >
+              <div className="text-sm">{message.content}</div>
+              <div
+                className={`text-xs mt-1 ${
+                  message.role === "user"
+                    ? "text-primary-foreground/70"
+                    : "text-secondary-foreground/70"
+                }`}
+              >
+                {message.timestamp &&
+                  message.timestamp.toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+              </div>
+            </div>
+          </div>
+        ))}
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="bg-secondary text-secondary-foreground rounded-xl rounded-bl-none px-4 py-2 max-w-[80%]">
+              <div className="flex space-x-2">
+                <div className="w-2 h-2 rounded-full bg-secondary-foreground/70 animate-bounce"></div>
+                <div className="w-2 h-2 rounded-full bg-secondary-foreground/70 animate-bounce delay-75"></div>
+                <div className="w-2 h-2 rounded-full bg-secondary-foreground/70 animate-bounce delay-150"></div>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Scroll anchor */}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input area - Fixed to bottom */}
+      <div className="border-t border-border p-4 bg-background">
+        <div className="flex items-end space-x-2">
+          <textarea
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type your message..."
+            className="flex-1 border border-input rounded-xl bg-background px-4 py-2 text-sm min-h-[60px] max-h-32 resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+            rows={1}
+          />
+          <button
+            onClick={handleSendMessage}
+            disabled={isLoading || inputValue.trim() === ""}
+            className="bg-primary text-primary-foreground rounded-xl h-[46px] w-[46px] flex items-center justify-center hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="lucide lucide-send"
+            >
+              <path d="m22 2-7 20-4-9-9-4Z" />
+              <path d="M22 2 11 13" />
+            </svg>
+          </button>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        <div className="text-xs text-muted-foreground mt-2 text-center">
+          Buddhi AI can make mistakes, so double-check it.
+        </div>
+      </div>
     </div>
   );
 }
