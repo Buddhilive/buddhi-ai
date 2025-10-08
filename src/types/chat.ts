@@ -11,7 +11,8 @@ export interface Message {
 }
 
 export interface ChatCompletionRequest {
-  messages: ChatMessage[];
+  initialMessages?: ChatMessage[];
+  prompt: string
 }
 
 export interface ChatCompletionResponse {

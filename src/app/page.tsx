@@ -59,15 +59,10 @@ export default function Home() {
           })),
       ];
 
-      // Add the new user message to the API request
-      apiMessages.push({
-        role: "user",
-        content: userMessage.content,
-      });
-
       // Call the API
       const response = await chatApi.getCompletion({
-        messages: apiMessages,
+        initialMessages: apiMessages,
+        prompt: inputValue
       });
 
       // Extract the assistant's response
