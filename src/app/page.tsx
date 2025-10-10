@@ -65,6 +65,9 @@ export default function Home() {
         prompt: inputValue
       });
 
+      const searchResults = await chatApi.webSearch(inputValue);
+      console.log("Web search results:", searchResults);
+
       // Extract the assistant's response
       if (response.message) {
         const assistantMessageContent = response.message;
