@@ -59,6 +59,9 @@ export default function Home() {
           })),
       ];
 
+      const isWebSearch = await chatApi.getIntention(inputValue);
+      console.log("Is web search needed?", isWebSearch);
+
       // Call the API
       const response = await chatApi.getCompletion({
         initialMessages: apiMessages,
