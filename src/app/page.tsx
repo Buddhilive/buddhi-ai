@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { useChatStore } from "@/stores/chatStore";
 import { chatApi } from "@/lib/api";
 import { Message } from "@/types/chat";
+import { webSearch } from "@/tools/web-search";
 
 export default function Home() {
   const {
@@ -45,8 +46,8 @@ export default function Home() {
     try {
       // Transform messages for API request (only include content that is not null)
       const systemMessage: LanguageModelMessage = {
-        role: LanguageModelMessageRole.system,
-        content: "You are a helpful assistant.",
+        role: 'system' as LanguageModelMessageRole,
+        content: "You are a helpful assistant. You can use tools to help the user.",
       };
 
       const apiMessages = [
@@ -65,8 +66,8 @@ export default function Home() {
         prompt: inputValue
       });
 
-      const searchResults = await chatApi.webSearch(inputValue);
-      console.log("Web search results:", searchResults);
+      /* const searchResults = await webSearch({query: inputValue});
+      console.log("Web search results:", searchResults); */
 
       // Extract the assistant's response
       if (response.message) {
