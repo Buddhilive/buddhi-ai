@@ -1,11 +1,13 @@
 import { ChatCompletionRequest, ChatCompletionResponse } from "@/types/chat";
 
+const LanguageModel: LanguageModel = (window as any).LanguageModel;
+
 export const chatApi = {
   async getCompletion(
     request: ChatCompletionRequest
   ): Promise<ChatCompletionResponse> {
     try {
-      const session = await (window as any).LanguageModel.create({
+      const session = await LanguageModel.create({
         initialPrompts: request.initialMessages,
       });
 
@@ -14,27 +16,6 @@ export const chatApi = {
     } catch (error) {
       console.error("Error getting AI response:", error);
       throw new Error("Failed to get AI response");
-    }
-  },
-  async getIntention(prompt: string): Promise<string> {
-    try {
-      const schema = {
-        type: "boolean",
-      };
-
-      const session = await (window as any).LanguageModel.create();
-
-      const result = await session.prompt(
-        `Is following text arelated to normal conversations?\n "${prompt}"`,
-        {
-          responseConstraint: schema,
-        }
-      );
-
-      return result;
-    } catch (error) {
-      console.error("Error getting user intention:", error);
-      throw new Error("Failed to get user intention");
     }
   },
   async webSearch(query: string) {

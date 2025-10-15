@@ -44,8 +44,8 @@ export default function Home() {
 
     try {
       // Transform messages for API request (only include content that is not null)
-      const systemMessage: Message = {
-        role: "system",
+      const systemMessage: LanguageModelMessage = {
+        role: LanguageModelMessageRole.system,
         content: "You are a helpful assistant.",
       };
 
@@ -54,13 +54,10 @@ export default function Home() {
         ...messages
           .filter((msg) => msg.content !== null) // Filter out messages with null content
           .map((msg) => ({
-            role: msg.role as "user" | "assistant",
+            role: msg.role as LanguageModelMessageRole,
             content: msg.content,
           })),
       ];
-
-      const isWebSearch = await chatApi.getIntention(inputValue);
-      console.log("Is web search needed?", isWebSearch);
 
       // Call the API
       const response = await chatApi.getCompletion({

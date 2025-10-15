@@ -1,8 +1,3 @@
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string | null;
-}
-
 export interface Message {
   id?: string;
   content: string;
@@ -11,7 +6,7 @@ export interface Message {
 }
 
 export interface ChatCompletionRequest {
-  initialMessages?: ChatMessage[];
+  initialMessages?: LanguageModelMessage[];
   prompt: string
 }
 
