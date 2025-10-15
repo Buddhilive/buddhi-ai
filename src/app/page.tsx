@@ -4,6 +4,9 @@ import { useChatStore } from "@/stores/chatStore";
 import { chatApi } from "@/lib/api";
 import { Message } from "@/types/chat";
 import { webSearch } from "@/tools/web-search";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { ArrowUp } from "lucide-react";
 
 export default function Home() {
   const {
@@ -46,8 +49,9 @@ export default function Home() {
     try {
       // Transform messages for API request (only include content that is not null)
       const systemMessage: LanguageModelMessage = {
-        role: 'system' as LanguageModelMessageRole,
-        content: "You are a helpful assistant. You can use tools to help the user.",
+        role: "system" as LanguageModelMessageRole,
+        content:
+          "You are a helpful assistant. You can use tools to help the user.",
       };
 
       const apiMessages = [
@@ -60,14 +64,14 @@ export default function Home() {
           })),
       ];
 
+      const searchResults = await webSearch({ query: inputValue });
+      console.log("Web search results:", searchResults);
+
       // Call the API
       const response = await chatApi.getCompletion({
         initialMessages: apiMessages,
-        prompt: inputValue
+        prompt: inputValue,
       });
-
-      /* const searchResults = await webSearch({query: inputValue});
-      console.log("Web search results:", searchResults); */
 
       // Extract the assistant's response
       if (response.message) {
@@ -132,7 +136,9 @@ export default function Home() {
                   : "bg-secondary text-secondary-foreground rounded-bl-none"
               }`}
             >
-              <div className="text-sm">{message.content}</div>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {message.content}
+              </ReactMarkdown>
               <div
                 className={`text-xs mt-1 ${
                   message.role === "user"
@@ -167,7 +173,7 @@ export default function Home() {
 
       {/* Input area - Fixed to bottom */}
       <div className="border-t border-border p-4 bg-background">
-        <div className="flex items-end space-x-2">
+        <div className="flex space-x-2 justify-center items-center">
           <textarea
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
@@ -181,21 +187,7 @@ export default function Home() {
             disabled={isLoading || inputValue.trim() === ""}
             className="bg-primary text-primary-foreground rounded-xl h-[46px] w-[46px] flex items-center justify-center hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="lucide lucide-send"
-            >
-              <path d="m22 2-7 20-4-9-9-4Z" />
-              <path d="M22 2 11 13" />
-            </svg>
+            <ArrowUp className="w-5 h-5" />
           </button>
         </div>
         <div className="text-xs text-muted-foreground mt-2 text-center">
