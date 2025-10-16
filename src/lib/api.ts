@@ -7,7 +7,14 @@ export const chatApi = {
     request: ChatCompletionRequest
   ): Promise<ChatCompletionResponse> {
     try {
-      const languageModel: LanguageModel = (window as any).LanguageModel
+      const languageModel: LanguageModel = (window as any).LanguageModel;
+      const systemMessage: LanguageModelMessage = {
+        role: "system" as LanguageModelMessageRole,
+        content:
+          "You are Buddhi, a helpful assistant. You can use tools to help the user.",
+      };
+
+      request.initialMessages?.unshift(systemMessage);
       const session = await languageModel.create({
         initialPrompts: request.initialMessages,
         tools: BUDDHI_TOOLS

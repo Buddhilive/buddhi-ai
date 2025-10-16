@@ -47,15 +47,7 @@ export default function Home() {
     setError(null); // Clear any previous errors
 
     try {
-      // Transform messages for API request (only include content that is not null)
-      const systemMessage: LanguageModelMessage = {
-        role: "system" as LanguageModelMessageRole,
-        content:
-          "You are a helpful assistant.",
-      };
-
       const apiMessages = [
-        systemMessage,
         ...messages
           .filter((msg) => msg.content !== null) // Filter out messages with null content
           .map((msg) => ({
