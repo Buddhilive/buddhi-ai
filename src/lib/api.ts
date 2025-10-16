@@ -3,15 +3,17 @@ import { ChatCompletionRequest, ChatCompletionResponse } from "@/types/chat";
 
 
 export const chatApi = {
-  languageModel: (window as any).LanguageModel as LanguageModel,
   async getCompletion(
     request: ChatCompletionRequest
   ): Promise<ChatCompletionResponse> {
     try {
-      const session = await this.languageModel.create({
+      const languageModel: LanguageModel = (window as any).LanguageModel
+      const session = await languageModel.create({
         initialPrompts: request.initialMessages,
         tools: BUDDHI_TOOLS
       });
+
+      console.log("Session created with initial messages:", session);
 
       const result = await session.prompt(request.prompt);
       return { message: result };

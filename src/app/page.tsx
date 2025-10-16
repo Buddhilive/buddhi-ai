@@ -51,7 +51,7 @@ export default function Home() {
       const systemMessage: LanguageModelMessage = {
         role: "system" as LanguageModelMessageRole,
         content:
-          "You are a helpful assistant. You can use tools to help the user.",
+          "You are a helpful assistant.",
       };
 
       const apiMessages = [
