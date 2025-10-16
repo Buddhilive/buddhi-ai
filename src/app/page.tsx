@@ -3,7 +3,6 @@ import { useEffect, useRef } from "react";
 import { useChatStore } from "@/stores/chatStore";
 import { chatApi } from "@/lib/api";
 import { Message } from "@/types/chat";
-import { webSearch } from "@/tools/web-search";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ArrowUp } from "lucide-react";
@@ -55,9 +54,6 @@ export default function Home() {
             content: msg.content,
           })),
       ];
-
-      const searchResults = await webSearch({ query: inputValue });
-      console.log("Web search results:", searchResults);
 
       // Call the API
       const response = await chatApi.getCompletion({

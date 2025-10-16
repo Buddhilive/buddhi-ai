@@ -24,11 +24,15 @@ export async function webSearch({query}: {query: string}) {
     const results: any[] = [];
 
     if (data.AbstractText) {
-      results.push({
+      /* results.push({
         title: data.Heading || "DuckDuckGo Instant Answer",
         url: data.AbstractURL || "https://duckduckgo.com",
         snippet: data.AbstractText,
-      });
+      }); */
+      console.log(`No results found for "${query}"`);
+      return `No results found for "${query}". Try searching on https://duckduckgo.com/?q=${encodeURIComponent(
+        query
+      )}`;
     }
 
     if (data.RelatedTopics && Array.isArray(data.RelatedTopics)) {

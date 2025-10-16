@@ -1,4 +1,5 @@
 import { BUDDHI_TOOLS } from "@/tools/tools";
+import { webSearch } from "@/tools/web-search";
 import { ChatCompletionRequest, ChatCompletionResponse } from "@/types/chat";
 
 
@@ -11,8 +12,12 @@ export const chatApi = {
       const systemMessage: LanguageModelMessage = {
         role: "system" as LanguageModelMessageRole,
         content:
-          "You are Buddhi, a helpful assistant. You can use tools to help the user.",
+          "You are Buddhi AI, a helpful assistant developed by Buddhi LIVE Labs.",
       };
+
+      // Perform a web search to gather relevant information
+      const searchResults = await webSearch({ query: request.prompt });
+      console.log("Web search results:", searchResults);
 
       request.initialMessages?.unshift(systemMessage);
       const session = await languageModel.create({
