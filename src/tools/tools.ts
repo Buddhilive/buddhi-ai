@@ -21,3 +21,7 @@ export const BUDDHI_TOOLS: LanguageModelTool[] = [
     },
   },
 ];
+
+export const TEMP_TOOLS = {
+  webSearch
+};
