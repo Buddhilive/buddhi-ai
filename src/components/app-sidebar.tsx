@@ -5,7 +5,6 @@ import {
   Calendar,
   Command,
   Home,
-  Search,
   Sparkles,
 } from "lucide-react"
 
@@ -25,26 +24,21 @@ import {
 const data = {
   teams: [
     {
-      name: "Acme Inc",
+      name: "Buddhi LIVE AI",
       logo: Command,
-      plan: "Enterprise",
+      plan: "AI in Browser",
     },
   ],
   navMain: [
     {
-      title: "Search",
+      title: "Home",
       url: "#",
-      icon: Search,
+      icon: Home,
     },
     {
       title: "Ask AI",
       url: "#",
       icon: Sparkles,
-    },
-    {
-      title: "Home",
-      url: "#",
-      icon: Home,
       isActive: true,
     },
   ],

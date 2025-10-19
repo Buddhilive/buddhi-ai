@@ -1,75 +1,96 @@
+import { functionCallSchema } from "@/schema/output";
+import { TEMP_TOOLS } from "@/tools/tools";
+import { webSearch } from "@/tools/web-search";
 import { ChatCompletionRequest, ChatCompletionResponse } from "@/types/chat";
 
 export const chatApi = {
   async getCompletion(
     request: ChatCompletionRequest
   ): Promise<ChatCompletionResponse> {
-    const session = await (window as any).LanguageModel.create({
-      initialPrompts: request.initialMessages,
-    });
-
-    const result = await session.prompt(request.prompt);
-    return { message: result };
-  },
-  async webSearch(query: string) {
     try {
-      const url = new URL("https://api.duckduckgo.com/");
-      url.searchParams.append("q", query);
-      url.searchParams.append("format", "json");
-      url.searchParams.append("no_html", "1");
-      url.searchParams.append("skip_disambig", "1");
+      const languageModel: LanguageModel = (window as any).LanguageModel;
+      const systemMessage: LanguageModelMessage = {
+        role: "system" as LanguageModelMessageRole,
+        content: `You are Buddhi AI, a helpful assistant developed by Buddhi LIVE Labs.
+          Your response MUST be a JSON object 
+      that strictly adheres to the provided JSON schema. DO NOT include any other text or markdown outside of the JSON.
+      
+      - If the user asks a question that requires real-time information or external knowledge 
+        (e.g., current events, facts, etc.), set 'action' to 'call_tool' and populate the 
+        'tool_call' object with a query for the 'webSearch' tool.
+        
+      - If the user asks a greeting, small talk, or a simple conversational query (e.g., "Hi", 
+        "How are you?"), set 'action' to 'respond_naturally' and provide the immediate, natural 
+        text in the 'natural_response' field. DO NOT use the tool_call object in this case.`,
+      };
 
-      const response = await fetch(url.toString(), {
-        headers: {
-          "User-Agent": "Berkelium-WebSearch/1.0",
-        },
+      // Perform a web search to gather relevant information
+      /* const searchResults = await webSearch({ query: request.prompt });
+      console.log("Web search results:", searchResults); */
+
+      request.initialMessages?.unshift(systemMessage);
+      const session = await languageModel.create({
+        initialPrompts: request.initialMessages,
       });
 
-      if (!response.ok) {
-        throw new Error(
-          `DuckDuckGo API error: ${response.status} ${response.statusText}`
+      console.log("Session created with initial messages:", session);
+
+      const result = await session.prompt(request.prompt, {
+        responseConstraint: functionCallSchema,
+      });
+
+      const structuredResponse = JSON.parse(result);
+      console.log("Structured response from model:", structuredResponse);
+
+      if (structuredResponse.action === "respond_naturally") {
+        // Small talk detected: return the model's pre-written natural response
+        console.log("Model chose to respond naturally.");
+        return { message: structuredResponse.natural_response };
+      }
+
+      if (structuredResponse.action === "call_tool") {
+        const functionCall = structuredResponse.tool_call;
+
+        const functionName = functionCall.name;
+        const functionArgs = functionCall.arguments;
+
+        console.log(
+          `Tool Call Requested: ${functionName} with arguments:`,
+          functionArgs
         );
-      }
 
-      const data = (await response.json()) as any;
+        const toolFunction =
+          TEMP_TOOLS[functionName as keyof typeof TEMP_TOOLS];
+        if (toolFunction) {
+          const toolResult = await toolFunction({
+            query: functionArgs["query"],
+          });
+          console.log(
+            `Tool Execution Result for ${functionArgs["query"]}:`,
+            toolResult
+          );
 
-      const results: any[] = [];
+          const finalPrompt = `[CONTEXT]:
+        ${toolResult}
+        
+        [QUESTION]:
+        ${request.prompt}
+        
+        [INSTRUCTIONS]:
+        Using the provided CONTEXT from the tool result, answer the user's QUESTION accurately. 
+        If the CONTEXT does not contain relevant information, respond with "No relevant information found."`;
 
-      if (data.AbstractText) {
-        results.push({
-          title: data.Heading || "DuckDuckGo Instant Answer",
-          url: data.AbstractURL || "https://duckduckgo.com",
-          snippet: data.AbstractText,
-        });
-      }
+          // Get the final, human-readable answer from the model
+          const finalAnswer = await session.prompt(finalPrompt);
 
-      if (data.RelatedTopics && Array.isArray(data.RelatedTopics)) {
-        for (const topic of data.RelatedTopics) {
-          if (topic.Text && topic.FirstURL) {
-            results.push({
-              title: topic.Text.split(" - ")[0] || "Related Topic",
-              url: topic.FirstURL,
-              snippet: topic.Text,
-            });
-          }
+          return { message: finalAnswer };
         }
       }
 
-      if (results.length === 0) {
-        console.log(`No results found for "${query}"`);
-        return `No results found for "${query}". Try searching on https://duckduckgo.com/?q=${encodeURIComponent(
-          query
-        )}`;
-      }
-
-      return JSON.stringify(results, null, 2);
+      return { message: "Requested tool not found." };
     } catch (error) {
-      if (error instanceof Error) {
-        return `An error occurred while searching: ${error.message}`;
-      }
-
-      console.error(`An unknown error occurred while searching.`, error);
-      return "An unknown error occurred while searching.";
+      console.error("Error getting AI response:", error);
+      throw new Error("Failed to get AI response");
     }
   },
 };
