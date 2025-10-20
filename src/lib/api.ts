@@ -1,6 +1,8 @@
 import { ChatCompletionRequest, ChatCompletionResponse } from "@/types/chat";
 import { buddhiAIModel } from "@/lib/provider";
-import { generateText } from "ai";
+import { generateText, tool } from "ai";
+import { z } from "zod";
+import { webSearch } from "@/tools/web-search";
 
 export const chatApi = {
   async getCompletion(
@@ -9,7 +11,7 @@ export const chatApi = {
     try {
       const systemMessage: LanguageModelMessage = {
         role: "system" as LanguageModelMessageRole,
-        content: `You are Buddhi AI, a helpful assistant developed by Buddhi LIVE Labs.`
+        content: `You are Buddhi AI, a helpful assistant developed by Buddhi LIVE Labs.`,
       };
 
       request.initialMessages?.unshift(systemMessage);
@@ -27,6 +29,24 @@ export const chatApi = {
       const result = await generateText({
         model: buddhiAIModel(""),
         messages: mappedMessages,
+        tools: {
+          addResource: tool({
+            description: `Search information from the web to answer user's questions.
+          If the user provides a random piece of knowledge unprompted, use this tool without asking for confirmation.`,
+            inputSchema: z.object({
+              query: z
+                .string()
+                .describe(
+                  "the search query"
+                ),
+            }),
+            execute: async ({ query }) => {
+              console.log("Executing web search with query:", query);
+              const res = await webSearch({ query });
+              return JSON.stringify(res);
+            },
+          }),
+        },
       });
 
       /* for await (const chunk of result.textStream) {
