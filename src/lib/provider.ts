@@ -1,21 +1,24 @@
-import {
-  generateId
-} from '@ai-sdk/provider-utils';
 import { BuddhiAILanguageModel } from './buddhi-ai-language-model';
-import { BuddhiAIChatSettings, BuddhiAIProvider, BuddhiAIProviderSettings } from '@/types/provider';
+import { BuddhiAIChatModelId, BuddhiAIChatSettings, BuddhiAIProvider, BuddhiAIProviderSettings } from '@/types/provider';
+import { NoSuchModelError } from '@ai-sdk/provider';
 
-// Factory function to create provider instance
-function createCustom(options: BuddhiAIProviderSettings = {}): BuddhiAIProvider {
+export function createBuddhiAI(
+  options: BuddhiAIProviderSettings = {},
+): BuddhiAIProvider {
   const createChatModel = (
-    modelId: string,
-    settings: BuddhiAIChatSettings = {},
-  ) =>
-    new BuddhiAILanguageModel(modelId, settings);
+    modelId: BuddhiAIChatModelId,
+    settings?: BuddhiAIChatSettings,
+  ) => {
+    return new BuddhiAILanguageModel(modelId, settings);
+  };
 
-  const provider = function (modelId: string, settings?: BuddhiAIChatSettings) {
+  const provider = function (
+    modelId: BuddhiAIChatModelId = "text",
+    settings?: BuddhiAIChatSettings,
+  ) {
     if (new.target) {
       throw new Error(
-        'The model factory function cannot be called with the new keyword.',
+        "The BuiltInAI model function cannot be called with the new keyword.",
       );
     }
 
@@ -23,9 +26,26 @@ function createCustom(options: BuddhiAIProviderSettings = {}): BuddhiAIProvider 
   };
 
   provider.languageModel = createChatModel;
+  provider.chat = createChatModel;
 
-  return provider as BuddhiAIProvider;
+  provider.imageModel = (modelId: string) => {
+    throw new NoSuchModelError({ modelId, modelType: "imageModel" });
+  };
+
+  provider.speechModel = (modelId: string) => {
+    throw new NoSuchModelError({ modelId, modelType: "speechModel" });
+  };
+
+  provider.transcriptionModel = (modelId: string) => {
+    throw new NoSuchModelError({ modelId, modelType: "transcriptionModel" });
+  };
+
+  provider.textEmbeddingModel = (modelId: string) => {
+    throw new NoSuchModelError({ modelId, modelType: "textEmbeddingModel" });
+  };
+
+  return provider;
 }
 
 // Export default provider instance
-const custom = createCustom();
+export const buddhiAIModel = createBuddhiAI();
