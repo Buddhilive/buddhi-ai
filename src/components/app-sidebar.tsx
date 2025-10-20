@@ -5,6 +5,7 @@ import {
   Calendar,
   Command,
   Home,
+  LibraryBig,
   Sparkles,
 } from "lucide-react"
 
@@ -40,6 +41,11 @@ const data = {
       url: "#",
       icon: Sparkles,
       isActive: true,
+    },
+    {
+      title: "Library",
+      url: "/library",
+      icon: LibraryBig,
     },
   ],
   navSecondary: [
