@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Trash, Upload } from "lucide-react";
+import { processPDFDocuments } from "@/lib/embeddings";
 
 export default function LibraryPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -23,6 +24,7 @@ export default function LibraryPage() {
   ];
 
     const [isDragActive, setIsDragActive] = useState(false);
+    const [isProcessing, setIsProcessing] = useState(false);
   
   const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -41,19 +43,41 @@ export default function LibraryPage() {
     e.stopPropagation();
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragActive(false);
-    // Handle dropped files here
+    
     const files = Array.from(e.dataTransfer.files);
-    // Process PDF files
+    const pdfFiles = files.filter(file => file.type === "application/pdf");
+    
+    if (pdfFiles.length > 0) {
+      setIsProcessing(true);
+      try {
+        await processPDFDocuments(pdfFiles);
+      } catch (error) {
+        console.error("Error processing PDF files:", error);
+      } finally {
+        setIsProcessing(false);
+      }
+    }
   };
 
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
-      // Process PDF files
+      const pdfFiles = Array.from(files).filter(file => file.type === "application/pdf");
+      
+      if (pdfFiles.length > 0) {
+        setIsProcessing(true);
+        try {
+          await processPDFDocuments(pdfFiles);
+        } catch (error) {
+          console.error("Error processing PDF files:", error);
+        } finally {
+          setIsProcessing(false);
+        }
+      }
     }
   };
 
@@ -73,34 +97,52 @@ export default function LibraryPage() {
             </DialogHeader>
             <div className="py-4">
               <div 
-                className={`border-2 ${isDragActive ? 'border-primary bg-primary/5' : 'border-dashed border-gray-300'} rounded-lg p-8 text-center ${!isDragActive ? 'cursor-pointer hover:bg-accent hover:border-gray-400' : ''} transition-colors`}
+                className={`border-2 ${isDragActive ? 'border-primary bg-primary/5' : 'border-dashed border-gray-300'} rounded-lg p-8 text-center ${!isDragActive && !isProcessing ? 'cursor-pointer hover:bg-accent hover:border-gray-400' : ''} transition-colors`}
                 onDragEnter={handleDragEnter}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                onClick={() => document.getElementById('file-upload')?.click()}
+                onClick={!isProcessing ? () => document.getElementById('file-upload')?.click() : undefined}
               >
-                <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-lg font-medium mb-1">Drag and drop your PDF files here</p>
-                <p className="text-sm text-muted-foreground mb-4">or</p>
-                <Button variant="outline" type="button">
-                  <Upload className="mr-2 h-4 w-4" /> Browse files
-                </Button>
-                <p className="text-xs text-muted-foreground mt-3">Supports PDF files only</p>
+                {isProcessing ? (
+                  <div className="py-8">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                    <p className="text-lg font-medium">Processing documents...</p>
+                    <p className="text-sm text-muted-foreground">This may take a few moments</p>
+                  </div>
+                ) : (
+                  <>
+                    <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                    <p className="text-lg font-medium mb-1">Drag and drop your PDF files here</p>
+                    <p className="text-sm text-muted-foreground mb-4">or</p>
+                    <Button variant="outline" type="button">
+                      <Upload className="mr-2 h-4 w-4" /> Browse files
+                    </Button>
+                    <p className="text-xs text-muted-foreground mt-3">Supports PDF files only</p>
+                  </>
+                )}
                 <input 
                   type="file" 
                   accept=".pdf" 
                   className="hidden" 
                   id="file-upload"
                   onChange={handleFileInput}
+                  disabled={isProcessing}
                 />
               </div>
             </div>
             <div className="flex justify-end space-x-3">
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              <Button 
+                variant="outline" 
+                onClick={() => setIsDialogOpen(false)}
+                disabled={isProcessing}
+              >
                 Cancel
               </Button>
-              <Button onClick={() => setIsDialogOpen(false)}>
+              <Button 
+                onClick={() => setIsDialogOpen(false)}
+                disabled={isProcessing}
+              >
                 Done
               </Button>
             </div>
