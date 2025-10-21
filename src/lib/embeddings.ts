@@ -1,4 +1,4 @@
-import { Document, SimpleNodeParser } from "llamaindex";
+import { Document, SentenceSplitter } from "llamaindex";
 
 interface Chunk {
   text: string;
@@ -40,7 +40,7 @@ export async function chunkPDFDocuments(pdfFiles: File[]): Promise<Chunk[]> {
       });
       
       // Use SimpleNodeParser to chunk the document
-      const parser = new SimpleNodeParser({
+      const parser = new SentenceSplitter({
         chunkSize: 1024, // 1KB chunks
         chunkOverlap: 200, // 200 bytes overlap
       });
