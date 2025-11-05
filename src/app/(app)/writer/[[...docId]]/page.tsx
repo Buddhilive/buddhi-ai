@@ -6,8 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { ForwardRefEditor } from '@/components/ForwardRefEditor'
-import { type MDXEditorMethods } from '@mdxeditor/editor'
-import { type BAIWriterContentConfig } from '@/types/writer'
+import { type MDXEditorMethods } from '@mdxeditor/editor';
 
 export default function WriterPage() {
   const editorRef = useRef<MDXEditorMethods>(null)
