@@ -1,4 +1,5 @@
 import {
+  Brain,
   Calendar,
   Command,
   Home,
@@ -12,7 +13,7 @@ export const SIDEBAR_DATA = {
   teams: [
     {
       name: "Buddhi AI",
-      logo: Command,
+      logo: Brain,
       plan: "AI in Browser",
       url: "#",
     },
