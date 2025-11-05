@@ -2,6 +2,11 @@ import { BAIAvailability, BAISummaryOptions } from "@/types/built-in-common";
 
 const isSummarizerAvailable = async (): Promise<boolean> => {
   try {
+    // First check if the Summarizer object exists
+    if (typeof window === 'undefined' || !(window as any).Summarizer) {
+      return false;
+    }
+
     const isAvailable: BAIAvailability = await (
       window as any
     ).Summarizer.availability();

@@ -1,7 +1,12 @@
 import type { BAIAvailability, BAIPogressMonitor } from "@/types/built-in-common";
 
 const isWriterAvailable = async (): Promise<boolean> => {
-try {
+  try {
+    // First check if the Writer object exists
+    if (typeof window === 'undefined' || !(window as any).Writer) {
+      return false;
+    }
+
     const isAvailable: BAIAvailability = await (
       window as any
     ).Writer.availability();
@@ -11,7 +16,7 @@ try {
       isAvailable === "downloading"
     );
   } catch (error) {
-    console.warn("Error checking summarizer availability:", error);
+    console.warn("Error checking writer availability:", error);
     return false;
   }
 }

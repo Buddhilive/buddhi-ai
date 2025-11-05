@@ -6,6 +6,11 @@ import { ChatCompletionRequest, ChatCompletionResponse } from "@/types/chat";
 export const chatApi = {
   async isLanguageModelAvvailable(): Promise<boolean> {
     try {
+      // First check if the LanguageModel object exists
+      if (typeof window === 'undefined' || !(window as any).LanguageModel) {
+        return false;
+      }
+
       const isAvailable: BAIAvailability = await (
         window as any
       ).LanguageModel.availability();

@@ -2,6 +2,11 @@ import { BAIAvailability, BAIPogressMonitor, BAITranslationOptions } from "@/typ
 
 const isLanguageDetectorAvailable = async (): Promise<boolean> => {
   try {
+    // First check if the LanguageDetector object exists
+    if (typeof window === 'undefined' || !(window as any).LanguageDetector) {
+      return false;
+    }
+
     const isAvailable: BAIAvailability = await (window as any).LanguageDetector.availability();
     
     return (
@@ -17,6 +22,11 @@ const isLanguageDetectorAvailable = async (): Promise<boolean> => {
 
 const isTranslatorAvailable = async (sourceLanguage: string, targetLanguage: string): Promise<boolean> => {
   try {
+    // First check if the Translator object exists
+    if (typeof window === 'undefined' || !(window as any).Translator) {
+      return false;
+    }
+
     const isAvailable: BAIAvailability = await (window as any).Translator.availability({
       sourceLanguage,
       targetLanguage,
