@@ -5,7 +5,8 @@ import { chatApi } from "@/lib/api";
 import { Message } from "@/types/chat";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, RefreshCcw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function ChatPage() {
   const {
@@ -41,10 +42,13 @@ export default function ChatPage() {
     };
 
     addMessage(userMessage);
+    getAIResponse(inputValue);
     setInputValue("");
     setIsLoading(true);
     setError(null); // Clear any previous errors
+  };
 
+  const getAIResponse = async (userMessage: string) => {
     try {
       const apiMessages = [
         ...messages
@@ -58,7 +62,7 @@ export default function ChatPage() {
       // Call the API
       const response = await chatApi.getCompletion({
         initialMessages: apiMessages,
-        prompt: inputValue,
+        prompt: userMessage,
       });
 
       // Extract the assistant's response
@@ -99,17 +103,23 @@ export default function ChatPage() {
     }
   };
 
+  const handleRetry = () => {
+    const lastUserMessage = [...messages]
+      .reverse()
+      .find((msg) => msg.role === "user");
+    if (lastUserMessage) {
+      getAIResponse(lastUserMessage.content);
+      setIsLoading(true);
+      setError(null);
+    } else {
+      setError("No previous user message to retry.");
+    }
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-56px)] max-h-[calc(100vh-56px)] overflow-hidden">
       {/* Chat messages area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 flex-grow">
-        {error && (
-          <div className="flex justify-start">
-            <div className="bg-destructive text-destructive-foreground rounded-xl rounded-bl-none px-4 py-2 max-w-[80%]">
-              <div className="text-sm">Error: {error}</div>
-            </div>
-          </div>
-        )}
         {messages.map((message) => (
           <div
             key={message.id}
@@ -152,6 +162,22 @@ export default function ChatPage() {
                 <div className="w-2 h-2 rounded-full bg-secondary-foreground/70 animate-bounce delay-75"></div>
                 <div className="w-2 h-2 rounded-full bg-secondary-foreground/70 animate-bounce delay-150"></div>
               </div>
+            </div>
+          </div>
+        )}
+        {error && (
+          <div className="flex justify-start">
+            <div className="bg-destructive text-destructive-foreground rounded-xl px-4 py-2 max-w-[80%]">
+              <div className="text-sm">Error: {error}</div>
+              <Button
+                variant={"outline"}
+                size={"sm"}
+                onClick={handleRetry}
+                className="mt-2"
+              >
+                <RefreshCcw className="w-4 h-4" />
+                Retry
+              </Button>
             </div>
           </div>
         )}

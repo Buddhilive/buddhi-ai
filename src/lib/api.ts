@@ -79,10 +79,17 @@ export const chatApi = {
         If the CONTEXT does not contain relevant information, respond with "No relevant information found."`;
 
           // Get the final, human-readable answer from the model
-          const finalAnswer = await session.prompt(finalPrompt);
-          const finalAnswerParsed = JSON.parse(finalAnswer);
-
-          return { message: finalAnswerParsed.natural_response };
+          const webSearchResponse = await session.prompt(finalPrompt);
+          const finalAnswer = webSearchResponse.trim();
+          try {
+            const finalAnswerParsed = JSON.parse(finalAnswer);
+            return { message: finalAnswerParsed.natural_response };
+          } catch (error) {
+            console.warn(
+              "Final answer is not valid JSON, returning raw response."
+            );
+            return { message: finalAnswer };
+          }
         }
       }
 
