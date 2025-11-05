@@ -21,3 +21,10 @@ interface BAITranslationOptions extends BAIPogressMonitor {
   sourceLanguage: string;
   targetLanguage: string;
 }
+
+interface BAIWriterContentConfig {
+  tone?: 'formal' | 'neutral' | 'casual';
+  format?: 'markdown' | 'plain-text';
+  length?: 'short' | 'medium' | 'long';
+  sharedContext?: string;
+}

@@ -1,0 +1,119 @@
+/* MDXEditor Dark Mode Styles */
+.dark [data-color-mode='light'] {
+  color-scheme: dark;
+}
+
+.dark .mdxeditor {
+  --color-neutral-25: hsl(var(--background));
+  --color-neutral-50: hsl(var(--muted));
+  --color-neutral-100: hsl(var(--muted));
+  --color-neutral-200: hsl(var(--border));
+  --color-neutral-300: hsl(var(--border));
+  --color-neutral-400: hsl(var(--muted-foreground));
+  --color-neutral-500: hsl(var(--muted-foreground));
+  --color-neutral-600: hsl(var(--foreground));
+  --color-neutral-700: hsl(var(--foreground));
+  --color-neutral-800: hsl(var(--foreground));
+  --color-neutral-900: hsl(var(--foreground));
+}
+
+.dark .mdxeditor-toolbar {
+  border-bottom: 1px solid hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+
+.dark .mdxeditor-toolbar button {
+  color: hsl(var(--foreground));
+  background-color: transparent;
+  border: 1px solid transparent;
+}
+
+.dark .mdxeditor-toolbar button:hover {
+  background-color: hsl(var(--muted));
+  border-color: hsl(var(--border));
+}
+
+.dark .mdxeditor-toolbar button[data-state="on"] {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.dark .mdxeditor-editor {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.dark .mdxeditor .mdxeditor-popup-container {
+  background-color: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+}
+
+.dark .mdxeditor-select-trigger {
+  background-color: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+
+.dark .mdxeditor-select-trigger:hover {
+  background-color: hsl(var(--muted));
+}
+
+/* Editor content area */
+.mdxeditor-editor .cm-editor {
+  height: 100% !important;
+}
+
+.mdxeditor-editor .cm-scroller {
+  font-family: inherit;
+}
+
+.writer-editor ._toolbarRoot_1e2ox_162 {
+    gap: 0;
+}
+
+.dark .writer-editor ._contentEditable_1e2ox_380 {
+    color: var(--foreground);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .writer-layout {
+    flex-direction: column;
+  }
+  
+  .writer-editor {
+    width: 100% !important;
+    border-right: none;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  
+  .writer-settings {
+    width: 100% !important;
+    max-height: 300px;
+  }
+}
+
+/* Focus styles for accessibility */
+.mdxeditor-editor:focus-within {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+/* Scrollbar styling for dark mode */
+.dark .mdxeditor-editor .cm-scroller::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dark .mdxeditor-editor .cm-scroller::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+}
+
+.dark .mdxeditor-editor .cm-scroller::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground));
+  border-radius: 4px;
+}
+
+.dark .mdxeditor-editor .cm-scroller::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--foreground));
+}
