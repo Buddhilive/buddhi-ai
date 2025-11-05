@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Loader2, Pen, PenTool } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ForwardRefEditor } from "@/components/ForwardRefEditor";
 import { type MDXEditorMethods } from "@mdxeditor/editor";
 import { getWriter, isWriterAvailable } from "@/lib/writer";
+import { type BAIWriterContentConfig } from "@/types/built-in-common";
 import { toast } from "sonner";
 
 export default function WriterPage() {
@@ -26,6 +27,13 @@ export default function WriterPage() {
   });
   const [isWriting, setIsWriting] = useState(false);
   const [output, setOutput] = useState("");
+
+  // Update editor content when output changes
+  useEffect(() => {
+    if (editorRef.current && output) {
+      editorRef.current.setMarkdown(output);
+    }
+  }, [output]);
 
   const handleWrite = async () => {
     setIsWriting(true);
@@ -49,12 +57,16 @@ export default function WriterPage() {
         },
       });
 
-      const content = await writer.write(output);
-      console.log("AI Writer output:", content, output);
+      // Get current editor content as input context
+      const currentContent = editorRef.current?.getMarkdown() || "";
+
+      const content = await writer.write(currentContent);
+
       setOutput(content);
       setIsWriting(false);
     } catch (error) {
-      toast.error("Error checking AI Writer availability");
+      console.error("Error with AI Writer:", error);
+      toast.error("Error generating content with AI Writer");
       setIsWriting(false);
     }
   };
@@ -98,7 +110,7 @@ export default function WriterPage() {
                 <ForwardRefEditor
                   ref={editorRef}
                   placeholder="What's on your mind?"
-                  markdown={output}
+                  markdown="# Start writing your content here..."
                   onChange={setOutput}
                   className="[&_.mdxeditor]:h-[calc(100vh-224px)] [&_.mdxeditor-editor]:h-[calc(100vh-224px)] [&_.mdxeditor-editor]:overflow-hidden"
                   contentEditableClassName="prose prose-neutral dark:prose-invert max-w-none p-4 h-[calc(100vh-224px)] overflow-y-auto focus:outline-none"

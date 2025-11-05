@@ -1,3 +1,5 @@
+import type { BAIAvailability, BAIPogressMonitor } from "@/types/built-in-common";
+
 const isWriterAvailable = async (): Promise<boolean> => {
 try {
     const isAvailable: BAIAvailability = await (

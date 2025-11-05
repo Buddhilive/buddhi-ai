@@ -1,28 +1,28 @@
-type BAIAvailability =
+export type BAIAvailability =
   | "unavailable"
   | "available"
   | "downloadable"
   | "downloading";
 
-interface BAIPogressMonitor {
+export interface BAIPogressMonitor {
   monitor(m: {
     addEventListener: (event: string, listener: (e: any) => void) => void;
   }): void;
 }
 
-interface BAISummaryOptions extends BAIPogressMonitor {
+export interface BAISummaryOptions extends BAIPogressMonitor {
   sharedContext: string;
   type: "key-points" | "tldr" | "teaser" | "headline";
   format: "markdown" | "plain-text";
   length: "short" | "medium" | "long";
 }
 
-interface BAITranslationOptions extends BAIPogressMonitor {
+export interface BAITranslationOptions extends BAIPogressMonitor {
   sourceLanguage: string;
   targetLanguage: string;
 }
 
-interface BAIWriterContentConfig {
+export interface BAIWriterContentConfig {
   tone?: 'formal' | 'neutral' | 'casual';
   format?: 'markdown' | 'plain-text';
   length?: 'short' | 'medium' | 'long';
