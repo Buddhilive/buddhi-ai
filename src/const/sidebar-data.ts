@@ -2,6 +2,7 @@ import {
   Calendar,
   Command,
   Home,
+  LayoutDashboard,
   Sparkles,
 } from "lucide-react";
 
@@ -13,16 +14,28 @@ export const SIDEBAR_DATA = {
       plan: "AI in Browser",
       url: "#",
     },
+    {
+      name: "Buddhilive",
+      logo: Command,
+      plan: "Return to home",
+      url: "https://buddhilive.com",
+    },
   ],
   navMain: [
     {
       title: "Home",
-      url: "#",
+      url: "/",
       icon: Home,
     },
     {
+      title: "Dashboard",
+      url: "/dashboard",
+      icon: LayoutDashboard,
+      isActive: true,
+    },
+    {
       title: "Ask AI",
-      url: "#",
+      url: "/chat",
       icon: Sparkles,
       isActive: true,
     }
