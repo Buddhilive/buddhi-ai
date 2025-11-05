@@ -1,6 +1,6 @@
-"use client"
+"use client";
 
-import * as React from "react"
+import * as React from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -14,17 +14,16 @@ import {
   Link,
   MoreHorizontal,
   Settings2,
-  Star,
   Trash,
   Trash2,
-} from "lucide-react"
+} from "lucide-react";
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover"
+} from "@/components/ui/popover";
 import {
   Sidebar,
   SidebarContent,
@@ -33,7 +32,8 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar"
+} from "@/components/ui/sidebar";
+import { ThemeToggle } from "./ui/theme-toggle";
 
 const data = [
   [
@@ -96,23 +96,18 @@ const data = [
       icon: ArrowDown,
     },
   ],
-]
+];
 
 export function NavActions() {
-  const [isOpen, setIsOpen] = React.useState(false)
+  const [isOpen, setIsOpen] = React.useState(false);
 
   React.useEffect(() => {
-    setIsOpen(false)
-  }, [])
+    setIsOpen(false);
+  }, []);
 
   return (
     <div className="flex items-center gap-2 text-sm">
-      <div className="text-muted-foreground hidden font-medium md:inline-block">
-        Edit Oct 08
-      </div>
-      <Button variant="ghost" size="icon" className="h-7 w-7">
-        <Star />
-      </Button>
+      <ThemeToggle />
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -149,5 +144,5 @@ export function NavActions() {
         </PopoverContent>
       </Popover>
     </div>
-  )
+  );
 }
