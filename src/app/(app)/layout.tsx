@@ -1,3 +1,5 @@
+"use client";
+
 import { AppSidebar } from "@/components/app-sidebar";
 import { NavActions } from "@/components/nav-actions";
 import {
@@ -12,12 +14,15 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { useNavigation } from "@/hooks/use-navigation";
 
 export default function AppLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const { breadcrumbTitle } = useNavigation();
+
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -33,7 +38,7 @@ export default function AppLayout({
               <BreadcrumbList>
                 <BreadcrumbItem>
                   <BreadcrumbPage className="line-clamp-1">
-                    Search
+                    {breadcrumbTitle}
                   </BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>

@@ -34,7 +34,6 @@ export const SIDEBAR_DATA = {
       title: "Dashboard",
       url: "/dashboard",
       icon: LayoutDashboard,
-      isActive: true,
     },
     {
       title: "Ask AI",
