@@ -10,11 +10,11 @@ export const chatApi = {
       const languageModel: LanguageModel = (window as any).LanguageModel;
       const systemMessage: LanguageModelMessage = {
         role: "system" as LanguageModelMessageRole,
-        content: `You are Buddhi AI, a helpful assistant developed by Buddhi LIVE Labs.
+        content: `You are Buddhi AI, a helpful assistant developed by Buddhi Kavindra.
           Your response MUST be a JSON object 
       that strictly adheres to the provided JSON schema. DO NOT include any other text or markdown outside of the JSON.
       
-      - If the user asks a question that requires real-time information or external knowledge 
+      - If the user asks a question that requires to be accurate, real-time information or external knowledge 
         (e.g., current events, facts, etc.), set 'action' to 'call_tool' and populate the 
         'tool_call' object with a query for the 'webSearch' tool.
         
@@ -80,8 +80,9 @@ export const chatApi = {
 
           // Get the final, human-readable answer from the model
           const finalAnswer = await session.prompt(finalPrompt);
+          const finalAnswerParsed = JSON.parse(finalAnswer);
 
-          return { message: finalAnswer };
+          return { message: finalAnswerParsed.natural_response };
         }
       }
 
