@@ -13,17 +13,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  getLanguageDetector,
+  getTranslator,
+  isLanguageDetectorAvailable,
+  isTranslatorAvailable,
+} from "@/lib/translator";
+import { LANGUAGE_CODE_MAP } from "@/const/language-code";
 
 export default function SummarizerPage() {
   const [originalText, setOriginalText] = useState("");
   const [summaryText, setSummaryText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [detectedLanguage, setDetectedLanguage] = useState("");
+  const [targetLanguage, setTargetLanguage] = useState("");
+  const [isTranslating, setIsTranslating] = useState(false);
 
   const handleSummarize = async () => {
     setIsLoading(true);
     const isAvailable = await isSummarizerAvailable();
     if (!isAvailable) {
-      console.error("Summarizer is not available");
+      toast.error("Summarizer is not available");
       setIsLoading(false);
       return;
     }
@@ -51,6 +61,82 @@ export default function SummarizerPage() {
     }
   };
 
+  const handleSourceTextChange = async (
+    e: React.ChangeEvent<HTMLTextAreaElement>
+  ) => {
+    setOriginalText(e.target.value);
+    setSummaryText("");
+
+    const isAvailable = await isLanguageDetectorAvailable();
+    if (!isAvailable) {
+      toast.error("Language detector is not available");
+      return;
+    }
+
+    try {
+      const detector = await getLanguageDetector({
+        monitor(m) {
+          m.addEventListener("downloadprogress", (e: any) => {
+            console.log(
+              "Language detector download progress:",
+              `${e.loaded * 100}%`
+            );
+          });
+        },
+      });
+      const detectedLanguages = await detector.detect(e.target.value);
+      console.log("Detected languages:", detectedLanguages);
+      setDetectedLanguage(detectedLanguages[0].detectedLanguage);
+      setTargetLanguage(detectedLanguages[0].detectedLanguage);
+    } catch (error) {
+      console.error("Error initializing language detector:", error);
+      toast.error(
+        "An error occurred while initializing the language detector."
+      );
+    }
+  };
+
+  const handleTranslate = async () => {
+    console.log("Translating to:", targetLanguage);
+    if (detectedLanguage === targetLanguage) {
+      toast.info(
+        "Source and target languages are the same. No translation needed."
+      );
+      return;
+    }
+
+    try {
+      const isAvailable = await isTranslatorAvailable(
+        detectedLanguage,
+        targetLanguage
+      );
+
+      if (!isAvailable) {
+        toast.error("Translator is not available for the selected languages");
+        return;
+      }
+
+      setIsTranslating(true);
+
+      const translator = await getTranslator({
+        sourceLanguage: detectedLanguage,
+        targetLanguage: targetLanguage,
+        monitor(m) {
+          m.addEventListener("downloadprogress", (e: any) => {
+            console.log("Translator download progress:", `${e.loaded * 100}%`);
+          });
+        },
+      });
+
+      const translatedText = await translator.translate(originalText);
+      setSummaryText(translatedText);
+      setIsTranslating(false);
+    } catch (error) {
+      console.error("Error checking translator availability:", error);
+      setIsTranslating(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-58px)] bg-background">
       {/* Toolbar */}
@@ -64,23 +150,25 @@ export default function SummarizerPage() {
         <div className="flex items-center gap-2">
           {summaryText && (
             <div className="border-r-2 px-2 flex items-center justify-between gap-2">
-              <Select>
+              <Select value={targetLanguage} onValueChange={setTargetLanguage}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="Select a language" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="light">Light</SelectItem>
-                  <SelectItem value="dark">Dark</SelectItem>
-                  <SelectItem value="system">System</SelectItem>
+                  {Object.entries(LANGUAGE_CODE_MAP).map(([code, name]) => (
+                    <SelectItem key={code} value={code}>
+                      {name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
               <Button
                 className="flex items-center gap-2"
-                onClick={handleSummarize}
-                disabled={isLoading}
+                onClick={handleTranslate}
+                disabled={isTranslating || isLoading}
               >
-                {isLoading ? (
+                {isTranslating ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Translating...
@@ -97,7 +185,7 @@ export default function SummarizerPage() {
           <Button
             className="flex items-center gap-2"
             onClick={handleSummarize}
-            disabled={isLoading}
+            disabled={isLoading || isTranslating}
           >
             {isLoading ? (
               <>
@@ -125,7 +213,7 @@ export default function SummarizerPage() {
             <Textarea
               disabled={isLoading}
               value={originalText}
-              onChange={(e) => setOriginalText(e.target.value)}
+              onInput={handleSourceTextChange}
               placeholder="Paste or type your text here to summarize..."
               className="h-full resize-none border-border bg-card text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:border-transparent"
             />
