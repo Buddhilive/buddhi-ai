@@ -67,7 +67,7 @@ export default function DashboardPage() {
         <div className="text-center">
           <h3 className="text-lg font-semibold text-muted-foreground mb-2">More Apps Coming Soon</h3>
           <p className="text-sm text-muted-foreground">
-            We're continuously expanding our collection of useful AI-powered tools. 
+            We&apos;re continuously expanding our collection of useful AI-powered tools. 
             Stay tuned for exciting new applications!
           </p>
         </div>

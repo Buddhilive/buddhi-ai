@@ -7,11 +7,13 @@ export const chatApi = {
   async isLanguageModelAvvailable(): Promise<boolean> {
     try {
       // First check if the LanguageModel object exists
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (typeof window === 'undefined' || !(window as any).LanguageModel) {
         return false;
       }
 
       const isAvailable: BAIAvailability = await (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         window as any
       ).LanguageModel.availability();
       return (
@@ -28,6 +30,7 @@ export const chatApi = {
     request: ChatCompletionRequest
   ): Promise<ChatCompletionResponse> {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const languageModel: LanguageModel = (window as any).LanguageModel;
       const systemMessage: LanguageModelMessage = {
         role: "system" as LanguageModelMessageRole,
@@ -107,7 +110,7 @@ export const chatApi = {
             return { message: finalAnswerParsed.natural_response };
           } catch (error) {
             console.warn(
-              "Final answer is not valid JSON, returning raw response."
+              "Final answer is not valid JSON, returning raw response.", error
             );
             return { message: finalAnswer };
           }

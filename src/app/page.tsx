@@ -5,7 +5,6 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { 
   Brain, 
   Shield, 
-  Zap, 
   MessageSquare, 
   FileText, 
   PenTool,

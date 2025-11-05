@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   LanguageModelV2Prompt,
   UnsupportedFunctionalityError,
@@ -82,7 +83,7 @@ export function convertToBuiltInAIMessages(
               }
 
               case "file": {
-                const { mediaType, data, filename } = part;
+                const { mediaType, data, /* filename */ } = part;
 
                 if (mediaType?.startsWith("image/")) {
                   const convertedData = convertFileData(data, mediaType);

@@ -6,6 +6,7 @@ export type BAIAvailability =
 
 export interface BAIPogressMonitor {
   monitor(m: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     addEventListener: (event: string, listener: (e: any) => void) => void;
   }): void;
 }

@@ -64,7 +64,7 @@ export default function WriterPage() {
 
       const writer = await getWriter({
         monitor(m) {
-          m.addEventListener("downloadprogress", (e: any) => {
+          m.addEventListener("downloadprogress", (e) => {
             console.log(
               "Language detector download progress:",
               `${e.loaded * 100}%`
@@ -105,8 +105,8 @@ export default function WriterPage() {
 
     try {
       const detector = await getLanguageDetector({
-        monitor(m: any) {
-          m.addEventListener("downloadprogress", (e: any) => {
+        monitor(m) {
+          m.addEventListener("downloadprogress", (e) => {
             console.log(
               "Language detector download progress:",
               `${e.loaded * 100}%`
@@ -151,8 +151,8 @@ export default function WriterPage() {
       const translator = await getTranslator({
         sourceLanguage: detectedLanguage,
         targetLanguage: targetLanguage,
-        monitor(m: any) {
-          m.addEventListener("downloadprogress", (e: any) => {
+        monitor(m) {
+          m.addEventListener("downloadprogress", (e) => {
             console.log("Translator download progress:", `${e.loaded * 100}%`);
           });
         },

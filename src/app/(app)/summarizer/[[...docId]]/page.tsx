@@ -58,7 +58,9 @@ export default function SummarizerPage() {
         type: settings.type || "key-points",
         format: settings.format || "markdown",
         length: settings.length || "medium",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         monitor(m: any) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           m.addEventListener("downloadprogress", (e: any) => {
             console.log("Summarization progress:", `${e.loaded * 100}%`);
           });
@@ -91,7 +93,9 @@ export default function SummarizerPage() {
 
     try {
       const detector = await getLanguageDetector({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         monitor(m: any) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           m.addEventListener("downloadprogress", (e: any) => {
             console.log(
               "Language detector download progress:",
@@ -137,7 +141,9 @@ export default function SummarizerPage() {
       const translator = await getTranslator({
         sourceLanguage: detectedLanguage,
         targetLanguage: targetLanguage,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         monitor(m: any) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           m.addEventListener("downloadprogress", (e: any) => {
             console.log("Translator download progress:", `${e.loaded * 100}%`);
           });

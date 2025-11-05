@@ -3,6 +3,7 @@ import { BuddhiAIChatModelId, BuddhiAIChatSettings, BuddhiAIProvider, BuddhiAIPr
 import { NoSuchModelError } from '@ai-sdk/provider';
 
 export function createBuddhiAI(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   options: BuddhiAIProviderSettings = {},
 ): BuddhiAIProvider {
   const createChatModel = (

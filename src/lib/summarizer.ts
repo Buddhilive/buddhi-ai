@@ -2,12 +2,13 @@ import { BAIAvailability, BAISummaryOptions } from "@/types/built-in-common";
 
 const isSummarizerAvailable = async (): Promise<boolean> => {
   try {
-    // First check if the Summarizer object exists
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (typeof window === 'undefined' || !(window as any).Summarizer) {
       return false;
     }
 
     const isAvailable: BAIAvailability = await (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       window as any
     ).Summarizer.availability();
     return (
@@ -22,6 +23,7 @@ const isSummarizerAvailable = async (): Promise<boolean> => {
 };
 
 const getSummarizer = async (options: BAISummaryOptions) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const summarizer = await (window as any).Summarizer.create(options);
   return summarizer;
 };

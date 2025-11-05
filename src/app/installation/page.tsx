@@ -25,7 +25,7 @@ export default function InstallationPage() {
   };
 
   const handleDocsRedirect = () => {
-    window.open('https://www.buddhilive.com/docs/chrome-ai', '_blank');
+    window.open('https://www.buddhilive.com/docs-chrome-ai', '_blank');
   };
 
   return (
@@ -36,7 +36,7 @@ export default function InstallationPage() {
         </div>
         <h1 className="mb-4 text-3xl font-bold">Chrome AI Setup Required</h1>
         <p className="text-lg text-muted-foreground max-w-2xl">
-          Buddhilive AI requires Chrome's Built-in AI APIs to function. Manual installation and API enabling is needed to use all features.
+          Buddhilive AI requires Chrome&apos;s Built-in AI APIs to function. Manual installation and API enabling is needed to use all features.
         </p>
       </div>
 
@@ -119,7 +119,7 @@ export default function InstallationPage() {
               <div>
                 <h3 className="font-medium mb-1">Update Chrome Browser</h3>
                 <p className="text-sm text-muted-foreground">
-                  Ensure you're using Chrome Canary or Dev channel with version 127 or higher.
+                  Ensure you&apos;re using Chrome Canary or Dev channel with version 127 or higher.
                 </p>
               </div>
             </div>

@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
     const data = await response.json();
     console.log("Langsearch API response data:", data);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const results: any[] = [];
 
     // Check if the response has the expected structure

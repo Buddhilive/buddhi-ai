@@ -2,6 +2,7 @@
  * A callback function signature for tools that a language model can invoke.
  * It takes an arbitrary number of arguments and returns a Promise resolving to a string.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type LanguageModelToolFunction = (...args: any[]) => Promise<string>;
 
 /**
@@ -103,6 +104,7 @@ interface LanguageModelCreateOptions extends LanguageModelCreateCoreOptions {
   /** A signal to abort the creation process. */
   signal?: AbortSignal;
   /** A callback to monitor the creation process (type not fully specified in IDL, using a general function). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   monitor?: (event: any) => void;
   /** Initial messages to pre-populate the model's context/history. */
   initialPrompts?: LanguageModelMessage[];
@@ -215,6 +217,7 @@ declare interface LanguageModel extends EventTarget {
   /** The available input quota (unrestricted double maps to number). */
   readonly inputQuota: number;
   /** Event handler for when the input quota is exceeded. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onquotaoverflow: ((this: LanguageModel, ev: Event) => any) | null;
 
   /** The configured top-K value for this model instance. */

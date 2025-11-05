@@ -2,11 +2,12 @@ import { BAIAvailability, BAIPogressMonitor, BAITranslationOptions } from "@/typ
 
 const isLanguageDetectorAvailable = async (): Promise<boolean> => {
   try {
-    // First check if the LanguageDetector object exists
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (typeof window === 'undefined' || !(window as any).LanguageDetector) {
       return false;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const isAvailable: BAIAvailability = await (window as any).LanguageDetector.availability();
     
     return (
@@ -22,11 +23,12 @@ const isLanguageDetectorAvailable = async (): Promise<boolean> => {
 
 const isTranslatorAvailable = async (sourceLanguage: string, targetLanguage: string): Promise<boolean> => {
   try {
-    // First check if the Translator object exists
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (typeof window === 'undefined' || !(window as any).Translator) {
       return false;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const isAvailable: BAIAvailability = await (window as any).Translator.availability({
       sourceLanguage,
       targetLanguage,
@@ -44,11 +46,13 @@ const isTranslatorAvailable = async (sourceLanguage: string, targetLanguage: str
 };
 
 const getLanguageDetector = async (monitor: BAIPogressMonitor) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const languageDetector = await (window as any).LanguageDetector.create(monitor);
   return languageDetector;
 }
 
 const getTranslator = async (options: BAITranslationOptions) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const translator = await (window as any).Translator.create(options);
   return translator;
 }
