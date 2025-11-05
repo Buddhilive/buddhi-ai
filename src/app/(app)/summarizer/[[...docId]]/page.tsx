@@ -1,11 +1,18 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Copy, FileText, Loader2 } from "lucide-react";
+import { Copy, FileText, Languages, Loader2 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
 import { getSummarizer, isSummarizerAvailable } from "@/lib/summarizer";
 import { toast } from "sonner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function SummarizerPage() {
   const [originalText, setOriginalText] = useState("");
@@ -54,23 +61,57 @@ export default function SummarizerPage() {
             Document Summarizer
           </h1>
         </div>
-        <Button
-          className="flex items-center gap-2"
-          onClick={handleSummarize}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Summarizing...
-            </>
-          ) : (
-            <>
-              <FileText className="h-4 w-4" />
-              Summarize
-            </>
+        <div className="flex items-center gap-2">
+          {summaryText && (
+            <div className="border-r-2 px-2 flex items-center justify-between gap-2">
+              <Select>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select a language" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="light">Light</SelectItem>
+                  <SelectItem value="dark">Dark</SelectItem>
+                  <SelectItem value="system">System</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Button
+                className="flex items-center gap-2"
+                onClick={handleSummarize}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Translating...
+                  </>
+                ) : (
+                  <>
+                    <Languages className="h-4 w-4" />
+                    Translate
+                  </>
+                )}
+              </Button>
+            </div>
           )}
-        </Button>
+          <Button
+            className="flex items-center gap-2"
+            onClick={handleSummarize}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Summarizing...
+              </>
+            ) : (
+              <>
+                <FileText className="h-4 w-4" />
+                Summarize
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Main Content */}
