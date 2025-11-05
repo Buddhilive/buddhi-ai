@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { Loader2, Pen, PenTool } from "lucide-react";
+import { Languages, Loader2, PenTool } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -16,6 +16,13 @@ import { type MDXEditorMethods } from "@mdxeditor/editor";
 import { getWriter, isWriterAvailable } from "@/lib/writer";
 import { type BAIWriterContentConfig } from "@/types/built-in-common";
 import { toast } from "sonner";
+import { LANGUAGE_CODE_MAP } from "@/const/language-code";
+import {
+  getLanguageDetector,
+  getTranslator,
+  isLanguageDetectorAvailable,
+  isTranslatorAvailable,
+} from "@/lib/translator";
 
 export default function WriterPage() {
   const editorRef = useRef<MDXEditorMethods>(null);
@@ -27,6 +34,9 @@ export default function WriterPage() {
   });
   const [isWriting, setIsWriting] = useState(false);
   const [output, setOutput] = useState("");
+  const [detectedLanguage, setDetectedLanguage] = useState("");
+  const [targetLanguage, setTargetLanguage] = useState("");
+  const [isTranslating, setIsTranslating] = useState(false);
 
   // Update editor content when output changes
   useEffect(() => {
@@ -78,26 +88,140 @@ export default function WriterPage() {
     setConfig((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleSourceTextChange = async (text: string) => {
+    setOutput(text);
+
+    const isAvailable = await isLanguageDetectorAvailable();
+    if (!isAvailable) {
+      toast.error("Language detector is not available");
+      return;
+    }
+
+    try {
+      const detector = await getLanguageDetector({
+        monitor(m: any) {
+          m.addEventListener("downloadprogress", (e: any) => {
+            console.log(
+              "Language detector download progress:",
+              `${e.loaded * 100}%`
+            );
+          });
+        },
+      });
+      const detectedLanguages = await detector.detect(text);
+      console.log("Detected languages:", detectedLanguages);
+      setDetectedLanguage(detectedLanguages[0].detectedLanguage);
+      setTargetLanguage(detectedLanguages[0].detectedLanguage);
+    } catch (error) {
+      console.error("Error initializing language detector:", error);
+      toast.error(
+        "An error occurred while initializing the language detector."
+      );
+    }
+  };
+
+  const handleTranslate = async () => {
+    console.log("Translating to:", targetLanguage);
+    if (detectedLanguage === targetLanguage) {
+      toast.info(
+        "Source and target languages are the same. No translation needed."
+      );
+      return;
+    }
+
+    try {
+      const isAvailable = await isTranslatorAvailable(
+        detectedLanguage,
+        targetLanguage
+      );
+
+      if (!isAvailable) {
+        toast.error("Translator is not available for the selected languages");
+        return;
+      }
+
+      setIsTranslating(true);
+
+      const translator = await getTranslator({
+        sourceLanguage: detectedLanguage,
+        targetLanguage: targetLanguage,
+        monitor(m: any) {
+          m.addEventListener("downloadprogress", (e: any) => {
+            console.log("Translator download progress:", `${e.loaded * 100}%`);
+          });
+        },
+      });
+
+      const translatedText = await translator.translate(output);
+      setOutput(translatedText);
+      setIsTranslating(false);
+    } catch (error) {
+      console.error("Error checking translator availability:", error);
+      setIsTranslating(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-76px)] bg-background">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
         <div className="flex items-center space-x-4">
+          <PenTool className="h-5 w-5 text-muted-foreground" />
           <h1 className="text-lg font-semibold text-foreground">AI Writer</h1>
         </div>
-        <Button onClick={handleWrite} className="flex items-center gap-2" disabled={isWriting}>
-          {isWriting ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Writing...
-            </>
-          ) : (
-            <>
-              <PenTool className="h-4 w-4" />
-              Write
-            </>
+        <div className="flex items-center gap-2">
+          {output && (
+            <div className="border-r-2 px-2 flex items-center justify-between gap-2">
+              <Select value={targetLanguage} onValueChange={setTargetLanguage}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select a language" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(LANGUAGE_CODE_MAP).map(([code, name]) => (
+                    <SelectItem key={code} value={code}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Button
+                className="flex items-center gap-2"
+                onClick={handleTranslate}
+                disabled={isTranslating || isWriting}
+              >
+                {isTranslating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Translating...
+                  </>
+                ) : (
+                  <>
+                    <Languages className="h-4 w-4" />
+                    Translate
+                  </>
+                )}
+              </Button>
+            </div>
           )}
-        </Button>
+          <Button
+            onClick={handleWrite}
+            className="flex items-center gap-2"
+            disabled={isWriting || isTranslating}
+          >
+            {isWriting ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Writing...
+              </>
+            ) : (
+              <>
+                <PenTool className="h-4 w-4" />
+                Write
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Main Content */}
@@ -110,8 +234,8 @@ export default function WriterPage() {
                 <ForwardRefEditor
                   ref={editorRef}
                   placeholder="What's on your mind?"
-                  markdown="# Start writing your content here..."
-                  onChange={setOutput}
+                  markdown=""
+                  onChange={handleSourceTextChange}
                   className="[&_.mdxeditor]:h-[calc(100vh-224px)] [&_.mdxeditor-editor]:h-[calc(100vh-224px)] [&_.mdxeditor-editor]:overflow-hidden"
                   contentEditableClassName="prose prose-neutral dark:prose-invert max-w-none p-4 h-[calc(100vh-224px)] overflow-y-auto focus:outline-none"
                 />
