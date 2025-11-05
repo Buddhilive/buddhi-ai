@@ -1,8 +1,24 @@
 import { functionCallSchema } from "@/schema/output";
 import { TEMP_TOOLS } from "@/tools/tools";
+import { BAIAvailability } from "@/types/built-in-common";
 import { ChatCompletionRequest, ChatCompletionResponse } from "@/types/chat";
 
 export const chatApi = {
+  async isLanguageModelAvvailable(): Promise<boolean> {
+    try {
+      const isAvailable: BAIAvailability = await (
+        window as any
+      ).LanguageModel.availability();
+      return (
+        isAvailable === "available" ||
+        isAvailable === "downloadable" ||
+        isAvailable === "downloading"
+      );
+    } catch (error) {
+      console.warn("Error checking language model availability:", error);
+      return false;
+    }
+  },
   async getCompletion(
     request: ChatCompletionRequest
   ): Promise<ChatCompletionResponse> {

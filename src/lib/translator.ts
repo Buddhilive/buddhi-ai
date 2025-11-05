@@ -1,3 +1,5 @@
+import { BAIAvailability, BAIPogressMonitor, BAITranslationOptions } from "@/types/built-in-common";
+
 const isLanguageDetectorAvailable = async (): Promise<boolean> => {
   try {
     const isAvailable: BAIAvailability = await (window as any).LanguageDetector.availability();
