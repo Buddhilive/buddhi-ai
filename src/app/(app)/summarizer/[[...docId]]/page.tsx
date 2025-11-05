@@ -20,6 +20,7 @@ import {
   isTranslatorAvailable,
 } from "@/lib/translator";
 import { LANGUAGE_CODE_MAP } from "@/const/language-code";
+import { SettingsDialog, SettingsFormData } from "@/components/settings-dialog";
 
 export default function SummarizerPage() {
   const [originalText, setOriginalText] = useState("");
@@ -28,6 +29,13 @@ export default function SummarizerPage() {
   const [detectedLanguage, setDetectedLanguage] = useState("");
   const [targetLanguage, setTargetLanguage] = useState("");
   const [isTranslating, setIsTranslating] = useState(false);
+  const [settings, setSettings] = useState<SettingsFormData>({
+    originalTextContext: "",
+    summaryContext: "",
+    type: "key-points",
+    format: "markdown",
+    length: "medium",
+  });
 
   const handleSummarize = async () => {
     setIsLoading(true);
@@ -40,10 +48,10 @@ export default function SummarizerPage() {
 
     try {
       const summarizer = await getSummarizer({
-        sharedContext: "",
-        type: "key-points",
-        format: "markdown",
-        length: "medium",
+        sharedContext: settings.originalTextContext || "",
+        type: settings.type || "key-points",
+        format: settings.format || "markdown",
+        length: settings.length || "medium",
         monitor(m) {
           m.addEventListener("downloadprogress", (e: any) => {
             console.log("Summarization progress:", `${e.loaded * 100}%`);
@@ -51,7 +59,9 @@ export default function SummarizerPage() {
         },
       });
 
-      const summary = await summarizer.summarize(originalText);
+      const summary = await summarizer.summarize(originalText, {
+        context: settings.summaryContext || "",
+      });
       setSummaryText(summary);
       setIsLoading(false);
     } catch (error) {
@@ -137,6 +147,11 @@ export default function SummarizerPage() {
     }
   };
 
+  const handleSettingsSave = (data: SettingsFormData) => {
+    console.log("Settings saved:", data);
+    setSettings(data);
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-58px)] bg-background">
       {/* Toolbar */}
@@ -199,6 +214,10 @@ export default function SummarizerPage() {
               </>
             )}
           </Button>
+          <SettingsDialog
+            onSave={handleSettingsSave}
+            defaultValues={settings}
+          />
         </div>
       </div>
 

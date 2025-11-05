@@ -4,6 +4,7 @@ import {
   Home,
   LayoutDashboard,
   Sparkles,
+  TextWrap,
 } from "lucide-react";
 
 export const SIDEBAR_DATA = {
@@ -37,7 +38,11 @@ export const SIDEBAR_DATA = {
       title: "Ask AI",
       url: "/chat",
       icon: Sparkles,
-      isActive: true,
+    },
+    {
+      title: "Summarizer",
+      url: "/summarizer",
+      icon: TextWrap,
     }
   ],
   navSecondary: [
