@@ -28,7 +28,7 @@ const notoMono = Noto_Sans_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Buddhi LIVE AI",
+  title: "Buddhi AI",
   description: "AI Search Engine",
 };
 
