@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   BuddhiAIChatModelId,
   BuddhiAIChatSettings,
@@ -137,7 +138,7 @@ export class BuddhiAILanguageModel implements LanguageModelV2 {
       warnings,
       promptOptions,
       expectedInputs,
-      hasMultiModalInput,
+      /* hasMultiModalInput, */
     } = converted;
 
     const session = await this.getSession(

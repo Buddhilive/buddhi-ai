@@ -1,36 +1,30 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## Introducing Buddhi AI: The Future of Private, Client-Side Intelligence
 
-## Getting Started
+**Buddhi AI** is a cutting-edge web application designed to harness the power of artificial intelligence directly within the user's browser, fundamentally changing the paradigm of AI-powered tools. Built with a clear focus on **privacy and efficiency**, Buddhi AI is aligned with and leverages the evolving capabilities of modern web browsers, notably through the integration of **Chrome’s Built-in AI** features.
 
-First, run the development server:
+***
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+### 🔒 Core Philosophy: Privacy-First & Cost-Efficient AI
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The guiding principle of Buddhi AI is to deliver robust AI utility while upholding the highest standards of user security and privacy.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+* **Ultimate Privacy:** By primarily utilizing **client-side AI models**, computation is performed locally on the user's device. This ensures that sensitive data and prompts never have to be transmitted to or stored on a remote server, offering a level of **data privacy** that is unattainable with traditional cloud-based AI services.
+* **Operational Efficiency:** Shifting the computational burden from the server to the client dramatically **reduces server-side computation cost**. This approach not only makes the service highly scalable but also environmentally sustainable and more cost-effective, allowing Buddhi AI to deliver powerful tools efficiently.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+***
 
-## Learn More
+### 🛠️ Initial Tool Collection
 
-To learn more about Next.js, take a look at the following resources:
+Buddhi AI launches with a carefully curated suite of three essential applications, all powered by its client-side foundation:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1.  **Chat:** A dynamic, private conversational AI assistant.
+2.  **Summarizer:** A tool for instantly generating concise summaries of text content.
+3.  **Writer:** A versatile assistant designed to aid in drafting, editing, and generating text.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+***
 
-## Deploy on Vercel
+### 🚀 Vision & Alignment
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The development of Buddhi AI is strategically aligned with the pioneering work on client-side AI models, as championed by modern browser technologies. Our vision is an **ever-expanding collection of useful tools** that continuously adopts new, powerful on-device models as they become available.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Buddhi AI is more than just a set of tools; it is a platform championing the shift towards a more distributed, private, and accessible AI ecosystem, making intelligent assistance an inherent and secure capability of the modern web experience.

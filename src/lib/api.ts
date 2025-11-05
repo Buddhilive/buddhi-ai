@@ -1,20 +1,44 @@
 import { functionCallSchema } from "@/schema/output";
 import { TEMP_TOOLS } from "@/tools/tools";
+import { BAIAvailability } from "@/types/built-in-common";
 import { ChatCompletionRequest, ChatCompletionResponse } from "@/types/chat";
 
 export const chatApi = {
+  async isLanguageModelAvvailable(): Promise<boolean> {
+    try {
+      // First check if the LanguageModel object exists
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (typeof window === 'undefined' || !(window as any).LanguageModel) {
+        return false;
+      }
+
+      const isAvailable: BAIAvailability = await (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        window as any
+      ).LanguageModel.availability();
+      return (
+        isAvailable === "available" ||
+        isAvailable === "downloadable" ||
+        isAvailable === "downloading"
+      );
+    } catch (error) {
+      console.warn("Error checking language model availability:", error);
+      return false;
+    }
+  },
   async getCompletion(
     request: ChatCompletionRequest
   ): Promise<ChatCompletionResponse> {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const languageModel: LanguageModel = (window as any).LanguageModel;
       const systemMessage: LanguageModelMessage = {
         role: "system" as LanguageModelMessageRole,
-        content: `You are Buddhi AI, a helpful assistant developed by Buddhi LIVE Labs.
+        content: `You are Buddhi AI, a helpful assistant developed by Buddhi Kavindra.
           Your response MUST be a JSON object 
       that strictly adheres to the provided JSON schema. DO NOT include any other text or markdown outside of the JSON.
       
-      - If the user asks a question that requires real-time information or external knowledge 
+      - If the user asks a question that requires to be accurate, real-time information or external knowledge 
         (e.g., current events, facts, etc.), set 'action' to 'call_tool' and populate the 
         'tool_call' object with a query for the 'webSearch' tool.
         
@@ -79,9 +103,17 @@ export const chatApi = {
         If the CONTEXT does not contain relevant information, respond with "No relevant information found."`;
 
           // Get the final, human-readable answer from the model
-          const finalAnswer = await session.prompt(finalPrompt);
-
-          return { message: finalAnswer };
+          const webSearchResponse = await session.prompt(finalPrompt);
+          const finalAnswer = webSearchResponse.trim();
+          try {
+            const finalAnswerParsed = JSON.parse(finalAnswer);
+            return { message: finalAnswerParsed.natural_response };
+          } catch (error) {
+            console.warn(
+              "Final answer is not valid JSON, returning raw response.", error
+            );
+            return { message: finalAnswer };
+          }
         }
       }
 
