@@ -3,6 +3,7 @@ import { Noto_Sans, Noto_Sans_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ui/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { GoogleAnalytics } from "@next/third-parties/google";
 
 const notoSans = Noto_Sans({
   variable: "--font-noto-sans",
@@ -43,6 +44,7 @@ export default function RootLayout({
           <Toaster position="top-right" closeButton richColors />
         </ThemeProvider>
       </body>
+      <GoogleAnalytics gaId="G-N7X9PSKK0Y" />
     </html>
   );
 }

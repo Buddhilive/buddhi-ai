@@ -20,6 +20,9 @@ importers:
       '@mdxeditor/editor':
         specifier: ^3.48.0
         version: 3.48.0(@codemirror/language@6.11.3)(@lezer/highlight@1.2.3)(@types/react-dom@19.2.1(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(yjs@13.6.27)
+      '@next/third-parties':
+        specifier: ^16.0.1
+        version: 16.0.1(next@15.5.4(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(@playwright/test@1.56.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0)
       '@radix-ui/react-collapsible':
         specifier: ^1.1.12
         version: 1.1.12(@types/react-dom@19.2.1(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -886,6 +889,12 @@ packages:
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [win32]
+
+  '@next/third-parties@16.0.1':
+    resolution: {integrity: sha512-OFgku/XgeZPrPaI33qGqwoLkKW5cN5pY0VKETH2J+cUxY3iboJuYK5gRdcx+crjg/bEo0M38BhPrXHUxBUljwQ==}
+    peerDependencies:
+      next: ^13.0.0 || ^14.0.0 || ^15.0.0 || ^16.0.0-beta.0
+      react: ^18.2.0 || 19.0.0-rc-de68d2f4-20241204 || ^19.0.0
 
   '@noble/ciphers@1.3.0':
     resolution: {integrity: sha512-2I0gnIVPtfnMw9ee9h1dJG7tp81+8Ob3OJb3Mv37rx5L40/b0i7djjCVvGOVqc9AEIQyvyu1i6ypKdFw8R8gQw==}
@@ -3948,6 +3957,9 @@ packages:
     resolution: {integrity: sha512-nlGpxf+hv0v7GkWBK2V9spgactGOp0qvfWRxUMjqHyzrt3SgwE48DIv/FhqPHJYLHpgW1opq3nERbz5Anq7n1g==}
     engines: {node: '>=18'}
 
+  third-party-capital@1.0.20:
+    resolution: {integrity: sha512-oB7yIimd8SuGptespDAZnNkzIz+NWaJCu2RMsbs4Wmp9zSDUM8Nhi3s2OOcqYuv3mN4hitXc8DVx+LyUmbUDiA==}
+
   throttleit@2.1.0:
     resolution: {integrity: sha512-nt6AMGKW1p/70DF/hGBdJB57B8Tspmbp5gfJ8ilhLnt7kkr2ye7hzD6NVG8GGErk2HWF34igrL2CXmNIkzKqKw==}
     engines: {node: '>=18'}
@@ -5417,6 +5429,12 @@ snapshots:
 
   '@next/swc-win32-x64-msvc@15.5.4':
     optional: true
+
+  '@next/third-parties@16.0.1(next@15.5.4(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(@playwright/test@1.56.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      next: 15.5.4(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(@playwright/test@1.56.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      react: 19.1.0
+      third-party-capital: 1.0.20
 
   '@noble/ciphers@1.3.0': {}
 
@@ -9034,6 +9052,8 @@ snapshots:
       minipass: 7.1.2
       minizlib: 3.1.0
       yallist: 5.0.0
+
+  third-party-capital@1.0.20: {}
 
   throttleit@2.1.0: {}
 
