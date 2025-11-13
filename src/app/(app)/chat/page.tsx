@@ -1,240 +1,279 @@
 "use client";
-import { useEffect, useRef } from "react";
-import { useChatStore } from "@/stores/chatStore";
-import { chatApi } from "@/lib/api";
-import { Message } from "@/types/chat";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { ArrowUp, RefreshCcw } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useApiAvailability } from "@/hooks/use-api-availability";
 
-export default function ChatPage() {
-  const {
-    messages,
-    isLoading,
-    error,
-    inputValue,
-    setInputValue,
-    addMessage,
-    setIsLoading,
-    setError,
-  } = useChatStore();
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+import {
+  Conversation,
+  ConversationContent,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation";
+import { Message, MessageContent } from "@/components/ai-elements/message";
+import {
+  PromptInput,
+  PromptInputActionAddAttachments,
+  PromptInputActionMenu,
+  PromptInputActionMenuContent,
+  PromptInputActionMenuTrigger,
+  PromptInputAttachment,
+  PromptInputAttachments,
+  PromptInputBody,
+  PromptInputButton,
+  PromptInputHeader,
+  PromptInputSelect,
+  PromptInputSelectContent,
+  PromptInputSelectItem,
+  PromptInputSelectTrigger,
+  PromptInputSelectValue,
+  PromptInputSubmit,
+  PromptInputTextarea,
+  PromptInputFooter,
+  PromptInputTools,
+} from "@/components/ai-elements/prompt-input";
+import { Fragment, useEffect, useState } from "react";
+import { useChat } from "@ai-sdk/react";
+import {
+  MessageActions,
+  MessageAction,
+  MessageResponse,
+} from "@/components/ai-elements/message";
+import { CopyIcon, GlobeIcon, RefreshCcwIcon } from "lucide-react";
+/* import {
+  Source,
+  Sources,
+  SourcesContent,
+  SourcesTrigger,
+} from "@/components/ai-elements/sources";
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from "@/components/ai-elements/reasoning"; */
+import { Loader } from "@/components/ai-elements/loader";
+import {
+  ChatCompletionChunk,
+  ChatCompletionMessageParam,
+} from "@mlc-ai/web-llm";
+import { useWebLLM } from "@/hooks/use-webllm";
 
-  // Check API availability and redirect if not available
-  const { isAllRequiredAvailable, isChecking } = useApiAvailability({
-    requiredApis: ['languageModel'],
-    redirectOnUnavailable: true,
-  });
+const models = [
+  {
+    name: "Gemini 2.5 Flash Lite",
+    value: "gemini-2.5-flash-lite",
+  },
+  {
+    name: "Gemini 2.5 Pro",
+    value: "gemini-2.5-pro",
+  },
+];
 
-  // Auto-scroll to the latest message when messages change
+export default function BuddhiAIChat() {
+  const [input, setInput] = useState("");
+  const [model, setModel] = useState<string>(models[0].value);
+  const [webSearch, setWebSearch] = useState(false);
+  /* const { messages, sendMessage, status, regenerate } = useChat(); */
+  const [messages, setMessages] = useState<Array<ChatCompletionMessageParam>>(
+    []
+  );
+  const [chunks, setChunks] = useState<AsyncIterable<ChatCompletionChunk>>();
+  const { webLLMState } = useWebLLM();
+
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, isLoading]);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  const handleSendMessage = async () => {
-    if (inputValue.trim() === "") return;
-
-    // Add user message
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content: inputValue,
-      role: "user",
-      timestamp: new Date(),
+    const processChunks = async () => {
+      if (!chunks) return;
+      for await (const chunk of chunks) {
+        console.log("Chunk received:", chunk);
+        if (chunk.choices && chunk.choices.length > 0) {
+          const delta = chunk.choices[0].delta;
+          if (delta.content) {
+            setMessages((prevMessages) => {
+              const lastMessage = prevMessages[prevMessages.length - 1];
+              if (lastMessage && lastMessage.role === "assistant") {
+                const updatedMessage: ChatCompletionMessageParam = {
+                  ...lastMessage,
+                  content: (lastMessage.content || "") + delta.content,
+                };
+                return [...prevMessages.slice(0, -1), updatedMessage];
+              } else {
+                const newMessage: ChatCompletionMessageParam = {
+                  role: "assistant" as const,
+                  content: delta.content,
+                };
+                return [...prevMessages, newMessage];
+              }
+            });
+          }
+        }
+      }
     };
 
-    addMessage(userMessage);
-    getAIResponse(inputValue);
-    setInputValue("");
-    setIsLoading(true);
-    setError(null); // Clear any previous errors
+    processChunks();
+  }, [chunks]);
+
+  const sendMessage = async (prompt: string) => {
+    if (!webLLMState.engine) {
+      console.error("WebLLM engine is not initialized.");
+      return;
+    }
+    const systemPrompt: ChatCompletionMessageParam = {
+      role: "system",
+      content: `You are a helpful assistant`,
+    };
+    const userPrompt: ChatCompletionMessageParam = {
+      role: "user",
+      content: prompt,
+    };
+
+    const promptMessages = [systemPrompt, ...messages, userPrompt];
+
+    setMessages((prevMessages) => [
+      ...prevMessages,
+      userPrompt,
+    ]);
+
+    const parts = await webLLMState.engine.chat.completions.create({
+      messages: promptMessages,
+      stream: true,
+    });
+    console.log("Parts received from WebLLM:", parts);
+    setChunks(parts);
   };
 
-  const getAIResponse = async (userMessage: string) => {
-    try {
-      const apiMessages = [
-        ...messages
-          .filter((msg) => msg.content !== null) // Filter out messages with null content
-          .map((msg) => ({
-            role: msg.role as LanguageModelMessageRole,
-            content: msg.content,
-          })),
-      ];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleSubmit = (message: any) => {
+    const hasText = Boolean(message.text);
+    const hasAttachments = Boolean(message.files?.length);
 
-      // Call the API
-      const response = await chatApi.getCompletion({
-        initialMessages: apiMessages,
-        prompt: userMessage,
-      });
-
-      // Extract the assistant's response
-      if (response.message) {
-        const assistantMessageContent = response.message;
-
-        if (assistantMessageContent) {
-          const aiMessage: Message = {
-            id: `ai-${Date.now()}`,
-            content: assistantMessageContent,
-            role: "assistant",
-            timestamp: new Date(),
-          };
-
-          addMessage(aiMessage);
-        } else {
-          throw new Error("Received empty response from AI model");
-        }
-      } else {
-        throw new Error("No choices returned from AI model");
-      }
-    } catch (err) {
-      console.error("Error getting AI response:", err);
-      const errorMessage =
-        err instanceof Error
-          ? err.message
-          : "An error occurred while getting response";
-      setError(errorMessage);
-    } finally {
-      setIsLoading(false);
+    if (!(hasText || hasAttachments)) {
+      return;
     }
-  };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
-
-  const handleRetry = () => {
-    const lastUserMessage = [...messages]
-      .reverse()
-      .find((msg) => msg.role === "user");
-    if (lastUserMessage) {
-      getAIResponse(lastUserMessage.content);
-      setIsLoading(true);
-      setError(null);
-    } else {
-      setError("No previous user message to retry.");
-    }
+    sendMessage(message.text);
+    setInput("");
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-56px)] max-h-[calc(100vh-56px)] overflow-hidden">
-      {/* Show loading state while checking API availability */}
-      {isChecking && (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-muted-foreground">Checking API availability...</p>
-          </div>
-        </div>
-      )}
-
-      {/* Main chat interface - only show when APIs are available and not checking */}
-      {!isChecking && isAllRequiredAvailable && (
-        <>
-          {/* Chat messages area */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 flex-grow">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${
-                  message.role === "user" ? "justify-end" : "justify-start"
-                }`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-xl px-4 py-2 ${
-                    message.role === "user"
-                      ? "bg-primary text-primary-foreground rounded-br-none"
-                      : "bg-secondary text-secondary-foreground rounded-bl-none"
-                  }`}
-                >
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {message.content}
-                  </ReactMarkdown>
-                  <div
-                    className={`text-xs mt-1 ${
-                      message.role === "user"
-                        ? "text-primary-foreground/70"
-                        : "text-secondary-foreground/70"
-                    }`}
-                  >
-                    {message.timestamp &&
-                      message.timestamp.toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                  </div>
-                </div>
+    <div className="mx-auto max-w-4xl px-6 pb-6 relative size-full h-[calc(100vh-4rem)] no-scrollbar">
+      <div className="flex flex-col h-full">
+        <Conversation className="h-[calc(100vh-4rem)]">
+          <ConversationContent>
+            {messages.map((message, index) => (
+              <div key={index}>
+                {/* {message.role === "assistant" &&
+                  message.parts.filter((part) => part.type === "source-url")
+                    .length > 0 && (
+                    <Sources>
+                      <SourcesTrigger
+                        count={
+                          message.parts.filter(
+                            (part) => part.type === "source-url"
+                          ).length
+                        }
+                      />
+                      {message.parts
+                        .filter((part) => part.type === "source-url")
+                        .map((part, i) => (
+                          <SourcesContent key={`${message.id}-${i}`}>
+                            <Source
+                              key={`${message.id}-${i}`}
+                              href={part.url}
+                              title={part.url}
+                            />
+                          </SourcesContent>
+                        ))}
+                    </Sources>
+                  )} */}
+                <Fragment key={`${index}`}>
+                  <Message from={message.role}>
+                    <MessageContent>
+                      <MessageResponse>
+                        {message.content as string}
+                      </MessageResponse>
+                    </MessageContent>
+                  </Message>
+                  {message.role === "assistant" &&
+                    index === messages.length - 1 && (
+                      <MessageActions className="mt-2">
+                        {/* <MessageAction
+                                  onClick={() => regenerate()}
+                                  label="Retry"
+                                >
+                                  <RefreshCcwIcon className="size-3" />
+                                </MessageAction> */}
+                        <MessageAction
+                          onClick={() =>
+                            navigator.clipboard.writeText(
+                              message.content as string
+                            )
+                          }
+                          label="Copy"
+                        >
+                          <CopyIcon className="size-3" />
+                        </MessageAction>
+                      </MessageActions>
+                    )}
+                </Fragment>
               </div>
             ))}
+            {status === "submitted" && <Loader />}
+          </ConversationContent>
+          <ConversationScrollButton />
+        </Conversation>
 
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-secondary text-secondary-foreground rounded-xl rounded-bl-none px-4 py-2 max-w-[80%]">
-                  <div className="flex space-x-2">
-                    <div className="w-2 h-2 rounded-full bg-secondary-foreground/70 animate-bounce"></div>
-                    <div className="w-2 h-2 rounded-full bg-secondary-foreground/70 animate-bounce delay-75"></div>
-                    <div className="w-2 h-2 rounded-full bg-secondary-foreground/70 animate-bounce delay-150"></div>
-                  </div>
-                </div>
-              </div>
-            )}
-            {error && (
-              <div className="flex justify-start">
-                <div className="bg-destructive text-destructive-foreground rounded-xl px-4 py-2 max-w-[80%]">
-                  <div className="text-sm">Error: {error}</div>
-                  <Button
-                    variant={"outline"}
-                    size={"sm"}
-                    onClick={handleRetry}
-                    className="mt-2"
-                  >
-                    <RefreshCcw className="w-4 h-4" />
-                    Retry
-                  </Button>
-                </div>
-              </div>
-            )}
-            {/* Scroll anchor */}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input area - Fixed to bottom */}
-          <div className="border-t border-border p-4 bg-background">
-            <div className="flex space-x-2 justify-center items-center">
-              <textarea
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Type your message..."
-                className="flex-1 border border-input rounded-xl bg-background px-4 py-2 text-sm min-h-[60px] max-h-32 resize-none focus:outline-none focus:ring-1 focus:ring-ring"
-                rows={1}
-                disabled={isLoading}
-              />
-              <button
-                onClick={handleSendMessage}
-                disabled={isLoading || inputValue.trim() === ""}
-                className="bg-primary text-primary-foreground rounded-xl h-[46px] w-[46px] flex items-center justify-center hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+        <PromptInput
+          onSubmit={handleSubmit}
+          className="mt-4"
+          globalDrop
+          multiple
+        >
+          <PromptInputHeader>
+            <PromptInputAttachments>
+              {(attachment) => <PromptInputAttachment data={attachment} />}
+            </PromptInputAttachments>
+          </PromptInputHeader>
+          <PromptInputBody>
+            <PromptInputTextarea
+              onChange={(e) => setInput(e.target.value)}
+              value={input}
+            />
+          </PromptInputBody>
+          <PromptInputFooter>
+            <PromptInputTools>
+              <PromptInputActionMenu>
+                <PromptInputActionMenuTrigger />
+                <PromptInputActionMenuContent>
+                  <PromptInputActionAddAttachments />
+                </PromptInputActionMenuContent>
+              </PromptInputActionMenu>
+              <PromptInputButton
+                variant={webSearch ? "default" : "ghost"}
+                onClick={() => setWebSearch(!webSearch)}
               >
-                {isLoading ? (
-                  <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <ArrowUp className="w-5 h-5" />
-                )}
-              </button>
-            </div>
-            <div className="text-xs text-muted-foreground mt-2 text-center">
-              Buddhi AI can make mistakes, so double-check it.
-            </div>
-          </div>
-        </>
-      )}
+                <GlobeIcon size={16} />
+                <span>Search</span>
+              </PromptInputButton>
+              <PromptInputSelect
+                onValueChange={(value) => {
+                  setModel(value);
+                }}
+                value={model}
+              >
+                <PromptInputSelectTrigger>
+                  <PromptInputSelectValue />
+                </PromptInputSelectTrigger>
+                <PromptInputSelectContent>
+                  {models.map((model) => (
+                    <PromptInputSelectItem
+                      key={model.value}
+                      value={model.value}
+                    >
+                      {model.name}
+                    </PromptInputSelectItem>
+                  ))}
+                </PromptInputSelectContent>
+              </PromptInputSelect>
+            </PromptInputTools>
+            <PromptInputSubmit disabled={!input} />
+          </PromptInputFooter>
+        </PromptInput>
+      </div>
     </div>
   );
 }

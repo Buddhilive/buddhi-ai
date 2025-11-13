@@ -23,8 +23,10 @@ import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { Streamdown } from "streamdown";
 
+type UIMessageRoleMap = "system" | "user" | "assistant" | "tool"
+
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
-  from: UIMessage["role"];
+  from: UIMessageRoleMap;//UIMessage["role"];
 };
 
 export const Message = ({ className, from, ...props }: MessageProps) => (
@@ -212,7 +214,7 @@ export const MessageBranchContent = ({
 };
 
 export type MessageBranchSelectorProps = HTMLAttributes<HTMLDivElement> & {
-  from: UIMessage["role"];
+  from: UIMessageRoleMap;//UIMessage["role"];
 };
 
 export const MessageBranchSelector = ({
