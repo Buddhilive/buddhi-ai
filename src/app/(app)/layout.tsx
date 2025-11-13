@@ -14,7 +14,9 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { WebLLMLoading } from "@/components/webllm-loading";
 import { useNavigation } from "@/hooks/use-navigation";
+import { useWebLLM } from "@/hooks/use-webllm";
 
 export default function AppLayout({
   children,
@@ -22,6 +24,7 @@ export default function AppLayout({
   children: React.ReactNode;
 }>) {
   const { breadcrumbTitle } = useNavigation();
+  const { webLLMState } = useWebLLM();
 
   return (
     <SidebarProvider>
@@ -48,7 +51,11 @@ export default function AppLayout({
             <NavActions />
           </div>
         </header>
-        {children}
+        {webLLMState.isInitialized ? (
+          <>{children}</>
+        ) : (
+          <WebLLMLoading {...webLLMState} />
+        )}
       </SidebarInset>
     </SidebarProvider>
   );
