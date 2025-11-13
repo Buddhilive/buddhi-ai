@@ -1,7 +1,7 @@
 # Buddhilive AI
 
 ## Project Overview
-Buddhilive AI is an advanced AI-powered web search platform which search the web in real-time to provide users with the most accurate and up-to-date information using Chrome Built-in AI.
+Buddhilive AI is an advanced AI-powered web search platform which search the web in real-time to provide users with the most accurate and up-to-date information using WebLLM.
 
 ## Instructions for GitHub Copilot
 1. **Understand the Project**: Familiarize yourself with the Buddhilive AI project.
@@ -15,7 +15,7 @@ Buddhilive AI is an advanced AI-powered web search platform which search the web
 - Shadcn UI
 - Tailwind CSS
 - LangSearch
-- Chrome Built-in AI
+- WebLLM
 
 ## Don'ts
 - Avoid suggesting code that introduces security vulnerabilities.
