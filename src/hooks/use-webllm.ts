@@ -32,7 +32,7 @@ export const useWebLLM = () => {
     timeElapsed,
   }) => {
     let isReady = false;
-    if (engineRef) {
+    if (engineRef.current && text.toLowerCase().includes("finish")) {
       isReady = true;
     }
     setWebLLMState(prev => ({

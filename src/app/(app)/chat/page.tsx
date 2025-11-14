@@ -74,11 +74,13 @@ export default function BuddhiAIChat() {
   );
   const [chunks, setChunks] = useState<AsyncIterable<ChatCompletionChunk>>();
   const { webLLMState } = useWebLLM();
+  const [status, setStatus] = useState<"submitted" | "streaming" | "ready" | "error">("ready");
 
   useEffect(() => {
     const processChunks = async () => {
       if (!chunks) return;
       for await (const chunk of chunks) {
+        setStatus("streaming");
         console.log("Chunk received:", chunk);
         if (chunk.choices && chunk.choices.length > 0) {
           const delta = chunk.choices[0].delta;
@@ -99,6 +101,10 @@ export default function BuddhiAIChat() {
                 return [...prevMessages, newMessage];
               }
             });
+          } else {
+            if (chunk.choices[0].finish_reason) {
+              setStatus("ready");
+            }
           }
         }
       }
@@ -108,8 +114,10 @@ export default function BuddhiAIChat() {
   }, [chunks]);
 
   const sendMessage = async (prompt: string) => {
+    setStatus("submitted");
     if (!webLLMState.engine) {
       console.error("WebLLM engine is not initialized.");
+      setStatus("error");
       return;
     }
     const systemPrompt: ChatCompletionMessageParam = {
@@ -270,7 +278,7 @@ export default function BuddhiAIChat() {
                 </PromptInputSelectContent>
               </PromptInputSelect>
             </PromptInputTools>
-            <PromptInputSubmit disabled={!input} />
+            <PromptInputSubmit disabled={!input && !status} status={status} />
           </PromptInputFooter>
         </PromptInput>
       </div>

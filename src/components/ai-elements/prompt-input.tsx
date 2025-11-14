@@ -35,7 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import type { ChatStatus, FileUIPart } from "ai";
+import type { FileUIPart } from "ai";
 import {
   CornerDownLeftIcon,
   ImageIcon,
@@ -43,7 +43,7 @@ import {
   MicIcon,
   PaperclipIcon,
   PlusIcon,
-  SquareIcon,
+  SquareStop,
   XIcon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
@@ -984,7 +984,7 @@ export const PromptInputActionMenuItem = ({
 // are provided in opt-in modules (e.g., prompt-input-attachments).
 
 export type PromptInputSubmitProps = ComponentProps<typeof InputGroupButton> & {
-  status?: ChatStatus;
+  status?: "submitted" | "streaming" | "ready" | "error";
 };
 
 export const PromptInputSubmit = ({
@@ -1000,7 +1000,7 @@ export const PromptInputSubmit = ({
   if (status === "submitted") {
     Icon = <Loader2Icon className="size-4 animate-spin" />;
   } else if (status === "streaming") {
-    Icon = <SquareIcon className="size-4" />;
+    Icon = <SquareStop className="size-4" />;
   } else if (status === "error") {
     Icon = <XIcon className="size-4" />;
   }
