@@ -74,7 +74,9 @@ export default function BuddhiAIChat() {
   );
   const [chunks, setChunks] = useState<AsyncIterable<ChatCompletionChunk>>();
   const { webLLMState } = useWebLLM();
-  const [status, setStatus] = useState<"submitted" | "streaming" | "ready" | "error">("ready");
+  const [status, setStatus] = useState<
+    "submitted" | "streaming" | "ready" | "error"
+  >("ready");
 
   useEffect(() => {
     const processChunks = async () => {
@@ -131,10 +133,7 @@ export default function BuddhiAIChat() {
 
     const promptMessages = [systemPrompt, ...messages, userPrompt];
 
-    setMessages((prevMessages) => [
-      ...prevMessages,
-      userPrompt,
-    ]);
+    setMessages((prevMessages) => [...prevMessages, userPrompt]);
 
     const parts = await webLLMState.engine.chat.completions.create({
       messages: promptMessages,
@@ -155,6 +154,24 @@ export default function BuddhiAIChat() {
 
     sendMessage(message.text);
     setInput("");
+  };
+
+  const regenerate = () => {
+    try {
+      const lastUserMessage = [...messages]
+        .reverse()
+        .find((msg) => msg.role === "user");
+      const lastAssistantMessage = [...messages]
+        .reverse()
+        .find((msg) => msg.role === "assistant");
+      if (lastUserMessage) {
+        const resetMessages = messages.filter((msg) => msg !== lastUserMessage && msg !== lastAssistantMessage);
+        setMessages(resetMessages);
+        sendMessage(lastUserMessage.content as string);
+      }
+    } catch (error) {
+      console.error("Error during regeneration:", error);
+    }
   };
 
   return (
@@ -199,12 +216,12 @@ export default function BuddhiAIChat() {
                   {message.role === "assistant" &&
                     index === messages.length - 1 && (
                       <MessageActions className="mt-2">
-                        {/* <MessageAction
-                                  onClick={() => regenerate()}
-                                  label="Retry"
-                                >
-                                  <RefreshCcwIcon className="size-3" />
-                                </MessageAction> */}
+                        <MessageAction
+                          onClick={() => regenerate()}
+                          label="Retry"
+                        >
+                          <RefreshCcwIcon className="size-3" />
+                        </MessageAction>
                         <MessageAction
                           onClick={() =>
                             navigator.clipboard.writeText(
