@@ -12,13 +12,13 @@ import {
   GalleryVerticalEnd,
   LineChart,
   Link,
-  MoreHorizontal,
+  /* MoreHorizontal, */
   Settings2,
   Trash,
   Trash2,
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+/* import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
@@ -32,7 +32,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "@/components/ui/sidebar"; */
 import { ThemeToggle } from "./ui/theme-toggle";
 
 const data = [
@@ -108,7 +108,7 @@ export function NavActions() {
   return (
     <div className="flex items-center gap-2 text-sm">
       <ThemeToggle />
-      <Popover open={isOpen} onOpenChange={setIsOpen}>
+      {/* <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
           <Button
             variant="ghost"
@@ -142,7 +142,7 @@ export function NavActions() {
             </SidebarContent>
           </Sidebar>
         </PopoverContent>
-      </Popover>
+      </Popover> */}
     </div>
   );
 }

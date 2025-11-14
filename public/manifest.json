@@ -9,13 +9,13 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/buddhi-ai-screenshot.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/buddhi-ai-screenshot.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
@@ -30,7 +30,7 @@
       "form_factor": "wide"
     },
     {
-      "src": "/screenshot-narrow.png",
+      "src": "/buddhi-ai-screenshot.png",
       "sizes": "640x1280",
       "type": "image/png",
       "form_factor": "narrow"
