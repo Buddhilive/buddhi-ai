@@ -58,7 +58,7 @@ export function NavFavorites({
     <SidebarGroup className="group-data-[collapsible=icon]:hidden h-[calc(100vh-8rem)] overflow-auto">
       {chatHistory.length > 0 && <SidebarGroupLabel>Chat History</SidebarGroupLabel>}
       <SidebarMenu>
-        {chatHistory.map((item) => (
+        {chatHistory.reverse().map((item) => (
           <SidebarMenuItem key={item.id}>
             <SidebarMenuButton asChild>
               <Link

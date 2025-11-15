@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
+/* import {
   ArrowDown,
   ArrowUp,
   Bell,
@@ -12,11 +12,11 @@ import {
   GalleryVerticalEnd,
   LineChart,
   Link,
-  /* MoreHorizontal, */
+  MoreHorizontal
   Settings2,
   Trash,
   Trash2,
-} from "lucide-react";
+} from "lucide-react"; */
 
 /* import { Button } from "@/components/ui/button";
 import {
@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/sidebar"; */
 import { ThemeToggle } from "./ui/theme-toggle";
 
-const data = [
+/* const data = [
   [
     {
       label: "Customize Page",
@@ -96,17 +96,24 @@ const data = [
       icon: ArrowDown,
     },
   ],
-];
+]; */
 
 export function NavActions() {
-  const [isOpen, setIsOpen] = React.useState(false);
+  /* const [isOpen, setIsOpen] = React.useState(false);
 
   React.useEffect(() => {
     setIsOpen(false);
-  }, []);
+  }, []); */
 
   return (
     <div className="flex items-center gap-2 text-sm">
+      <iframe
+        src="https://github.com/sponsors/Buddhilive/button"
+        title="Sponsor Buddhilive"
+        height="32"
+        width="114"
+        style={{ border: 0, borderRadius: "6px" }}
+      ></iframe>
       <ThemeToggle />
       {/* <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>

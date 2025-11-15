@@ -33,11 +33,11 @@ const saveOrUpdateChatMessages = async (
   try {
     const chatData: BuddhiAISavedChat = {
       id: chatId,
+      title,
       messages,
     };
 
     if (isNewChat) {
-      chatData.title = title;
       await addItemToStore<BuddhiAISavedChat>(idb, "chats", chatData, chatId);
     } else {
       console.log("Updating chat:", chatId);
