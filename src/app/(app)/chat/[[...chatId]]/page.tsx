@@ -50,8 +50,6 @@ import {
   ChatCompletionChunk,
   ChatCompletionMessageParam,
 } from "@mlc-ai/web-llm";
-import { useWebLLM } from "@/hooks/use-webllm";
-import { WebLLMLoading } from "@/components/webllm-loading";
 import { useParams, useRouter } from "next/navigation";
 import {
   BuddhiAISavedChat,
@@ -62,6 +60,7 @@ import { closeDatabase, getAllFromStore, getItemByKey } from "@/lib/indexeddb";
 import { toast } from "sonner";
 import { SYSTEM_PROMPT } from "@/const/system-prompt";
 import { useChatStore } from "@/stores/chatStore";
+import { useWebLLMStore } from "@/stores/webllmStore";
 
 const models = [
   {
@@ -78,11 +77,11 @@ export default function BuddhiAIChat() {
   const [input, setInput] = useState("");
   const [model, setModel] = useState<string>(models[0].value);
   const [webSearch, setWebSearch] = useState(false);
+  const { webLLMInstance } = useWebLLMStore();
   const [messages, setMessages] = useState<Array<ChatCompletionMessageParam>>(
     []
   );
   const [chunks, setChunks] = useState<AsyncIterable<ChatCompletionChunk>>();
-  const { webLLMState, retryInitialization } = useWebLLM();
   const [status, setStatus] = useState<
     "submitted" | "streaming" | "ready" | "error"
   >("ready");
@@ -186,7 +185,7 @@ export default function BuddhiAIChat() {
       if (!chatId && messages.length > 0) {
         const newChatId = Date.now().toString();
         setChatId(newChatId);
-        const titleSummary = await webLLMState.engine?.chat.completions.create({
+        const titleSummary = await webLLMInstance?.chat.completions.create({
           messages: [
             {
               role: "system",
@@ -213,7 +212,7 @@ export default function BuddhiAIChat() {
 
   const sendMessage = async (prompt: string) => {
     setStatus("submitted");
-    if (!webLLMState.engine) {
+    if (!webLLMInstance) {
       console.error("WebLLM engine is not initialized.");
       setStatus("error");
       toast.error("WebLLM engine is not initialized.");
@@ -229,7 +228,7 @@ export default function BuddhiAIChat() {
 
     setMessages((prevMessages) => [...prevMessages, userPrompt]);
 
-    const parts = await webLLMState.engine.chat.completions.create({
+    const parts = await webLLMInstance.chat.completions.create({
       messages: promptMessages,
       stream: true,
     });
@@ -272,8 +271,6 @@ export default function BuddhiAIChat() {
   };
 
   return (
-    <>
-      {webLLMState.isInitialized ? (
         <div className="mx-auto max-w-4xl px-6 pb-6 relative size-full h-[calc(100vh-4rem)] no-scrollbar">
           <div className="flex flex-col h-full">
             <Conversation className="h-[calc(100vh-4rem)]">
@@ -402,9 +399,5 @@ export default function BuddhiAIChat() {
             </PromptInput>
           </div>
         </div>
-      ) : (
-        <WebLLMLoading {...webLLMState} onRetry={retryInitialization} />
-      )}
-    </>
-  );
+      );
 }

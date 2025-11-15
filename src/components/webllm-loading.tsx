@@ -36,7 +36,7 @@ export const WebLLMLoading = ({
   }
 
   return (
-    <div className="flex-1 flex items-center justify-center p-6 h-[calc(100vh-56px)]">
+    <div className="flex-1 flex items-center justify-center p-6 h-screen w-screen">
       <div className="text-center space-y-4 max-w-md w-full">
         <div>
           <div className="flex flex-col items-center justify-center gap-4 animate-fade-in">
