@@ -42,13 +42,13 @@ const initWebLLMEngine = async (
         initProgressCallback: ({ progress, text, timeElapsed }) => {
           progressCallback?.({ progress, text, timeElapsed });
           // Only log in development
-          if (process.env.NODE_ENV === "development") {
+          /* if (process.env.NODE_ENV === "development") {
             console.log(
               `Initialization Progress: ${(progress * 100).toFixed(
                 2
               )}% - ${text} - Elapsed Time: ${timeElapsed.toFixed(2)}s`
             );
-          }
+          } */
         },
       }
     );

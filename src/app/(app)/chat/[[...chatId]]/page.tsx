@@ -52,15 +52,16 @@ import {
 } from "@mlc-ai/web-llm";
 import { useWebLLM } from "@/hooks/use-webllm";
 import { WebLLMLoading } from "@/components/webllm-loading";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   BuddhiAISavedChat,
   initChatManager,
   saveOrUpdateChatMessages,
 } from "@/lib/chat-manager";
-import { getItemByKey } from "@/lib/indexeddb";
+import { closeDatabase, getAllFromStore, getItemByKey } from "@/lib/indexeddb";
 import { toast } from "sonner";
 import { SYSTEM_PROMPT } from "@/const/system-prompt";
+import { useChatStore } from "@/stores/chatStore";
 
 const models = [
   {
@@ -88,11 +89,16 @@ export default function BuddhiAIChat() {
   const params = useParams();
   const [chatDB, setChatDB] = useState<IDBDatabase | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
+  const { setChatHistory, setChatDB: setChatDBInStore } = useChatStore();
+  const router = useRouter();
 
   /* On load */
   useEffect(() => {
     initChat();
     /* console.log("Chat page loaded with params:", params, params.chatId); */
+    return () => {
+      closeDatabase(chatDB!);
+    }
   }, []);
 
   /* Handle chat streaming */
@@ -124,7 +130,6 @@ export default function BuddhiAIChat() {
           } else {
             if (chunk.choices[0].finish_reason) {
               setStatus("ready");
-              saveChatMessages();
             }
           }
         }
@@ -134,19 +139,35 @@ export default function BuddhiAIChat() {
     processChunks();
   }, [chunks]);
 
+  /* Save messages */
+  useEffect(() => {
+    if (status === "ready") {
+      saveChatMessages();
+    }
+  }, [messages, status]);
+
   const initChat = async () => {
     try {
       const idb = await initChatManager();
-      if (idb) setChatDB(idb);
+      if (idb) {
+        setChatDB(idb);
+        setChatDBInStore(idb);
+        const chatHistory = await getAllFromStore<BuddhiAISavedChat>(
+          idb,
+          "chats"
+        );
+        setChatHistory(chatHistory);
+      }
       if (params.chatId) setChatId(params.chatId[0]);
 
-      if (chatDB && chatId) {
-        const olgChatMessages = await getItemByKey<BuddhiAISavedChat>(
-          chatDB,
+      if (idb && params.chatId) {
+        const oldChatMessages = await getItemByKey<BuddhiAISavedChat>(
+          idb,
           "chats",
-          chatId
+          params.chatId[0]
         );
-        setMessages(olgChatMessages.messages);
+        console.log("Loaded old chat messages:", oldChatMessages);
+        setMessages(oldChatMessages.messages);
       } else {
         setMessages([]);
       }
@@ -156,6 +177,7 @@ export default function BuddhiAIChat() {
     } catch (error) {
       console.error("Error initializing chat:", error);
       toast.error("Error initializing chat.");
+      router.push("/chat");
     }
   };
 
@@ -171,12 +193,13 @@ export default function BuddhiAIChat() {
               content:
                 "Provide a short title for this conversation in less than 10 tokens.",
             },
-            messages.reverse().find((msg) => msg.role === "user")!,
+            messages.findLast((msg) => msg.role === "user")!,
           ],
           max_tokens: 10,
         });
 
-        const title = titleSummary?.choices[0].message.content ?? `Chat ${newChatId}`;
+        const title =
+          titleSummary?.choices[0].message.content ?? `Chat ${newChatId}`;
         saveOrUpdateChatMessages(chatDB!, newChatId, messages, title, true);
       }
       if (chatDB && chatId) {
