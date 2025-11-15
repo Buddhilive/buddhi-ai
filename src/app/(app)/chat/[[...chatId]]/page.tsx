@@ -59,6 +59,8 @@ import {
   saveOrUpdateChatMessages,
 } from "@/lib/chat-manager";
 import { getItemByKey } from "@/lib/indexeddb";
+import { toast } from "sonner";
+import { SYSTEM_PROMPT } from "@/const/system-prompt";
 
 const models = [
   {
@@ -90,7 +92,7 @@ export default function BuddhiAIChat() {
   /* On load */
   useEffect(() => {
     initChat();
-    console.log("Chat page loaded with params:", params, params.chatId);
+    /* console.log("Chat page loaded with params:", params, params.chatId); */
   }, []);
 
   /* Handle chat streaming */
@@ -99,7 +101,7 @@ export default function BuddhiAIChat() {
       if (!chunks) return;
       for await (const chunk of chunks) {
         setStatus("streaming");
-        console.log("Chunk received:", chunk);
+        /* console.log("Chunk received:", chunk); */
         if (chunk.choices && chunk.choices.length > 0) {
           const delta = chunk.choices[0].delta;
           if (delta.content) {
@@ -153,6 +155,7 @@ export default function BuddhiAIChat() {
       setStatus("ready");
     } catch (error) {
       console.error("Error initializing chat:", error);
+      toast.error("Error initializing chat.");
     }
   };
 
@@ -179,7 +182,10 @@ export default function BuddhiAIChat() {
       if (chatDB && chatId) {
         saveOrUpdateChatMessages(chatDB, chatId, messages);
       }
-    } catch (error) {}
+    } catch (error) {
+      console.error("Error saving chat messages:", error);
+      toast.error("Error saving chat messages.");
+    }
   };
 
   const sendMessage = async (prompt: string) => {
@@ -187,12 +193,10 @@ export default function BuddhiAIChat() {
     if (!webLLMState.engine) {
       console.error("WebLLM engine is not initialized.");
       setStatus("error");
+      toast.error("WebLLM engine is not initialized.");
       return;
     }
-    const systemPrompt: ChatCompletionMessageParam = {
-      role: "system",
-      content: `You are a helpful assistant`,
-    };
+    const systemPrompt: ChatCompletionMessageParam = SYSTEM_PROMPT;
     const userPrompt: ChatCompletionMessageParam = {
       role: "user",
       content: prompt,
@@ -206,7 +210,7 @@ export default function BuddhiAIChat() {
       messages: promptMessages,
       stream: true,
     });
-    console.log("Parts received from WebLLM:", parts);
+    /* console.log("Parts received from WebLLM:", parts); */
     setChunks(parts);
   };
 
@@ -240,6 +244,7 @@ export default function BuddhiAIChat() {
       }
     } catch (error) {
       console.error("Error during regeneration:", error);
+      toast.error("Error during regeneration.");
     }
   };
 
