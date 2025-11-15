@@ -14,7 +14,7 @@ export const WebLLMLoading = ({
 }: WebLLMLoadingProps) => {
   if (webLLMState.error) {
     return (
-      <div className="flex-1 flex items-center justify-center p-6">
+      <div className="flex-1 flex items-center justify-center p-6 h-[calc(100vh-56px)]">
         <div className="text-center space-y-4 max-w-md">
           <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
           <h3 className="text-lg font-medium">Failed to Load Buddhi AI</h3>
@@ -36,22 +36,19 @@ export const WebLLMLoading = ({
   }
 
   return (
-    <div className="flex-1 flex items-center justify-center p-6 h-screen w-screen">
+    <div className="flex-1 flex items-center justify-center p-6 h-[calc(100vh-56px)]">
       <div className="text-center space-y-4 max-w-md w-full">
         <div>
           <div className="flex flex-col items-center justify-center gap-4 animate-fade-in">
             <Brain className="h-12 w-12 text-primary animate-pulse" />
             <span className="text-xl font-bold">Buddhi AI</span>
           </div>
-          <p className="text-sm text-muted-foreground mt-2">
-            This may take some time on first load...
-          </p>
           <p className="text-xs text-muted-foreground mt-2">
             {webLLMState.text}
           </p>
         </div>
         <div className="space-y-2">
-          <Progress value={webLLMState.progress} className="w-full" />
+          <Progress value={Number(webLLMState.progress.toFixed(2))} className="w-full" />
           <div className="flex justify-between items-center text-sm text-muted-foreground">
             <span>{webLLMState.progress}%</span>
             {webLLMState.timeElapsed > 0 ? (
@@ -60,6 +57,9 @@ export const WebLLMLoading = ({
               <span>Waiting...</span>
             )}
           </div>
+          <p className="text-sm text-muted-foreground mt-2">
+            This may take some time on first load...
+          </p>
         </div>
       </div>
     </div>

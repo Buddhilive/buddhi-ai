@@ -52,6 +52,7 @@ import {
   ChatCompletionMessageParam,
 } from "@mlc-ai/web-llm";
 import { useWebLLM } from "@/hooks/use-webllm";
+import { WebLLMLoading } from "@/components/webllm-loading";
 
 const models = [
   {
@@ -73,7 +74,7 @@ export default function BuddhiAIChat() {
     []
   );
   const [chunks, setChunks] = useState<AsyncIterable<ChatCompletionChunk>>();
-  const { webLLMState } = useWebLLM();
+  const { webLLMState, retryInitialization } = useWebLLM();
   const [status, setStatus] = useState<
     "submitted" | "streaming" | "ready" | "error"
   >("ready");
@@ -165,7 +166,9 @@ export default function BuddhiAIChat() {
         .reverse()
         .find((msg) => msg.role === "assistant");
       if (lastUserMessage) {
-        const resetMessages = messages.filter((msg) => msg !== lastUserMessage && msg !== lastAssistantMessage);
+        const resetMessages = messages.filter(
+          (msg) => msg !== lastUserMessage && msg !== lastAssistantMessage
+        );
         setMessages(resetMessages);
         sendMessage(lastUserMessage.content as string);
       }
@@ -175,13 +178,15 @@ export default function BuddhiAIChat() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl px-6 pb-6 relative size-full h-[calc(100vh-4rem)] no-scrollbar">
-      <div className="flex flex-col h-full">
-        <Conversation className="h-[calc(100vh-4rem)]">
-          <ConversationContent>
-            {messages.map((message, index) => (
-              <div key={index}>
-                {/* {message.role === "assistant" &&
+    <>
+      {webLLMState.isInitialized ? (
+        <div className="mx-auto max-w-4xl px-6 pb-6 relative size-full h-[calc(100vh-4rem)] no-scrollbar">
+          <div className="flex flex-col h-full">
+            <Conversation className="h-[calc(100vh-4rem)]">
+              <ConversationContent>
+                {messages.map((message, index) => (
+                  <div key={index}>
+                    {/* {message.role === "assistant" &&
                   message.parts.filter((part) => part.type === "source-url")
                     .length > 0 && (
                     <Sources>
@@ -205,100 +210,107 @@ export default function BuddhiAIChat() {
                         ))}
                     </Sources>
                   )} */}
-                <Fragment key={`${index}`}>
-                  <Message from={message.role}>
-                    <MessageContent>
-                      <MessageResponse>
-                        {message.content as string}
-                      </MessageResponse>
-                    </MessageContent>
-                  </Message>
-                  {message.role === "assistant" &&
-                    index === messages.length - 1 && (
-                      <MessageActions className="mt-2">
-                        <MessageAction
-                          onClick={() => regenerate()}
-                          label="Retry"
-                        >
-                          <RefreshCcwIcon className="size-3" />
-                        </MessageAction>
-                        <MessageAction
-                          onClick={() =>
-                            navigator.clipboard.writeText(
-                              message.content as string
-                            )
-                          }
-                          label="Copy"
-                        >
-                          <CopyIcon className="size-3" />
-                        </MessageAction>
-                      </MessageActions>
-                    )}
-                </Fragment>
-              </div>
-            ))}
-            {status === "submitted" && <Loader />}
-          </ConversationContent>
-          <ConversationScrollButton />
-        </Conversation>
+                    <Fragment key={`${index}`}>
+                      <Message from={message.role}>
+                        <MessageContent>
+                          <MessageResponse>
+                            {message.content as string}
+                          </MessageResponse>
+                        </MessageContent>
+                      </Message>
+                      {message.role === "assistant" &&
+                        index === messages.length - 1 && (
+                          <MessageActions className="mt-2">
+                            <MessageAction
+                              onClick={() => regenerate()}
+                              label="Retry"
+                            >
+                              <RefreshCcwIcon className="size-3" />
+                            </MessageAction>
+                            <MessageAction
+                              onClick={() =>
+                                navigator.clipboard.writeText(
+                                  message.content as string
+                                )
+                              }
+                              label="Copy"
+                            >
+                              <CopyIcon className="size-3" />
+                            </MessageAction>
+                          </MessageActions>
+                        )}
+                    </Fragment>
+                  </div>
+                ))}
+                {status === "submitted" && <Loader />}
+              </ConversationContent>
+              <ConversationScrollButton />
+            </Conversation>
 
-        <PromptInput
-          onSubmit={handleSubmit}
-          className="mt-4"
-          globalDrop
-          multiple
-        >
-          <PromptInputHeader>
-            <PromptInputAttachments>
-              {(attachment) => <PromptInputAttachment data={attachment} />}
-            </PromptInputAttachments>
-          </PromptInputHeader>
-          <PromptInputBody>
-            <PromptInputTextarea
-              onChange={(e) => setInput(e.target.value)}
-              value={input}
-            />
-          </PromptInputBody>
-          <PromptInputFooter>
-            <PromptInputTools>
-              <PromptInputActionMenu>
-                <PromptInputActionMenuTrigger />
-                <PromptInputActionMenuContent>
-                  <PromptInputActionAddAttachments />
-                </PromptInputActionMenuContent>
-              </PromptInputActionMenu>
-              <PromptInputButton
-                variant={webSearch ? "default" : "ghost"}
-                onClick={() => setWebSearch(!webSearch)}
-              >
-                <GlobeIcon size={16} />
-                <span>Search</span>
-              </PromptInputButton>
-              <PromptInputSelect
-                onValueChange={(value) => {
-                  setModel(value);
-                }}
-                value={model}
-              >
-                <PromptInputSelectTrigger>
-                  <PromptInputSelectValue />
-                </PromptInputSelectTrigger>
-                <PromptInputSelectContent>
-                  {models.map((model) => (
-                    <PromptInputSelectItem
-                      key={model.value}
-                      value={model.value}
-                    >
-                      {model.name}
-                    </PromptInputSelectItem>
-                  ))}
-                </PromptInputSelectContent>
-              </PromptInputSelect>
-            </PromptInputTools>
-            <PromptInputSubmit disabled={!input && !status} status={status} />
-          </PromptInputFooter>
-        </PromptInput>
-      </div>
-    </div>
+            <PromptInput
+              onSubmit={handleSubmit}
+              className="mt-4"
+              globalDrop
+              multiple
+            >
+              <PromptInputHeader>
+                <PromptInputAttachments>
+                  {(attachment) => <PromptInputAttachment data={attachment} />}
+                </PromptInputAttachments>
+              </PromptInputHeader>
+              <PromptInputBody>
+                <PromptInputTextarea
+                  onChange={(e) => setInput(e.target.value)}
+                  value={input}
+                />
+              </PromptInputBody>
+              <PromptInputFooter>
+                <PromptInputTools>
+                  <PromptInputActionMenu>
+                    <PromptInputActionMenuTrigger />
+                    <PromptInputActionMenuContent>
+                      <PromptInputActionAddAttachments />
+                    </PromptInputActionMenuContent>
+                  </PromptInputActionMenu>
+                  <PromptInputButton
+                    variant={webSearch ? "default" : "ghost"}
+                    onClick={() => setWebSearch(!webSearch)}
+                  >
+                    <GlobeIcon size={16} />
+                    <span>Search</span>
+                  </PromptInputButton>
+                  <PromptInputSelect
+                    onValueChange={(value) => {
+                      setModel(value);
+                    }}
+                    value={model}
+                  >
+                    <PromptInputSelectTrigger>
+                      <PromptInputSelectValue />
+                    </PromptInputSelectTrigger>
+                    <PromptInputSelectContent>
+                      {models.map((model) => (
+                        <PromptInputSelectItem
+                          key={model.value}
+                          value={model.value}
+                        >
+                          {model.name}
+                        </PromptInputSelectItem>
+                      ))}
+                    </PromptInputSelectContent>
+                  </PromptInputSelect>
+                </PromptInputTools>
+                <PromptInputSubmit
+                  disabled={!input && !status}
+                  status={status}
+                />
+              </PromptInputFooter>
+            </PromptInput>
+          </div>
+        </div>
+      ) : (
+        <WebLLMLoading {...webLLMState} onRetry={retryInitialization} />
+      )}
+    </>
   );
 }

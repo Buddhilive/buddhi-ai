@@ -1,7 +1,7 @@
 import {
-  CreateMLCEngine,
+  CreateWebWorkerMLCEngine,
   InitProgressCallback,
-  MLCEngine,
+  MLCEngineInterface,
 } from "@mlc-ai/web-llm";
 
 // Check if WebLLM is supported in the current environment
@@ -23,7 +23,7 @@ const isWebLLMSupported = async (): Promise<boolean> => {
 
 const initWebLLMEngine = async (
   progressCallback?: InitProgressCallback
-): Promise<MLCEngine> => {
+): Promise<MLCEngineInterface> => {
   // Check browser support first
   if (!isWebLLMSupported()) {
     throw new Error(
@@ -33,19 +33,25 @@ const initWebLLMEngine = async (
 
   try {
     // Use a smaller model or different configuration to avoid memory issues
-    const engine = await CreateMLCEngine("Llama-3.2-1B-Instruct-q4f32_1-MLC", {
-      initProgressCallback: ({ progress, text, timeElapsed }) => {
-        progressCallback?.({ progress, text, timeElapsed });
-        // Only log in development
-        if (process.env.NODE_ENV === "development") {
-          console.log(
-            `Initialization Progress: ${(progress * 100).toFixed(
-              2
-            )}% - ${text} - Elapsed Time: ${timeElapsed.toFixed(2)}s`
-          );
-        }
-      },
-    });
+    const engine = await CreateWebWorkerMLCEngine(
+      new Worker(new URL("@/workers/webllm-worker.ts", import.meta.url), {
+        type: "module",
+      }),
+      "Llama-3.2-1B-Instruct-q4f32_1-MLC",
+      {
+        initProgressCallback: ({ progress, text, timeElapsed }) => {
+          progressCallback?.({ progress, text, timeElapsed });
+          // Only log in development
+          if (process.env.NODE_ENV === "development") {
+            console.log(
+              `Initialization Progress: ${(progress * 100).toFixed(
+                2
+              )}% - ${text} - Elapsed Time: ${timeElapsed.toFixed(2)}s`
+            );
+          }
+        },
+      }
+    );
 
     return engine;
   } catch (error) {
