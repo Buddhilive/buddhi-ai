@@ -88,7 +88,7 @@ export default function BuddhiAIChat() {
   const params = useParams();
   const [chatDB, setChatDB] = useState<IDBDatabase | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
-  const { setChatHistory, setChatDB: setChatDBInStore } = useChatStore();
+  const { setChatHistory, setChatDB: setChatDBInStore, setCurrentChat, currentChat } = useChatStore();
   const router = useRouter();
 
   /* On load */
@@ -166,6 +166,7 @@ export default function BuddhiAIChat() {
           params.chatId[0]
         );
         console.log("Loaded old chat messages:", oldChatMessages);
+        setCurrentChat(oldChatMessages);
         setMessages(oldChatMessages.messages);
       } else {
         setMessages([]);
@@ -200,9 +201,10 @@ export default function BuddhiAIChat() {
         const title =
           titleSummary?.choices[0].message.content ?? `Chat ${newChatId}`;
         saveOrUpdateChatMessages(chatDB!, newChatId, messages, title, true);
+        router.replace(`/chat/${newChatId}`);
       }
       if (chatDB && chatId) {
-        saveOrUpdateChatMessages(chatDB, chatId, messages);
+        saveOrUpdateChatMessages(chatDB, chatId, messages, currentChat?.title ?? `Chat ${chatId}`);
       }
     } catch (error) {
       console.error("Error saving chat messages:", error);

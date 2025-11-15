@@ -8,11 +8,13 @@ interface ChatState {
   inputValue: string;
   chatHistory: BuddhiAISavedChat[];
   chatDB?: IDBDatabase;
+  currentChat: BuddhiAISavedChat | null;
   setChatDB: (db: IDBDatabase) => void;
   addMessage: (message: ChatCompletionAssistantMessageParam) => void;
   setMessages: (messages: ChatCompletionAssistantMessageParam[]) => void;
   setChatHistory: (chatHistory: BuddhiAISavedChat[]) => void;
   setInputValue: (value: string) => void;
+  setCurrentChat: (chat: BuddhiAISavedChat | null) => void;
   clearMessages: () => void;
 }
 
@@ -33,6 +35,8 @@ export const useChatStore = create<ChatState>()(
     setChatHistory: (chatHistory) => set({ chatHistory }),
 
     setInputValue: (inputValue) => set({ inputValue }),
+
+    setCurrentChat: (currentChat) => set({ currentChat }),
     
     clearMessages: () => set({ 
       messages: [],

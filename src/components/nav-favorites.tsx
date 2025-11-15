@@ -27,6 +27,7 @@ import { useChatStore } from "@/stores/chatStore";
 import Link from "next/link";
 import { deleteItemFromStore } from "@/lib/indexeddb";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 export function NavFavorites({
   favorites,
@@ -39,12 +40,14 @@ export function NavFavorites({
 }) {
   const { isMobile } = useSidebar();
   const { chatHistory, chatDB, setChatHistory } = useChatStore();
+  const router = useRouter();
 
   const handleDelete = async (id: string) => {
     try {
       if (chatDB) await deleteItemFromStore(chatDB, "chats", id);
       setChatHistory(chatHistory.filter((chat) => chat.id !== id));
       toast.success("Chat deleted successfully");
+      if (window.location.pathname === `/chat/${id}`) router.replace("/chat");
     } catch (error) {
       console.error("Failed to delete chat:", error);
       toast.error("Failed to delete chat");

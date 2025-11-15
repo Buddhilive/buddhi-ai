@@ -40,6 +40,7 @@ const saveOrUpdateChatMessages = async (
       chatData.title = title;
       await addItemToStore<BuddhiAISavedChat>(idb, "chats", chatData, chatId);
     } else {
+      console.log("Updating chat:", chatId);
       await updateItemInStore<BuddhiAISavedChat>(
         idb,
         "chats",
