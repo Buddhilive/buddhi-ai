@@ -158,7 +158,7 @@ export default function BuddhiAIChat() {
           "chats",
           params.chatId[0]
         );
-        console.log("Loaded old chat messages:", oldChatMessages);
+        /* console.log("Loaded old chat messages:", oldChatMessages); */
         setCurrentChat(oldChatMessages);
         setMessages(oldChatMessages.messages);
       } else {
