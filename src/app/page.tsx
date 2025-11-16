@@ -3,19 +3,17 @@
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { 
-  Brain, 
   Shield, 
-  MessageSquare, 
-  FileText, 
-  PenTool,
   Lock,
   ArrowRight,
   Sparkles,
   Globe,
   Server,
-  CircleDollarSign
+  CircleDollarSign,
+  Heart
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
 export default function Home() {
   return (
@@ -24,8 +22,8 @@ export default function Home() {
       <header className="fixed top-0 w-full z-50 backdrop-blur-md bg-background/80 border-b border-border/50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2 animate-fade-in">
-            <Brain className="h-8 w-8 text-primary animate-pulse" />
-            <span className="text-xl font-bold">Buddhi AI</span>
+            <Image src="/icons/favicon-32x32.png" alt="Buddhi AI Logo" width={32} height={32} />
+            <span className="text-2xl font-extralight leading-none"><strong className="font-bold">Buddhi</strong>AI</span>
           </div>
           <ThemeToggle />
         </div>
@@ -55,7 +53,7 @@ export default function Home() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
               <Button asChild size="lg" className="animate-bounce-subtle hover:scale-105 transition-transform">
                 <Link href="/chat">
-                  Get Started <ArrowRight className="ml-2 h-4 w-4" />
+                  Start chat <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
             </div>
@@ -68,7 +66,7 @@ export default function Home() {
               </div>
               <div className="flex items-center gap-2 animate-fade-in delay-500">
                 <CircleDollarSign className="h-4 w-4 text-yellow-500" />
-                Cost Efficient
+                100% Free
               </div>
               <div className="flex items-center gap-2 animate-fade-in delay-700">
                 <Globe className="h-4 w-4 text-blue-500" />
@@ -142,62 +140,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Tools Section */}
-      <section className="py-20 px-4">
-        <div className="container mx-auto">
-          <h2 className="text-3xl md:text-4xl font-bold text-center mb-16 animate-fade-in-up">
-            Essential AI Tools
-          </h2>
-          
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="group bg-card border rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 animate-fade-in-up hover:scale-105">
-              <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-primary/20 transition-colors">
-                <MessageSquare className="h-8 w-8 text-primary" />
-              </div>
-              <h3 className="text-2xl font-semibold mb-4">Chat</h3>
-              <p className="text-muted-foreground mb-6">
-                A dynamic, private conversational AI assistant that understands context and provides intelligent responses.
-              </p>
-              <Button asChild variant="outline" className="w-full group-hover:bg-primary group-hover:text-primary-foreground">
-                <Link href="/chat">
-                  Try Chat <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
-            
-            <div className="group bg-card border rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 animate-fade-in-up delay-200 hover:scale-105">
-              <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-primary/20 transition-colors">
-                <FileText className="h-8 w-8 text-primary" />
-              </div>
-              <h3 className="text-2xl font-semibold mb-4">Summarizer</h3>
-              <p className="text-muted-foreground mb-6">
-                Transform lengthy documents into concise, actionable summaries while preserving key insights and context.
-              </p>
-              <Button asChild variant="outline" className="w-full group-hover:bg-primary group-hover:text-primary-foreground">
-                <Link href="/summarizer">
-                  Try Summarizer <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
-            
-            <div className="group bg-card border rounded-2xl p-8 hover:shadow-2xl transition-all duration-300 animate-fade-in-up delay-400 hover:scale-105">
-              <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-primary/20 transition-colors">
-                <PenTool className="h-8 w-8 text-primary" />
-              </div>
-              <h3 className="text-2xl font-semibold mb-4">Writer</h3>
-              <p className="text-muted-foreground mb-6">
-                A versatile writing assistant for drafting, editing, and generating high-quality content with AI precision.
-              </p>
-              <Button asChild variant="outline" className="w-full group-hover:bg-primary group-hover:text-primary-foreground">
-                <Link href="/writer">
-                  Try Writer <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Vision Section */}
       <section className="py-20 px-4 bg-gradient-to-r from-primary/5 to-transparent">
         <div className="container mx-auto text-center">
@@ -226,20 +168,15 @@ export default function Home() {
         <div className="container mx-auto text-center">
           <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 rounded-3xl p-12 animate-fade-in-up">
             <h2 className="text-3xl md:text-4xl font-bold mb-6">
-              Ready to Experience Private AI?
+              Support the Future of Private AI
             </h2>
             <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
-              Join the future of AI-powered tools that respect your privacy and run entirely in your browser.
+              Your sponsorship fuels the development of this platform, enabling us to bring cutting-edge AI capabilities to everyone while maintaining the highest standards of privacy and security.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button asChild size="lg" className="animate-bounce-subtle hover:scale-105 transition-transform">
-                <Link href="/chat">
-                  Start Your Journey <Sparkles className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-              <Button asChild variant="outline" size="lg" className="hover:scale-105 transition-transform">
-                <Link href="/dashboard">
-                  Explore Dashboard
+              <Button asChild variant="outline" size="lg" className="animate-bounce-subtle hover:scale-105 transition-transform">
+                <Link href="https://github.com/sponsors/Buddhilive" target="_blank" rel="noopener noreferrer">
+                  Sponsor this project <Heart className="h-4 w-4 text-pink-500" />
                 </Link>
               </Button>
             </div>
@@ -251,11 +188,11 @@ export default function Home() {
       <footer className="py-12 px-4 border-t border-border/50">
         <div className="container mx-auto text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <Brain className="h-6 w-6 text-primary" />
-            <span className="text-lg font-semibold">Buddhi AI</span>
+            <Image src="/icons/favicon-32x32.png" alt="Buddhi AI Logo" width={32} height={32} />
+            <span className="text-2xl font-extralight leading-none"><strong className="font-bold">Buddhi</strong>AI</span>
           </div>
           <p className="text-muted-foreground">
-            The future of private, client-side intelligence.
+            Copyright &copy; {new Date().getFullYear()} Buddhilive Research | The future of private, client-side intelligence.
           </p>
         </div>
       </footer>
