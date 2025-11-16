@@ -11,18 +11,18 @@ const initializeDB = (
     return new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(dbName, dbVersion);
 
-      request.onerror = (_event) => {
+      request.onerror = () => {
         console.error("IndexedDB error:", request.error);
         reject(`Failed to open IndexedDB: ${request.error}`);
       };
 
-      request.onsuccess = (event) => {
+      request.onsuccess = () => {
         const db = request.result;
         console.log("IndexedDB opened successfully");
         resolve(db);
       };
 
-      request.onupgradeneeded = (_event) => {
+      request.onupgradeneeded = () => {
         const db = request.result;
 
         // Create object stores
@@ -128,7 +128,7 @@ const updateItemInStore = <T>(
     return new Promise<T>((resolve, reject) => {
       const transaction = idb.transaction(storeName, "readwrite");
       const store = transaction.objectStore(storeName);
-      const request = store.put(item as any, key);
+      const request = store.put(item as T, key);
 
       request.onsuccess = () => {
         resolve(item);
@@ -144,7 +144,7 @@ const updateItemInStore = <T>(
   }
 };
 
-const deleteItemFromStore = <T>(
+const deleteItemFromStore = (
   idb: IDBDatabase,
   storeName: string,
   key: string | number
@@ -169,7 +169,7 @@ const deleteItemFromStore = <T>(
   }
 };
 
-const clearStore = <T>(
+const clearStore = (
   idb: IDBDatabase,
   storeName: string
 ): Promise<boolean> => {

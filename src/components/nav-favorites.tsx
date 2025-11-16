@@ -29,15 +29,7 @@ import { deleteItemFromStore } from "@/lib/indexeddb";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
-export function NavFavorites({
-  favorites,
-}: {
-  favorites: {
-    name: string;
-    url: string;
-    emoji: string;
-  }[];
-}) {
+export function NavFavorites() {
   const { isMobile } = useSidebar();
   const { chatHistory, chatDB, setChatHistory } = useChatStore();
   const router = useRouter();

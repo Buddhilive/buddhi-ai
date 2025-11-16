@@ -6,11 +6,13 @@ import {
 
 // Check if WebLLM is supported in the current environment
 const isWebLLMSupported = async (): Promise<boolean> => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (!(navigator as any).gpu) {
     console.log("WebGPU is not supported in this browser.");
     return false;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const adapter = await (navigator as any).gpu.requestAdapter();
   if (!adapter) {
     console.log("Couldn't find a suitable WebGPU adapter.");

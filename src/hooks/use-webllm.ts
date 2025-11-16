@@ -40,10 +40,10 @@ export const useWebLLM = () => {
         text: "WebLLM Engine initialized successfully.",
         isInitialized: true,
       }));
-    } catch (error: any) {
+    } catch (error) {
       setWebLLMState((prevState) => ({
         ...prevState,
-        error: error.message || "An error occurred during initialization.",
+        error: (error as Error).message || "An error occurred during initialization.",
       }));
     }
   }

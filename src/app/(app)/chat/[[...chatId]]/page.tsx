@@ -138,13 +138,6 @@ export default function BuddhiAIChat() {
     processChunks();
   }, [chunks]);
 
-  /* Save messages */
-  useEffect(() => {
-    if (status === "ready") {
-      saveChatMessages();
-    }
-  }, [messages, status]);
-
   const initChat = async () => {
     try {
       const idb = await initChatManager();
@@ -211,6 +204,13 @@ export default function BuddhiAIChat() {
       toast.error("Error saving chat messages.");
     }
   };
+
+  /* Save messages */
+  useEffect(() => {
+    if (status === "ready") {
+      saveChatMessages();
+    }
+  }, [messages, status]);
 
   const sendMessage = async (prompt: string) => {
     setStatus("submitted");

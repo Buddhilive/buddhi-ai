@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { use, useMemo } from "react";
+import { useMemo } from "react";
 import { type LucideIcon } from "lucide-react";
 import { SIDEBAR_DATA } from "@/const/sidebar-data";
 import { useChatStore } from "@/stores/chatStore";
@@ -33,7 +33,7 @@ export function useNavigation(): NavigationState {
 
   const navigationState = useMemo(() => {
     // Determine current page and breadcrumb title based on pathname
-    let currentPage = pathname;
+    const currentPage = pathname;
     let breadcrumbTitle = "Ask Buddhi AI"; // Default for app layout
 
     // Map pathnames to breadcrumb titles
