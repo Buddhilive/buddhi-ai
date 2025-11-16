@@ -1,6 +1,6 @@
 import { webSearch } from "./web-search";
 
-export const BUDDHI_TOOLS: LanguageModelTool[] = [
+export const BUDDHI_TOOLS = [
   {
     name: "search_tool",
     description: "Search information from the web to answer user's questions.",
@@ -14,7 +14,7 @@ export const BUDDHI_TOOLS: LanguageModelTool[] = [
       },
       required: ["query"],
     },
-    async execute({ query }) {
+    async execute({ query }: { query: string }) {
       console.log("Executing web search with query:", query);
       const res = await webSearch({ query });
       return JSON.stringify(res);

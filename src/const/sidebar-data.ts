@@ -2,17 +2,13 @@ import {
   Brain,
   Calendar,
   Command,
-  Home,
-  LayoutDashboard,
-  PenTool,
   Sparkles,
-  TextWrap,
 } from "lucide-react";
 
 export const SIDEBAR_DATA = {
   teams: [
     {
-      name: "Buddhi AI",
+      name: "BuddhiAI",
       logo: Brain,
       plan: "AI in Browser",
       url: "#",
@@ -26,29 +22,9 @@ export const SIDEBAR_DATA = {
   ],
   navMain: [
     {
-      title: "Home",
-      url: "/",
-      icon: Home,
-    },
-    {
-      title: "Dashboard",
-      url: "/dashboard",
-      icon: LayoutDashboard,
-    },
-    {
-      title: "Ask AI",
+      title: "New Chat",
       url: "/chat",
       icon: Sparkles,
-    },
-    {
-      title: "Summarizer",
-      url: "/summarizer",
-      icon: TextWrap,
-    },
-    {
-      title: "Writer",
-      url: "/writer",
-      icon: PenTool,
     }
   ],
   navSecondary: [

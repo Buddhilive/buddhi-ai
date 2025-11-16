@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-/* import { NavFavorites } from "@/components/nav-favorites" */
+import { NavFavorites } from "@/components/nav-favorites"
 import { NavMain } from "@/components/nav-main"
 /* import { NavSecondary } from "@/components/nav-secondary"
 import { NavWorkspaces } from "@/components/nav-workspaces" */
@@ -26,8 +26,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavMain items={navItems} />
       </SidebarHeader>
       <SidebarContent>
-        {/* <NavFavorites favorites={data.favorites} />
-        <NavWorkspaces workspaces={data.workspaces} />
+        <NavFavorites />
+        {/* <NavWorkspaces workspaces={data.workspaces} />
         <NavSecondary items={data.navSecondary} className="mt-auto" /> */}
       </SidebarContent>
       <SidebarRail />

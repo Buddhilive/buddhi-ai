@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
+/* import {
   ArrowDown,
   ArrowUp,
   Bell,
@@ -12,13 +12,13 @@ import {
   GalleryVerticalEnd,
   LineChart,
   Link,
-  MoreHorizontal,
+  MoreHorizontal
   Settings2,
   Trash,
   Trash2,
-} from "lucide-react";
+} from "lucide-react"; */
 
-import { Button } from "@/components/ui/button";
+/* import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
@@ -32,10 +32,13 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "@/components/ui/sidebar"; */
 import { ThemeToggle } from "./ui/theme-toggle";
+import { Button } from "./ui/button";
+import Link from "next/link";
+import { Heart } from "lucide-react";
 
-const data = [
+/* const data = [
   [
     {
       label: "Customize Page",
@@ -96,19 +99,30 @@ const data = [
       icon: ArrowDown,
     },
   ],
-];
+]; */
 
 export function NavActions() {
-  const [isOpen, setIsOpen] = React.useState(false);
+  /* const [isOpen, setIsOpen] = React.useState(false);
 
   React.useEffect(() => {
     setIsOpen(false);
-  }, []);
+  }, []); */
 
   return (
     <div className="flex items-center gap-2 text-sm">
+      <Button
+        asChild
+        variant="outline"
+        size="default"
+        className="hover:scale-105 transition-transform"
+        title="Sponsor this project"
+      >
+        <Link href="https://github.com/sponsors/Buddhilive" target="_blank" rel="noopener noreferrer">
+          Sponsor <Heart className="h-4 w-4 text-pink-500" />
+        </Link>
+      </Button>
       <ThemeToggle />
-      <Popover open={isOpen} onOpenChange={setIsOpen}>
+      {/* <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
           <Button
             variant="ghost"
@@ -142,7 +156,7 @@ export function NavActions() {
             </SidebarContent>
           </Sidebar>
         </PopoverContent>
-      </Popover>
+      </Popover> */}
     </div>
   );
 }

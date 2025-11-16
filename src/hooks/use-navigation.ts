@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useMemo } from "react";
 import { type LucideIcon } from "lucide-react";
 import { SIDEBAR_DATA } from "@/const/sidebar-data";
+import { useChatStore } from "@/stores/chatStore";
 
 export interface NavigationState {
   currentPage: string;
@@ -28,42 +29,30 @@ export interface NavigationState {
  */
 export function useNavigation(): NavigationState {
   const pathname = usePathname();
+  const { currentChat } = useChatStore();
 
   const navigationState = useMemo(() => {
     // Determine current page and breadcrumb title based on pathname
-    let currentPage = pathname;
-    let breadcrumbTitle = "Dashboard"; // Default for app layout
+    const currentPage = pathname;
+    let breadcrumbTitle = "Ask Buddhi AI"; // Default for app layout
 
     // Map pathnames to breadcrumb titles
-    const pathTitleMap: Record<string, string> = {
-      "/dashboard": "Dashboard", 
-      "/chat": "Ask AI",
-      "/summarizer": "Summarizer",
-      "/writer": "Writer",
+    const pathTitleMap: Record<string, string> = { 
+      "/chat": "Ask Buddhi AI",
     };
 
     // Handle dynamic routes and specific cases
-    if (pathname.startsWith("/summarizer")) {
-      breadcrumbTitle = "Summarizer";
-      currentPage = "/summarizer";
-      
-      // Check if there's a document ID for more specific breadcrumb
+    if (pathname.startsWith("/chat/")) {
+      breadcrumbTitle = "Chat";
+
       const segments = pathname.split('/').filter(Boolean);
-      if (segments.length > 1 && segments[1]) {
-        breadcrumbTitle = `Summarizer - ${segments[1]}`;
+      if (currentChat?.title) {
+        breadcrumbTitle = currentChat.title;
+      } else if (segments.length > 1 && segments[1]) {
+        breadcrumbTitle = `Chat - ${segments[1]}`;
       }
-    } else if (pathname.startsWith("/writer")) {
-      breadcrumbTitle = "Writer";
-      currentPage = "/writer";
-      
-      // Check if there's a document ID for more specific breadcrumb
-      const segments = pathname.split('/').filter(Boolean);
-      if (segments.length > 1 && segments[1]) {
-        breadcrumbTitle = `Writer - ${segments[1]}`;
-      }
-    } else if (pathTitleMap[pathname]) {
-      breadcrumbTitle = pathTitleMap[pathname];
-      currentPage = pathname;
+    } else {
+      breadcrumbTitle = pathTitleMap[pathname] || "Ask Buddhi AI";
     }
 
     // Create navigation items with active state
