@@ -24,20 +24,13 @@ export const useChatStore = create<ChatState>()(
     chatHistory: [],
     inputValue: '',
     chatDB: undefined,
-
-    setChatDB: (db) => set({ chatDB: db }),
-    
+    setChatDB: (db) => set({ chatDB: db }),   
     addMessage: (message) => 
-      set((state) => ({ messages: [...state.messages, message] })),
-    
+      set((state) => ({ messages: [...state.messages, message] })),   
     setMessages: (messages) => set({ messages }),
-
     setChatHistory: (chatHistory) => set({ chatHistory }),
-
     setInputValue: (inputValue) => set({ inputValue }),
-
-    setCurrentChat: (currentChat) => set({ currentChat }),
-    
+    setCurrentChat: (currentChat) => set({ currentChat }),   
     clearMessages: () => set({ 
       messages: [],
     }),

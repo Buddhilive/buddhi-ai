@@ -39,7 +39,7 @@ const initWebLLMEngine = async (
       new Worker(new URL("@/workers/webllm-worker.ts", import.meta.url), {
         type: "module",
       }),
-      "Qwen2.5-1.5B-Instruct-q4f32_1-MLC",
+      ["Llama-3.2-1B-Instruct-q4f32_1-MLC", "Qwen3-0.6B-q4f32_1-MLC"],
       {
         initProgressCallback: ({ progress, text, timeElapsed }) => {
           progressCallback?.({ progress, text, timeElapsed });

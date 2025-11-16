@@ -35,6 +35,16 @@ export const WebLLMLoading = ({
     );
   }
 
+  const secondsToHms = (totalSeconds: number) => {
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = Math.floor(totalSeconds % 60);
+
+    const format = (num: number) => num.toString().padStart(2, "0");
+
+    return `${format(h)}:${format(m)}:${format(s)}`;
+  };
+
   return (
     <div className="flex-1 flex items-center justify-center p-6 h-screen w-screen">
       <div className="text-center space-y-4 max-w-md w-full">
@@ -48,11 +58,14 @@ export const WebLLMLoading = ({
           </p>
         </div>
         <div className="space-y-2">
-          <Progress value={Number(webLLMState.progress.toFixed(2))} className="w-full" />
+          <Progress
+            value={Number((webLLMState.progress * 100).toFixed(2))}
+            className="w-full"
+          />
           <div className="flex justify-between items-center text-sm text-muted-foreground">
-            <span>{webLLMState.progress}%</span>
+            <span>{(webLLMState.progress * 100).toFixed(2)}%</span>
             {webLLMState.timeElapsed > 0 ? (
-              <span>{webLLMState.timeElapsed.toFixed(1)}s</span>
+              <span>{secondsToHms(webLLMState.timeElapsed)}</span>
             ) : (
               <span>Waiting...</span>
             )}

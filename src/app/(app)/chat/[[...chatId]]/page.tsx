@@ -17,11 +17,11 @@ import {
   PromptInputBody,
   /* PromptInputButton, */
   PromptInputHeader,
-  /* PromptInputSelect,
+  PromptInputSelect,
   PromptInputSelectContent,
   PromptInputSelectItem,
   PromptInputSelectTrigger,
-  PromptInputSelectValue, */
+  PromptInputSelectValue,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputFooter,
@@ -62,22 +62,22 @@ import { SYSTEM_PROMPT } from "@/const/system-prompt";
 import { useChatStore } from "@/stores/chatStore";
 import { useWebLLMStore } from "@/stores/webllmStore";
 
-/* const models = [
+const models = [
   {
-    name: "Gemini 2.5 Flash Lite",
-    value: "gemini-2.5-flash-lite",
+    name: "Llama 3.2 1B Instruct",
+    value: "Llama-3.2-1B-Instruct-q4f32_1-MLC",
   },
   {
-    name: "Gemini 2.5 Pro",
-    value: "gemini-2.5-pro",
+    name: "Qwen 3 0.6B",
+    value: "Qwen3-0.6B-q4f32_1-MLC",
   },
-]; */
+];
 
 export default function BuddhiAIChat() {
   const [input, setInput] = useState("");
-  /* const [model, setModel] = useState<string>(models[0].value); */
+  const [model, setModel] = useState<string>(models[0].value);
   /* const [webSearch, setWebSearch] = useState(false); */
-  const { webLLMInstance } = useWebLLMStore();
+  const { webLLMInstance, webLLMModel, setWebLLMModel } = useWebLLMStore();
   const [messages, setMessages] = useState<Array<ChatCompletionMessageParam>>(
     []
   );
@@ -88,7 +88,12 @@ export default function BuddhiAIChat() {
   const params = useParams();
   const [chatDB, setChatDB] = useState<IDBDatabase | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
-  const { setChatHistory, setChatDB: setChatDBInStore, setCurrentChat, currentChat } = useChatStore();
+  const {
+    setChatHistory,
+    setChatDB: setChatDBInStore,
+    setCurrentChat,
+    currentChat,
+  } = useChatStore();
   const router = useRouter();
 
   /* On load */
@@ -97,7 +102,7 @@ export default function BuddhiAIChat() {
     /* console.log("Chat page loaded with params:", params, params.chatId); */
     return () => {
       closeDatabase(chatDB!);
-    }
+    };
   }, []);
 
   /* Handle chat streaming */
@@ -106,7 +111,7 @@ export default function BuddhiAIChat() {
       if (!chunks) return;
       for await (const chunk of chunks) {
         setStatus("streaming");
-        /* console.log("Chunk received:", chunk); */
+        console.log("Chunk received:", chunk);
         if (chunk.choices && chunk.choices.length > 0) {
           const delta = chunk.choices[0].delta;
           if (delta.content) {
@@ -180,6 +185,7 @@ export default function BuddhiAIChat() {
         const newChatId = Date.now().toString();
         setChatId(newChatId);
         const titleSummary = await webLLMInstance?.chat.completions.create({
+          model: models[0].value,
           messages: [
             {
               role: "system",
@@ -188,7 +194,7 @@ export default function BuddhiAIChat() {
             },
             messages.findLast((msg) => msg.role === "user")!,
           ],
-          max_tokens: 10,
+          max_tokens: 10
         });
 
         const title =
@@ -197,7 +203,12 @@ export default function BuddhiAIChat() {
         router.push(`/chat/${newChatId}`);
       }
       if (chatDB && chatId) {
-        saveOrUpdateChatMessages(chatDB, chatId, messages, currentChat?.title ?? `Chat ${chatId}`);
+        saveOrUpdateChatMessages(
+          chatDB,
+          chatId,
+          messages,
+          currentChat?.title ?? `Chat ${chatId}`
+        );
       }
     } catch (error) {
       console.error("Error saving chat messages:", error);
@@ -231,8 +242,12 @@ export default function BuddhiAIChat() {
     setMessages((prevMessages) => [...prevMessages, userPrompt]);
 
     const parts = await webLLMInstance.chat.completions.create({
+      model: webLLMModel || model,
       messages: promptMessages,
       stream: true,
+      extra_body: {
+        enable_thinking: false,
+      },
     });
     /* console.log("Parts received from WebLLM:", parts); */
     setChunks(parts);
@@ -273,13 +288,13 @@ export default function BuddhiAIChat() {
   };
 
   return (
-        <div className="mx-auto max-w-4xl px-6 pb-6 relative size-full h-[calc(100vh-4rem)] no-scrollbar">
-          <div className="flex flex-col h-full">
-            <Conversation className="h-[calc(100vh-4rem)]">
-              <ConversationContent>
-                {messages.map((message, index) => (
-                  <div key={index}>
-                    {/* {message.role === "assistant" &&
+    <div className="mx-auto max-w-4xl px-6 pb-6 relative size-full h-[calc(100vh-4rem)] no-scrollbar">
+      <div className="flex flex-col h-full">
+        <Conversation className="h-[calc(100vh-4rem)]">
+          <ConversationContent>
+            {messages.map((message, index) => (
+              <div key={index}>
+                {/* {message.role === "assistant" &&
                   message.parts.filter((part) => part.type === "source-url")
                     .length > 0 && (
                     <Sources>
@@ -303,103 +318,101 @@ export default function BuddhiAIChat() {
                         ))}
                     </Sources>
                   )} */}
-                    <Fragment key={`${index}`}>
-                      <Message from={message.role}>
-                        <MessageContent>
-                          <MessageResponse>
-                            {message.content as string}
-                          </MessageResponse>
-                        </MessageContent>
-                      </Message>
-                      {message.role === "assistant" &&
-                        index === messages.length - 1 && (
-                          <MessageActions className="mt-2">
-                            <MessageAction
-                              onClick={() => regenerate()}
-                              label="Retry"
-                            >
-                              <RefreshCcwIcon className="size-3" />
-                            </MessageAction>
-                            <MessageAction
-                              onClick={() =>
-                                navigator.clipboard.writeText(
-                                  message.content as string
-                                )
-                              }
-                              label="Copy"
-                            >
-                              <CopyIcon className="size-3" />
-                            </MessageAction>
-                          </MessageActions>
-                        )}
-                    </Fragment>
-                  </div>
-                ))}
-                {status === "submitted" && <Loader />}
-              </ConversationContent>
-              <ConversationScrollButton />
-            </Conversation>
+                <Fragment key={`${index}`}>
+                  <Message from={message.role}>
+                    <MessageContent>
+                      <MessageResponse>
+                        {message.content as string}
+                      </MessageResponse>
+                    </MessageContent>
+                  </Message>
+                  {message.role === "assistant" &&
+                    index === messages.length - 1 && (
+                      <MessageActions className="mt-2">
+                        <MessageAction
+                          onClick={() => regenerate()}
+                          label="Retry"
+                        >
+                          <RefreshCcwIcon className="size-3" />
+                        </MessageAction>
+                        <MessageAction
+                          onClick={() =>
+                            navigator.clipboard.writeText(
+                              message.content as string
+                            )
+                          }
+                          label="Copy"
+                        >
+                          <CopyIcon className="size-3" />
+                        </MessageAction>
+                      </MessageActions>
+                    )}
+                </Fragment>
+              </div>
+            ))}
+            {status === "submitted" && <Loader />}
+          </ConversationContent>
+          <ConversationScrollButton />
+        </Conversation>
 
-            <PromptInput
-              onSubmit={handleSubmit}
-              className="mt-4"
-              globalDrop
-              multiple
-            >
-              <PromptInputHeader>
-                <PromptInputAttachments>
-                  {(attachment) => <PromptInputAttachment data={attachment} />}
-                </PromptInputAttachments>
-              </PromptInputHeader>
-              <PromptInputBody>
-                <PromptInputTextarea
-                  onChange={(e) => setInput(e.target.value)}
-                  value={input}
-                />
-              </PromptInputBody>
-              <PromptInputFooter>
-                <PromptInputTools>
-                  {/* <PromptInputActionMenu>
+        <PromptInput
+          onSubmit={handleSubmit}
+          className="mt-4"
+          globalDrop
+          multiple
+        >
+          <PromptInputHeader>
+            <PromptInputAttachments>
+              {(attachment) => <PromptInputAttachment data={attachment} />}
+            </PromptInputAttachments>
+          </PromptInputHeader>
+          <PromptInputBody>
+            <PromptInputTextarea
+              onChange={(e) => setInput(e.target.value)}
+              value={input}
+            />
+          </PromptInputBody>
+          <PromptInputFooter>
+            <PromptInputTools>
+              {/* <PromptInputActionMenu>
                     <PromptInputActionMenuTrigger />
                     <PromptInputActionMenuContent>
                       <PromptInputActionAddAttachments />
                     </PromptInputActionMenuContent>
                   </PromptInputActionMenu> */}
-                  {/* <PromptInputButton
+              {/* <PromptInputButton
                     variant={webSearch ? "default" : "ghost"}
                     onClick={() => setWebSearch(!webSearch)}
                   >
                     <GlobeIcon size={16} />
                     <span>Search</span>
                   </PromptInputButton> */}
-                  {/* <PromptInputSelect
-                    onValueChange={(value) => {
-                      setModel(value);
-                    }}
-                    value={model}
-                  >
-                    <PromptInputSelectTrigger>
-                      <PromptInputSelectValue />
-                    </PromptInputSelectTrigger>
-                    <PromptInputSelectContent>
-                      {models.map((model) => (
-                        <PromptInputSelectItem
-                          key={model.value}
-                          value={model.value}
-                        >
-                          {model.name}
-                        </PromptInputSelectItem>
-                      ))}
-                    </PromptInputSelectContent>
-                  </PromptInputSelect> */}
-                </PromptInputTools>
-                <PromptInputSubmit
-                  disabled={!input && !status}
-                  status={status}
-                />
-              </PromptInputFooter>
-            </PromptInput>
-          </div>
-        </div>
-      );
+              <PromptInputSelect
+                onValueChange={(value) => {
+                  setModel(value);
+                  setWebLLMModel(value);
+                }}
+                value={webLLMModel || model}
+              >
+                <PromptInputSelectTrigger>
+                  <PromptInputSelectValue />
+                </PromptInputSelectTrigger>
+                <PromptInputSelectContent>
+                  {models.map((model) => (
+                    <PromptInputSelectItem
+                      key={model.value}
+                      value={model.value}
+                    >
+                      {model.name}
+                    </PromptInputSelectItem>
+                  ))}
+                </PromptInputSelectContent>
+              </PromptInputSelect>
+            </PromptInputTools>
+            <PromptInputSubmit disabled={!input && !status} status={status} />
+          </PromptInputFooter>
+        </PromptInput>
+      </div>
+    </div>
+  );
 }
