@@ -290,7 +290,7 @@ export default function BuddhiAIChat() {
   return (
     <div className="mx-auto max-w-4xl px-6 pb-6 relative size-full h-[calc(100vh-4rem)] no-scrollbar">
       <div className="flex flex-col h-full">
-        <Conversation className="h-[calc(100vh-4rem)]">
+        <Conversation className="h-[calc(100vh-4rem)] no-scrollbar">
           <ConversationContent>
             {messages.map((message, index) => (
               <div key={index}>
