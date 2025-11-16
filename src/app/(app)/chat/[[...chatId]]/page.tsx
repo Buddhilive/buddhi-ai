@@ -111,7 +111,7 @@ export default function BuddhiAIChat() {
       if (!chunks) return;
       for await (const chunk of chunks) {
         setStatus("streaming");
-        console.log("Chunk received:", chunk);
+        // console.log("Chunk received:", chunk);
         if (chunk.choices && chunk.choices.length > 0) {
           const delta = chunk.choices[0].delta;
           if (delta.content) {

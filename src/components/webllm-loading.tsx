@@ -1,8 +1,9 @@
 import { WebLLMState } from "@/hooks/use-webllm";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertTriangle, Brain, RefreshCw } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertTriangle, Info, RefreshCw } from "lucide-react";
+import Image from "next/image";
 
 interface WebLLMLoadingProps extends WebLLMState {
   onRetry?: () => void;
@@ -49,11 +50,18 @@ export const WebLLMLoading = ({
     <div className="flex-1 flex items-center justify-center p-6 h-screen w-screen">
       <div className="text-center space-y-4 max-w-md w-full">
         <div>
-          <div className="flex flex-col items-center justify-center gap-4 animate-fade-in">
-            <Brain className="h-12 w-12 text-primary animate-pulse" />
-            <span className="text-xl font-bold">Buddhi AI</span>
+          <div className="flex flex-col items-center justify-center gap-1 animate-pulse">
+            <Image
+              src="/icons/android/android-launchericon-144-144.png"
+              alt="Buddhi AI Logo"
+              width={144}
+              height={144}
+            />
+            <span className="text-4xl font-extralight leading-none">
+              <strong className="font-bold">Buddhi</strong>AI
+            </span>
           </div>
-          <p className="text-xs text-muted-foreground mt-2">
+          <p className="text-xs text-muted-foreground mt-6">
             {webLLMState.text}
           </p>
         </div>
@@ -70,9 +78,12 @@ export const WebLLMLoading = ({
               <span>Waiting...</span>
             )}
           </div>
-          <p className="text-sm text-muted-foreground mt-2">
-            This may take some time on first load...
-          </p>
+          <Alert variant="default" className="mt-4">
+            <Info />
+            <AlertDescription>
+              This may take some time on first load.
+            </AlertDescription>
+          </Alert>
         </div>
       </div>
     </div>

@@ -34,6 +34,9 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"; */
 import { ThemeToggle } from "./ui/theme-toggle";
+import { Button } from "./ui/button";
+import Link from "next/link";
+import { Heart } from "lucide-react";
 
 /* const data = [
   [
@@ -107,13 +110,17 @@ export function NavActions() {
 
   return (
     <div className="flex items-center gap-2 text-sm">
-      <iframe
-        src="https://github.com/sponsors/Buddhilive/button"
-        title="Sponsor Buddhilive"
-        height="32"
-        width="114"
-        style={{ border: 0, borderRadius: "6px" }}
-      ></iframe>
+      <Button
+        asChild
+        variant="outline"
+        size="default"
+        className="hover:scale-105 transition-transform"
+        title="Sponsor this project"
+      >
+        <Link href="https://github.com/sponsors/Buddhilive" target="_blank" rel="noopener noreferrer">
+          Sponsor <Heart className="h-4 w-4 text-pink-500" />
+        </Link>
+      </Button>
       <ThemeToggle />
       {/* <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>

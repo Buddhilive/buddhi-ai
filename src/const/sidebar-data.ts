@@ -8,7 +8,7 @@ import {
 export const SIDEBAR_DATA = {
   teams: [
     {
-      name: "Buddhi AI",
+      name: "BuddhiAI",
       logo: Brain,
       plan: "AI in Browser",
       url: "#",
