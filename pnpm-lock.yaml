@@ -20,6 +20,9 @@ importers:
       '@mdxeditor/editor':
         specifier: ^3.48.0
         version: 3.48.0(@codemirror/language@6.11.3)(@lezer/highlight@1.2.3)(@types/react-dom@19.2.1(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(yjs@13.6.27)
+      '@mediapipe/tasks-genai':
+        specifier: ^0.10.25
+        version: 0.10.25
       '@mlc-ai/web-llm':
         specifier: ^0.2.79
         version: 0.2.79
@@ -891,6 +894,9 @@ packages:
     peerDependencies:
       react: '>= 18 || >= 19'
       react-dom: '>= 18 || >= 19'
+
+  '@mediapipe/tasks-genai@0.10.25':
+    resolution: {integrity: sha512-/ce/qNTC/CzzPJ5QRBz4MIoaYD+L65wkeE38ysb7saAZd38RZgzzVp1ZoLVFe/52LC3Ly/h2qcZWmkQf5PSJag==}
 
   '@mermaid-js/parser@0.6.3':
     resolution: {integrity: sha512-lnjOhe7zyHjc+If7yT4zoedx2vo4sHaTmtkl1+or8BRTnCtDmcTpAjpzDSfCZrshM5bCoz0GyidzadJAH1xobA==}
@@ -6202,6 +6208,8 @@ snapshots:
     dependencies:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
+
+  '@mediapipe/tasks-genai@0.10.25': {}
 
   '@mermaid-js/parser@0.6.3':
     dependencies:
