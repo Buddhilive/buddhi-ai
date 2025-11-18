@@ -81,13 +81,14 @@ async function getCache(): Promise<Cache> {
 }
 
 /**
- * Generates a cache key for a URL with metadata
+ * Generates a cache URL for a URL with metadata
  * @param url The original URL
  * @param cacheKey Optional custom cache key
- * @returns string The cache key
+ * @returns string A valid cache URL
  */
-function generateCacheKey(url: string, cacheKey?: string): string {
-  return cacheKey || `file-${btoa(url).replace(/[^a-zA-Z0-9]/g, '')}`;
+function generateCacheUrl(url: string, cacheKey?: string): string {
+  const key = cacheKey || `file-${btoa(url).replace(/[^a-zA-Z0-9]/g, '')}`;
+  return `https://cache.mediapipe.local/${key}`;
 }
 
 /**
@@ -165,8 +166,8 @@ async function clearExpiredCache(cache: Cache): Promise<void> {
 async function loadFromCache(url: string, cacheKey?: string): Promise<ArrayBuffer | null> {
   try {
     const cache = await getCache();
-    const key = generateCacheKey(url, cacheKey);
-    const request = new Request(key);
+    const cacheUrl = generateCacheUrl(url, cacheKey);
+    const request = new Request(cacheUrl);
     const response = await cache.match(request);
     
     if (response && !isCacheExpired(response)) {
@@ -265,7 +266,7 @@ async function saveToCache(url: string, data: ArrayBuffer, cacheKey?: string): P
       }
     }
     
-    const key = generateCacheKey(url, cacheKey);
+    const cacheUrl = generateCacheUrl(url, cacheKey);
     const headers = new Headers({
       'content-type': 'application/octet-stream',
       'content-length': data.byteLength.toString(),
@@ -274,7 +275,7 @@ async function saveToCache(url: string, data: ArrayBuffer, cacheKey?: string): P
     });
     
     const response = new Response(data, { headers });
-    await cache.put(new Request(key), response);
+    await cache.put(new Request(cacheUrl), response);
   } catch (error) {
     console.warn('Failed to save to cache:', error);
     // Don't throw here - caching is optional
@@ -301,7 +302,7 @@ async function processFile(url: string, cacheKey?: string): Promise<void> {
       sendResponse({
         type: 'error',
         url,
-        message: 'URL is not valid or accessible',
+        message: `URL is not valid or accessible: ${url}`,
         code: 'INVALID_URL'
       });
       return;
