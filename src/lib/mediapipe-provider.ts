@@ -1,4 +1,6 @@
-const initMediapipeGenAI = async () => {
+import { WorkerResponse } from "@/workers/mediapipe-worker";
+
+const initMediapipeGenAI = async (callback: (response: WorkerResponse) => void) => {
   // Create worker instance
   const worker = new Worker(
     new URL("@/workers/mediapipe-worker.ts", import.meta.url),
@@ -11,23 +13,11 @@ const initMediapipeGenAI = async () => {
   // Listen for responses
   worker.onmessage = (event) => {
     const response = event.data;
+    callback(response);
+  };
 
-    switch (response.type) {
-      case "progress":
-        console.log(`Download ${response.percentage}% complete`);
-        if (response.fromCache) {
-          console.log("Loaded from cache instantly!");
-        }
-        break;
-
-      case "complete":
-        console.log("File ready:", response.data);
-        break;
-
-      case "error":
-        console.error("Download failed:", response.message);
-        break;
-    }
+  worker.onerror = (error) => {
+    callback({ type: "error", message: error.message, url: "" });
   };
 
   // Start download
