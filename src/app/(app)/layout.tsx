@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useNavigation } from "@/hooks/use-navigation";
 import { WebLLMLoading } from "@/components/webllm-loading";
-import { useWebLLMStore } from "@/stores/webllmStore";
+import { useWebLLMStore } from "@/stores/mediaPipeStore";
 import { useEffect } from "react";
 import { useMediapipe } from "@/hooks/use-mediapipe";
 
@@ -30,7 +30,7 @@ export default function AppLayout({
   const { setWebLLMInstance } = useWebLLMStore();
 
   useEffect(() => {
-    //if (mediaPipeState.engine) setWebLLMInstance(mediaPipeState.engine);
+    if (mediaPipeState.engine) setWebLLMInstance(mediaPipeState.engine);
   }, [mediaPipeState.engine, setWebLLMInstance]);
 
   return (
