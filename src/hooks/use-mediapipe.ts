@@ -37,10 +37,10 @@ export const useMediapipe = () => {
         break;
 
       case "complete":
-        console.log("Model ready:", response.data);
+        console.log("Model ready:", response);
         text = "Model ready";
         progress = 100;
-        loadEngine(response.url);
+        loadEngine(response.data);
         break;
 
       case "error":
@@ -80,7 +80,7 @@ export const useMediapipe = () => {
     initializeMediapipe();
   };
 
-  const loadEngine = async (modelUrl: string) => {
+  const loadEngine = async (modelUrl: ArrayBuffer) => {
     try {
       const genai = await FilesetResolver.forGenAiTasks(
         // path/to/wasm/root
@@ -88,7 +88,7 @@ export const useMediapipe = () => {
       );
       const llmInference = await LlmInference.createFromOptions(genai, {
         baseOptions: {
-          modelAssetPath: modelUrl,
+          modelAssetBuffer: new Uint8Array(modelUrl),
         },
         maxTokens: 1000,
         topK: 40,
