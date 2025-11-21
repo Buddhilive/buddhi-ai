@@ -1,10 +1,11 @@
 import { initMediapipeGenAI } from "@/lib/mediapipe-provider";
 import { FilesetResolver, LlmInference } from "@mediapipe/tasks-genai";
 import { WorkerResponse } from "@/workers/mediapipe-worker";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export interface mediaPipeState {
-  progress: string;
+  progress: number;
+  text: string;
   error: string | null;
   engine: LlmInference | null;
   isInitialized?: boolean;
@@ -12,40 +13,46 @@ export interface mediaPipeState {
 
 export const useMediapipe = () => {
   const [mediaPipeState, setMediaPipeState] = useState<mediaPipeState>({
-    progress: "Starting initialization...",
+    progress: 0,
+    text: "Starting initialization...",
     error: null,
     engine: null,
     isInitialized: false,
   });
 
   const getMediaPipeState = (response: WorkerResponse) => {
-    let progress = "";
+    let progress = 0;
+    let text = "";
 
     switch (response.type) {
       case "progress":
         console.log(`Download ${response.percentage}% complete`);
-        progress = `Download ${response.percentage}% complete`;
+        text = `Download ${response.percentage}% complete`;
+        progress = response.percentage;
         if (response.fromCache) {
-          console.log("Loaded from cache instantly!");
-          progress = "Loaded from cache instantly!";
+          console.log("Model loaded from cache instantly!");
+          progress = 100;
+          text = "Model loaded from cache instantly!";
         }
         break;
 
       case "complete":
-        console.log("File ready:", response.data);
-        progress = "File ready";
+        console.log("Model ready:", response.data);
+        text = "Model ready";
+        progress = 100;
         loadEngine(response.url);
         break;
 
       case "error":
         console.error("Download failed:", response.message);
-        progress = `Download failed: ${response.message}`;
+        text = `Download failed: ${response.message}`;
         break;
     }
 
     setMediaPipeState((prevState) => ({
       ...prevState,
       progress,
+      text,
     }));
   };
 
@@ -62,6 +69,17 @@ export const useMediapipe = () => {
     }
   };
 
+  const retryInitialization = () => {
+    setMediaPipeState({
+      progress: 0,
+      text: "Retrying initialization...",
+      error: null,
+      engine: null,
+      isInitialized: false,
+    });
+    initializeMediapipe();
+  };
+
   const loadEngine = async (modelUrl: string) => {
     try {
       const genai = await FilesetResolver.forGenAiTasks(
@@ -70,7 +88,7 @@ export const useMediapipe = () => {
       );
       const llmInference = await LlmInference.createFromOptions(genai, {
         baseOptions: {
-          modelAssetPath: "/assets/gemma-3n-E4B-it-int4-Web.litertlm",
+          modelAssetPath: modelUrl,
         },
         maxTokens: 1000,
         topK: 40,
@@ -81,6 +99,7 @@ export const useMediapipe = () => {
         ...prevState,
         engine: llmInference,
         isInitialized: true,
+        progress: 100,
       }));
     } catch (error) {
       setMediaPipeState((prevState) => ({
@@ -92,8 +111,13 @@ export const useMediapipe = () => {
     }
   };
 
+  useEffect(() => {
+    initializeMediapipe();
+  }, []);
+
   return {
     mediaPipeState,
     initializeMediapipe,
+    retryInitialization,
   };
 };
