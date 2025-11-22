@@ -65,6 +65,7 @@ const generateChatTemplate = async (
               chat_template = { audioSource: contentItem.url };
               chatParts.push(chat_template);
             }
+            chatParts.push("<end_of_turn>\n");
           }
           continue;
         } else if (

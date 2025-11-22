@@ -90,10 +90,6 @@ export const useMediapipe = () => {
         baseOptions: {
           modelAssetBuffer: new Uint8Array(modelUrl),
         },
-        maxTokens: 1000,
-        topK: 40,
-        temperature: 0.8,
-        randomSeed: 101,
       });
       setMediaPipeState((prevState) => ({
         ...prevState,

@@ -190,7 +190,7 @@ export default function BuddhiAIChat() {
     setMessages((prevMessages) => [...prevMessages, userPrompt]);
 
     const parts = await generateChatTemplate(promptMessages);
-
+    console.log("Generated chat template parts:", parts);
     await webLLMInstance.generateResponse(
       parts,
       (partialResult, done) => {

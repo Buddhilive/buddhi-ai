@@ -23,7 +23,7 @@ const initMediapipeGenAI = async (callback: (response: WorkerResponse) => void) 
   // Start download
   worker.postMessage({
     type: "download",
-    url: `${window.location.origin}/models/gemma3-270m-it-q8-web.task`,
+    url: `${window.location.origin}/models/gemma3-1b-it-int4-web.task`,
     cacheKey: "my-model", // Optional custom cache key
   });
 };
