@@ -1,6 +1,6 @@
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertTriangle, Info, RefreshCw } from "lucide-react";
 import Image from "next/image";
 import { mediaPipeState } from "@/hooks/use-mediapipe";

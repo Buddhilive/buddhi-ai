@@ -46,10 +46,6 @@ import {
   ReasoningTrigger,
 } from "@/components/ai-elements/reasoning"; */
 import { Loader } from "@/components/ai-elements/loader";
-import {
-  ChatCompletionChunk,
-  ChatCompletionMessageParam,
-} from "@mlc-ai/web-llm";
 import { useParams, useRouter } from "next/navigation";
 import {
   BuddhiAISavedChat,
@@ -60,7 +56,8 @@ import { closeDatabase, getAllFromStore, getItemByKey } from "@/lib/indexeddb";
 import { toast } from "sonner";
 import { SYSTEM_PROMPT } from "@/const/system-prompt";
 import { useChatStore } from "@/stores/chatStore";
-import { useWebLLMStore } from "@/stores/webllmStore";
+import { useWebLLMStore } from "@/stores/mediaPipeStore";
+import { BuddhiAIMessage, generateChatTemplate } from "@/lib/chat-template-generator";
 
 const models = [
   {
@@ -78,10 +75,9 @@ export default function BuddhiAIChat() {
   const [model, setModel] = useState<string>(models[0].value);
   /* const [webSearch, setWebSearch] = useState(false); */
   const { webLLMInstance, webLLMModel, setWebLLMModel } = useWebLLMStore();
-  const [messages, setMessages] = useState<Array<ChatCompletionMessageParam>>(
+  const [messages, setMessages] = useState<Array<BuddhiAIMessage>>(
     []
   );
-  const [chunks, setChunks] = useState<AsyncIterable<ChatCompletionChunk>>();
   const [status, setStatus] = useState<
     "submitted" | "streaming" | "ready" | "error"
   >("ready");
@@ -104,44 +100,6 @@ export default function BuddhiAIChat() {
       closeDatabase(chatDB!);
     };
   }, []);
-
-  /* Handle chat streaming */
-  useEffect(() => {
-    const processChunks = async () => {
-      if (!chunks) return;
-      for await (const chunk of chunks) {
-        setStatus("streaming");
-        // console.log("Chunk received:", chunk);
-        if (chunk.choices && chunk.choices.length > 0) {
-          const delta = chunk.choices[0].delta;
-          if (delta.content) {
-            setMessages((prevMessages) => {
-              const lastMessage = prevMessages[prevMessages.length - 1];
-              if (lastMessage && lastMessage.role === "assistant") {
-                const updatedMessage: ChatCompletionMessageParam = {
-                  ...lastMessage,
-                  content: (lastMessage.content || "") + delta.content,
-                };
-                return [...prevMessages.slice(0, -1), updatedMessage];
-              } else {
-                const newMessage: ChatCompletionMessageParam = {
-                  role: "assistant" as const,
-                  content: delta.content,
-                };
-                return [...prevMessages, newMessage];
-              }
-            });
-          } else {
-            if (chunk.choices[0].finish_reason) {
-              setStatus("ready");
-            }
-          }
-        }
-      }
-    };
-
-    processChunks();
-  }, [chunks]);
 
   const initChat = async () => {
     try {
@@ -170,7 +128,6 @@ export default function BuddhiAIChat() {
         setMessages([]);
       }
       setInput("");
-      setChunks(undefined);
       setStatus("ready");
     } catch (error) {
       console.error("Error initializing chat:", error);
@@ -184,21 +141,12 @@ export default function BuddhiAIChat() {
       if (!chatId && messages.length > 0) {
         const newChatId = Date.now().toString();
         setChatId(newChatId);
-        const titleSummary = await webLLMInstance?.chat.completions.create({
-          model: models[0].value,
-          messages: [
-            {
-              role: "system",
-              content:
-                "Provide a short title for this conversation in less than 10 tokens.",
-            },
-            messages.findLast((msg) => msg.role === "user")!,
-          ],
-          max_tokens: 10
-        });
+        const msg = messages.findLast((msg) => msg.role === "user")?.content;
+        const titleSummary = msg
+          ? msg.toString().substring(0, 20) + (msg.toString().length > 20 ? "..." : "")
+          : null;
 
-        const title =
-          titleSummary?.choices[0].message.content ?? `Chat ${newChatId}`;
+        const title = titleSummary || `Chat ${newChatId}`;
         saveOrUpdateChatMessages(chatDB!, newChatId, messages, title, true);
         router.push(`/chat/${newChatId}`);
       }
@@ -231,26 +179,47 @@ export default function BuddhiAIChat() {
       toast.error("WebLLM engine is not initialized.");
       return;
     }
-    const systemPrompt: ChatCompletionMessageParam = SYSTEM_PROMPT;
-    const userPrompt: ChatCompletionMessageParam = {
+    const systemPrompt: BuddhiAIMessage = SYSTEM_PROMPT;
+    const userPrompt: BuddhiAIMessage = {
       role: "user",
       content: prompt,
     };
 
-    const promptMessages = [systemPrompt, ...messages, userPrompt];
+    const promptMessages: any = [systemPrompt, ...messages, userPrompt];
 
     setMessages((prevMessages) => [...prevMessages, userPrompt]);
 
-    const parts = await webLLMInstance.chat.completions.create({
-      model: webLLMModel || model,
-      messages: promptMessages,
-      stream: true,
-      extra_body: {
-        enable_thinking: false,
-      },
-    });
+    const parts = await generateChatTemplate(promptMessages);
+
+    await webLLMInstance.generateResponse(
+      parts,
+      (partialResult, done) => {
+        console.log("Partial result:", partialResult, "Done:", done);
+        if (!done) {
+          setStatus("streaming");
+          setMessages((prevMessages) => {
+            const lastMessage = prevMessages[prevMessages.length - 1];
+            if (lastMessage && lastMessage.role === "assistant") {
+              const updatedMessage: BuddhiAIMessage = {
+                ...lastMessage,
+                content: (lastMessage.content || "") + partialResult,
+              };
+              return [...prevMessages.slice(0, -1), updatedMessage];
+            } else {
+              const newMessage: BuddhiAIMessage = {
+                role: "assistant" as const,
+                content: partialResult,
+              };
+              return [...prevMessages, newMessage];
+            }
+          });
+        } else {
+          setStatus("ready");
+        }
+      }
+    );
     /* console.log("Parts received from WebLLM:", parts); */
-    setChunks(parts);
+    // setChunks(parts);
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

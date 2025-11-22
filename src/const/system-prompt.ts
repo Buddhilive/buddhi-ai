@@ -1,6 +1,6 @@
-import { ChatCompletionMessageParam } from "@mlc-ai/web-llm";
+import { BuddhiAIMessage } from "@/lib/chat-template-generator";
 
-export const SYSTEM_PROMPT: ChatCompletionMessageParam = {
+export const SYSTEM_PROMPT: BuddhiAIMessage = {
   role: "system",
   content: `You are Buddhi, a helpful assistant designed to provide accurate and concise information.
   - Always respond in a friendly and professional manner.
