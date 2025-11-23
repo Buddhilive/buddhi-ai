@@ -8,7 +8,7 @@ const initMediapipeGenAI = async (callback: (response: WorkerResponse) => void) 
       type: "module",
     }
   );
-  console.log("Mediapipe GenAI worker initialized.");
+  // console.log("Mediapipe GenAI worker initialized.");
 
   // Listen for responses
   worker.onmessage = (event) => {
@@ -23,8 +23,8 @@ const initMediapipeGenAI = async (callback: (response: WorkerResponse) => void) 
   // Start download
   worker.postMessage({
     type: "download",
-    url: `${window.location.origin}/models/gemma3-1b-it-int4-web.task`,
-    cacheKey: "my-model", // Optional custom cache key
+    url: `${window.location.origin}/models/gemma3-1b-it-int4-web.task`, //gemma-3n-E2B-it-int4-Web.litertlm
+    cacheKey: "gemma-3-1B", // gemma-3n-E2B
   });
 };
 

@@ -19,8 +19,6 @@ interface DownloadRequest {
 interface ProgressResponse {
   type: 'progress';
   url: string;
-  loaded: number;
-  total: number;
   percentage: number;
   status: 'downloading' | 'caching' | 'complete' | 'error';
   fromCache?: boolean;
@@ -29,7 +27,7 @@ interface ProgressResponse {
 interface CompleteResponse {
   type: 'complete';
   url: string;
-  data: ArrayBuffer;
+  data: string;
   fromCache: boolean;
 }
 
@@ -43,9 +41,9 @@ interface ErrorResponse {
 type WorkerResponse = ProgressResponse | CompleteResponse | ErrorResponse;
 
 // Cache configuration
-const CACHE_NAME = 'mediapipe-files-cache';
-const MAX_CACHE_SIZE = 500 * 1024 * 1024; // 500MB cache limit
-const CACHE_EXPIRY_DAYS = 7; // Files expire after 7 days
+const CACHE_NAME = 'buddhi-ai-models-cache-v1';
+const MAX_CACHE_SIZE = 5000 * 1024 * 1024; // 5000MB cache limit
+const CACHE_EXPIRY_DAYS = 30; // Files expire after 30 days
 
 /**
  * Checks if a URL is valid and accessible
@@ -88,7 +86,7 @@ async function getCache(): Promise<Cache> {
  */
 function generateCacheUrl(url: string, cacheKey?: string): string {
   const key = cacheKey || `file-${btoa(url).replace(/[^a-zA-Z0-9]/g, '')}`;
-  return `https://cache.mediapipe.local/${key}`;
+  return `https://cache.buddhi-ai.local/${key}`;
 }
 
 /**
@@ -161,9 +159,9 @@ async function clearExpiredCache(cache: Cache): Promise<void> {
  * Attempts to load a file from cache
  * @param url The file URL
  * @param cacheKey Optional custom cache key
- * @returns Promise<ArrayBuffer | null> The cached file data or null if not found/expired
+ * @returns Promise<string | null> The cached file data or null if not found/expired
  */
-async function loadFromCache(url: string, cacheKey?: string): Promise<ArrayBuffer | null> {
+async function loadFromCache(url: string, cacheKey?: string): Promise<string | null> {
   try {
     const cache = await getCache();
     const cacheUrl = generateCacheUrl(url, cacheKey);
@@ -171,7 +169,8 @@ async function loadFromCache(url: string, cacheKey?: string): Promise<ArrayBuffe
     const response = await cache.match(request);
     
     if (response && !isCacheExpired(response)) {
-      return await response.arrayBuffer();
+      const blob = await response.blob();
+      return URL.createObjectURL(blob);
     }
     
     // Remove expired cache entry
@@ -190,12 +189,12 @@ async function loadFromCache(url: string, cacheKey?: string): Promise<ArrayBuffe
  * Downloads a file from URL with progress tracking
  * @param url The file URL
  * @param onProgress Callback for progress updates
- * @returns Promise<ArrayBuffer> The downloaded file data
+ * @returns Promise<string> The downloaded file data
  */
 async function downloadFile(
   url: string, 
   onProgress: (loaded: number, total: number) => void
-): Promise<ArrayBuffer> {
+): Promise<Blob> {
   const response = await fetch(url, {
     mode: 'cors',
     cache: 'no-cache'
@@ -231,18 +230,10 @@ async function downloadFile(
   } finally {
     reader.releaseLock();
   }
+
+  const blob = new Blob(chunks as BlobPart[], { type: 'application/octet-stream' });
   
-  // Combine all chunks into a single ArrayBuffer
-  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.length;
-  }
-  
-  return result.buffer;
+  return blob;
 }
 
 /**
@@ -251,16 +242,16 @@ async function downloadFile(
  * @param data The file data to cache
  * @param cacheKey Optional custom cache key
  */
-async function saveToCache(url: string, data: ArrayBuffer, cacheKey?: string): Promise<void> {
+async function saveToCache(url: string, data: Blob, cacheKey?: string): Promise<void> {
   try {
     const cache = await getCache();
     
     // Check cache size limits
-    if (await wouldExceedCacheLimit(cache, data.byteLength)) {
+    if (await wouldExceedCacheLimit(cache, data.size)) {
       await clearExpiredCache(cache);
       
       // Check again after cleanup
-      if (await wouldExceedCacheLimit(cache, data.byteLength)) {
+      if (await wouldExceedCacheLimit(cache, data.size)) {
         console.warn('Cache size limit exceeded, skipping cache for:', url);
         return;
       }
@@ -269,7 +260,7 @@ async function saveToCache(url: string, data: ArrayBuffer, cacheKey?: string): P
     const cacheUrl = generateCacheUrl(url, cacheKey);
     const headers = new Headers({
       'content-type': 'application/octet-stream',
-      'content-length': data.byteLength.toString(),
+      'content-length': data.size.toString(),
       'x-cache-date': new Date().toISOString(),
       'x-original-url': url
     });
@@ -315,8 +306,6 @@ async function processFile(url: string, cacheKey?: string): Promise<void> {
       sendResponse({
         type: 'progress',
         url,
-        loaded: cachedData.byteLength,
-        total: cachedData.byteLength,
         percentage: 100,
         status: 'complete',
         fromCache: true
@@ -335,8 +324,6 @@ async function processFile(url: string, cacheKey?: string): Promise<void> {
     sendResponse({
       type: 'progress',
       url,
-      loaded: 0,
-      total: 0,
       percentage: 0,
       status: 'downloading',
       fromCache: false
@@ -348,8 +335,6 @@ async function processFile(url: string, cacheKey?: string): Promise<void> {
       sendResponse({
         type: 'progress',
         url,
-        loaded,
-        total,
         percentage,
         status: 'downloading',
         fromCache: false
@@ -360,8 +345,6 @@ async function processFile(url: string, cacheKey?: string): Promise<void> {
     sendResponse({
       type: 'progress',
       url,
-      loaded: data.byteLength,
-      total: data.byteLength,
       percentage: 100,
       status: 'caching',
       fromCache: false
@@ -373,8 +356,6 @@ async function processFile(url: string, cacheKey?: string): Promise<void> {
     sendResponse({
       type: 'progress',
       url,
-      loaded: data.byteLength,
-      total: data.byteLength,
       percentage: 100,
       status: 'complete',
       fromCache: false
@@ -383,7 +364,7 @@ async function processFile(url: string, cacheKey?: string): Promise<void> {
     sendResponse({
       type: 'complete',
       url,
-      data,
+      data: URL.createObjectURL(data),
       fromCache: false
     });
     

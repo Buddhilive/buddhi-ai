@@ -26,25 +26,29 @@ export const useMediapipe = () => {
 
     switch (response.type) {
       case "progress":
-        console.log(`Download ${response.percentage}% complete`);
-        text = `Download ${response.percentage}% complete`;
+        //console.log(`Download ${response.percentage}% complete`);
+        text = `Model downloading. ${response.percentage}% complete...`;
         progress = response.percentage;
+        if (response.status === "caching") {
+          // console.log("Caching model...");
+          text = "Caching model...";
+        }
         if (response.fromCache) {
-          console.log("Model loaded from cache instantly!");
+          // console.log("Model loaded from cache instantly!");
           progress = 100;
-          text = "Model loaded from cache instantly!";
+          text = "Model loaded from cache.";
         }
         break;
 
       case "complete":
-        console.log("Model ready:", response);
-        text = "Model ready";
+        // console.log("Model ready:", response);
+        text = "Model initializing...";
         progress = 100;
         loadEngine(response.data);
         break;
 
       case "error":
-        console.error("Download failed:", response.message);
+        console.error("Download failed:", response);
         text = `Download failed: ${response.message}`;
         break;
     }
@@ -80,16 +84,16 @@ export const useMediapipe = () => {
     initializeMediapipe();
   };
 
-  const loadEngine = async (modelUrl: ArrayBuffer) => {
+  const loadEngine = async (modelUrl: string) => {
     try {
       const genai = await FilesetResolver.forGenAiTasks(
-        // path/to/wasm/root
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai@latest/wasm"
       );
       const llmInference = await LlmInference.createFromOptions(genai, {
         baseOptions: {
-          modelAssetBuffer: new Uint8Array(modelUrl),
+          modelAssetPath: modelUrl,
         },
+        maxTokens: 32000
       });
       setMediaPipeState((prevState) => ({
         ...prevState,

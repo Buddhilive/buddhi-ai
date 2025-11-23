@@ -185,16 +185,16 @@ export default function BuddhiAIChat() {
       content: prompt,
     };
 
-    const promptMessages: any = [systemPrompt, ...messages, userPrompt];
+    const promptMessages = [systemPrompt, ...messages, userPrompt];
 
     setMessages((prevMessages) => [...prevMessages, userPrompt]);
 
     const parts = await generateChatTemplate(promptMessages);
-    console.log("Generated chat template parts:", parts);
+
     await webLLMInstance.generateResponse(
       parts,
       (partialResult, done) => {
-        console.log("Partial result:", partialResult, "Done:", done);
+        // console.log("Partial result:", partialResult, "Done:", done);
         if (!done) {
           setStatus("streaming");
           setMessages((prevMessages) => {
@@ -218,8 +218,6 @@ export default function BuddhiAIChat() {
         }
       }
     );
-    /* console.log("Parts received from WebLLM:", parts); */
-    // setChunks(parts);
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
