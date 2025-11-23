@@ -21,6 +21,8 @@ interface ProgressResponse {
   url: string;
   percentage: number;
   status: 'downloading' | 'caching' | 'complete' | 'error';
+  loaded?: number;
+  total?: number;
   fromCache?: boolean;
 }
 
@@ -336,6 +338,8 @@ async function processFile(url: string, cacheKey?: string): Promise<void> {
         type: 'progress',
         url,
         percentage,
+        loaded,
+        total,
         status: 'downloading',
         fromCache: false
       });

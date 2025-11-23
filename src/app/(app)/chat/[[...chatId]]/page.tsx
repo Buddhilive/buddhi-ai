@@ -380,7 +380,7 @@ export default function BuddhiAIChat() {
                                 filename: contentItem.fileName || "image.png",
                               };
                               return (
-                                <MessageAttachments className="mb-2">
+                                <MessageAttachments className="mb-2" key={"attachment-" + contentIndex}>
                                   <MessageAttachment
                                     data={imageData}
                                     key={"img-" + contentIndex}

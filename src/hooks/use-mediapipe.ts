@@ -20,6 +20,10 @@ export const useMediapipe = () => {
     isInitialized: false,
   });
 
+  const bytesToMegabytes = (bytes: number) => {
+    return (bytes / (1024 * 1024)).toFixed(2);
+  };
+
   const getMediaPipeState = (response: WorkerResponse) => {
     let progress = 0;
     let text = "";
@@ -27,7 +31,9 @@ export const useMediapipe = () => {
     switch (response.type) {
       case "progress":
         //console.log(`Download ${response.percentage}% complete`);
-        text = `Model downloading. ${response.percentage}% complete...`;
+        text = `Model downloading. ${bytesToMegabytes(
+          response.loaded || 0
+        )}/${bytesToMegabytes(response.total || 0)} MB complete...`;
         progress = response.percentage;
         if (response.status === "caching") {
           // console.log("Caching model...");

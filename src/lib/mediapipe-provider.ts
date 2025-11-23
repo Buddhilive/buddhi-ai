@@ -9,6 +9,10 @@ const initMediapipeGenAI = async (callback: (response: WorkerResponse) => void) 
     }
   );
   // console.log("Mediapipe GenAI worker initialized.");
+  let baseUrl = 'http://localhost:3000';
+  if (process && process.env && process.env.NODE_ENV === 'production') {
+    baseUrl = 'https://buddhilive.com';
+  }
 
   // Listen for responses
   worker.onmessage = (event) => {
@@ -23,7 +27,7 @@ const initMediapipeGenAI = async (callback: (response: WorkerResponse) => void) 
   // Start download
   worker.postMessage({
     type: "download",
-    url: `${window.location.origin}/models/gemma-3n-E2B-it-int4-Web.litertlm`, //gemma-3n-E2B-it-int4-Web.litertlm
+    url: `${baseUrl}/models/gemma-3n-E2B-it-int4-Web.litertlm`, //gemma-3n-E2B-it-int4-Web.litertlm
     cacheKey: "gemma-3n-E2B", // gemma-3n-E2B
   });
 };
