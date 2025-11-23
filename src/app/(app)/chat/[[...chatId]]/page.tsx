@@ -299,7 +299,20 @@ export default function BuddhiAIChat() {
           (msg) => msg !== lastUserMessage && msg !== lastAssistantMessage
         );
         setMessages(resetMessages);
-        sendMessage(lastUserMessage.content as string);
+        if (typeof lastUserMessage.content === "string") {
+          sendMessage(lastUserMessage.content);
+        } else {
+          const filteredContents = lastUserMessage.content.filter(
+            (contentItem) => contentItem.type === "text"
+          ) as BuddhiAIChatTemplate[];
+          const combinedText = filteredContents
+            .map((item) => item.text)
+            .join("\n");
+          const files = lastUserMessage.content.filter(
+            (contentItem) => contentItem.type !== "text"
+          ) as BuddhiAIChatTemplate[];
+          sendMessage(combinedText, files);
+        }
       }
     } catch (error) {
       console.error("Error during regeneration:", error);
