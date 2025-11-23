@@ -8,6 +8,8 @@ interface BuddhiAIChatTemplate {
   type: BuddhiAIContentType;
   text?: string;
   url?: string;
+  mediaType?: string;
+  fileName?: string;
 }
 
 interface BuddhiAIMessage {
@@ -90,5 +92,5 @@ const generateChatTemplate = async (
 };
 
 export { generateChatTemplate };
-export type { BuddhiAIMessage, BuddhiAIChatRole };
+export type { BuddhiAIMessage, BuddhiAIChatRole, BuddhiAIChatTemplate };
 
