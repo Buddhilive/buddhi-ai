@@ -149,7 +149,18 @@ export default function BuddhiAIChat() {
       if (!chatId && messages.length > 0) {
         const newChatId = Date.now().toString();
         setChatId(newChatId);
-        const msg = messages.findLast((msg) => msg.role === "user")?.content;
+        let msg = messages.findLast((msg) => msg.role === "user")?.content;
+        if (typeof msg === "object" && Array.isArray(msg)) {
+          msg = msg
+            .map((contentItem) => {
+              if (contentItem.type === "text" && contentItem.text) {
+                return contentItem.text;
+              } else {
+                return "";
+              }
+            })
+            .join("\n");
+        }
         const titleSummary = msg
           ? msg.toString().substring(0, 20) +
             (msg.toString().length > 20 ? "..." : "")
