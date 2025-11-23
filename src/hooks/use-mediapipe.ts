@@ -93,7 +93,7 @@ export const useMediapipe = () => {
         baseOptions: {
           modelAssetPath: modelUrl,
         },
-        maxTokens: 32000
+        maxTokens: 300
       });
       setMediaPipeState((prevState) => ({
         ...prevState,

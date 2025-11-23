@@ -23,8 +23,8 @@ const initMediapipeGenAI = async (callback: (response: WorkerResponse) => void) 
   // Start download
   worker.postMessage({
     type: "download",
-    url: `${window.location.origin}/models/gemma3-1b-it-int4-web.task`, //gemma-3n-E2B-it-int4-Web.litertlm
-    cacheKey: "gemma-3-1B", // gemma-3n-E2B
+    url: `${window.location.origin}/models/gemma-3n-E2B-it-int4-Web.litertlm`, //gemma-3n-E2B-it-int4-Web.litertlm
+    cacheKey: "gemma-3n-E2B", // gemma-3n-E2B
   });
 };
 
