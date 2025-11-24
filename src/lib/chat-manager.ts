@@ -3,12 +3,12 @@ import {
   initializeDB,
   updateItemInStore,
 } from "@/lib/indexeddb";
-import { ChatCompletionMessageParam } from "@mlc-ai/web-llm";
+import { BuddhiAIMessage } from "./chat-template-generator";
 
 export interface BuddhiAISavedChat {
   id: string;
   title?: string;
-  messages: ChatCompletionMessageParam[];
+  messages: BuddhiAIMessage[];
 }
 
 const initChatManager = async (): Promise<IDBDatabase> => {
@@ -26,7 +26,7 @@ const initChatManager = async (): Promise<IDBDatabase> => {
 const saveOrUpdateChatMessages = async (
   idb: IDBDatabase,
   chatId: string,
-  messages: ChatCompletionMessageParam[],
+  messages: BuddhiAIMessage[],
   title?: string,
   isNewChat: boolean = false
 ): Promise<void> => {

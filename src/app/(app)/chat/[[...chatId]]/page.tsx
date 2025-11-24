@@ -5,23 +5,28 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+import {
+  Message,
+  MessageAttachment,
+  MessageAttachments,
+  MessageContent,
+} from "@/components/ai-elements/message";
 import {
   PromptInput,
-  /* PromptInputActionAddAttachments,
+  PromptInputActionAddAttachments,
   PromptInputActionMenu,
   PromptInputActionMenuContent,
-  PromptInputActionMenuTrigger, */
+  PromptInputActionMenuTrigger,
   PromptInputAttachment,
   PromptInputAttachments,
   PromptInputBody,
   /* PromptInputButton, */
   PromptInputHeader,
-  PromptInputSelect,
+  /* PromptInputSelect,
   PromptInputSelectContent,
   PromptInputSelectItem,
   PromptInputSelectTrigger,
-  PromptInputSelectValue,
+  PromptInputSelectValue, */
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputFooter,
@@ -46,10 +51,6 @@ import {
   ReasoningTrigger,
 } from "@/components/ai-elements/reasoning"; */
 import { Loader } from "@/components/ai-elements/loader";
-import {
-  ChatCompletionChunk,
-  ChatCompletionMessageParam,
-} from "@mlc-ai/web-llm";
 import { useParams, useRouter } from "next/navigation";
 import {
   BuddhiAISavedChat,
@@ -60,9 +61,15 @@ import { closeDatabase, getAllFromStore, getItemByKey } from "@/lib/indexeddb";
 import { toast } from "sonner";
 import { SYSTEM_PROMPT } from "@/const/system-prompt";
 import { useChatStore } from "@/stores/chatStore";
-import { useWebLLMStore } from "@/stores/webllmStore";
+import { useWebLLMStore } from "@/stores/mediaPipeStore";
+import {
+  BuddhiAIChatTemplate,
+  BuddhiAIMessage,
+  generateChatTemplate,
+} from "@/lib/chat-template-generator";
+import { FileUIPart } from "ai";
 
-const models = [
+/* const models = [
   {
     name: "Llama 3.2 1B Instruct",
     value: "Llama-3.2-1B-Instruct-q4f32_1-MLC",
@@ -71,17 +78,14 @@ const models = [
     name: "Qwen 3 0.6B",
     value: "Qwen3-0.6B-q4f32_1-MLC",
   },
-];
+]; */
 
 export default function BuddhiAIChat() {
   const [input, setInput] = useState("");
-  const [model, setModel] = useState<string>(models[0].value);
+  /* const [model, setModel] = useState<string>(models[0].value); */
   /* const [webSearch, setWebSearch] = useState(false); */
-  const { webLLMInstance, webLLMModel, setWebLLMModel } = useWebLLMStore();
-  const [messages, setMessages] = useState<Array<ChatCompletionMessageParam>>(
-    []
-  );
-  const [chunks, setChunks] = useState<AsyncIterable<ChatCompletionChunk>>();
+  const { webLLMInstance } = useWebLLMStore();
+  const [messages, setMessages] = useState<Array<BuddhiAIMessage>>([]);
   const [status, setStatus] = useState<
     "submitted" | "streaming" | "ready" | "error"
   >("ready");
@@ -104,44 +108,6 @@ export default function BuddhiAIChat() {
       closeDatabase(chatDB!);
     };
   }, []);
-
-  /* Handle chat streaming */
-  useEffect(() => {
-    const processChunks = async () => {
-      if (!chunks) return;
-      for await (const chunk of chunks) {
-        setStatus("streaming");
-        // console.log("Chunk received:", chunk);
-        if (chunk.choices && chunk.choices.length > 0) {
-          const delta = chunk.choices[0].delta;
-          if (delta.content) {
-            setMessages((prevMessages) => {
-              const lastMessage = prevMessages[prevMessages.length - 1];
-              if (lastMessage && lastMessage.role === "assistant") {
-                const updatedMessage: ChatCompletionMessageParam = {
-                  ...lastMessage,
-                  content: (lastMessage.content || "") + delta.content,
-                };
-                return [...prevMessages.slice(0, -1), updatedMessage];
-              } else {
-                const newMessage: ChatCompletionMessageParam = {
-                  role: "assistant" as const,
-                  content: delta.content,
-                };
-                return [...prevMessages, newMessage];
-              }
-            });
-          } else {
-            if (chunk.choices[0].finish_reason) {
-              setStatus("ready");
-            }
-          }
-        }
-      }
-    };
-
-    processChunks();
-  }, [chunks]);
 
   const initChat = async () => {
     try {
@@ -170,7 +136,6 @@ export default function BuddhiAIChat() {
         setMessages([]);
       }
       setInput("");
-      setChunks(undefined);
       setStatus("ready");
     } catch (error) {
       console.error("Error initializing chat:", error);
@@ -184,21 +149,24 @@ export default function BuddhiAIChat() {
       if (!chatId && messages.length > 0) {
         const newChatId = Date.now().toString();
         setChatId(newChatId);
-        const titleSummary = await webLLMInstance?.chat.completions.create({
-          model: models[0].value,
-          messages: [
-            {
-              role: "system",
-              content:
-                "Provide a short title for this conversation in less than 10 tokens.",
-            },
-            messages.findLast((msg) => msg.role === "user")!,
-          ],
-          max_tokens: 10
-        });
+        let msg = messages.findLast((msg) => msg.role === "user")?.content;
+        if (typeof msg === "object" && Array.isArray(msg)) {
+          msg = msg
+            .map((contentItem) => {
+              if (contentItem.type === "text" && contentItem.text) {
+                return contentItem.text;
+              } else {
+                return "";
+              }
+            })
+            .join("\n");
+        }
+        const titleSummary = msg
+          ? msg.toString().substring(0, 20) +
+            (msg.toString().length > 20 ? "..." : "")
+          : null;
 
-        const title =
-          titleSummary?.choices[0].message.content ?? `Chat ${newChatId}`;
+        const title = titleSummary || `Chat ${newChatId}`;
         saveOrUpdateChatMessages(chatDB!, newChatId, messages, title, true);
         router.push(`/chat/${newChatId}`);
       }
@@ -223,7 +191,10 @@ export default function BuddhiAIChat() {
     }
   }, [messages, status]);
 
-  const sendMessage = async (prompt: string) => {
+  const sendMessage = async (
+    prompt: string,
+    files?: BuddhiAIChatTemplate[]
+  ) => {
     setStatus("submitted");
     if (!webLLMInstance) {
       console.error("WebLLM engine is not initialized.");
@@ -231,38 +202,98 @@ export default function BuddhiAIChat() {
       toast.error("WebLLM engine is not initialized.");
       return;
     }
-    const systemPrompt: ChatCompletionMessageParam = SYSTEM_PROMPT;
-    const userPrompt: ChatCompletionMessageParam = {
+    const systemPrompt: BuddhiAIMessage = SYSTEM_PROMPT;
+
+    const userPrompt: BuddhiAIMessage = {
       role: "user",
-      content: prompt,
+      content: [
+        ...(files && files.length > 0 ? files : []),
+        { type: "text", text: prompt },
+      ],
     };
+
+    // console.log("User prompt:", userPrompt, files);
 
     const promptMessages = [systemPrompt, ...messages, userPrompt];
 
     setMessages((prevMessages) => [...prevMessages, userPrompt]);
 
-    const parts = await webLLMInstance.chat.completions.create({
-      model: webLLMModel || model,
-      messages: promptMessages,
-      stream: true,
-      extra_body: {
-        enable_thinking: false,
-      },
-    });
-    /* console.log("Parts received from WebLLM:", parts); */
-    setChunks(parts);
+    const parts = await generateChatTemplate(promptMessages);
+
+    try {
+      const tokenCount = (await webLLMInstance.sizeInTokens(parts)) || 0;
+      if (tokenCount > 31000) {
+        console.error("Prompt exceeds the model's maximum token limit.");
+        setStatus("error");
+        setMessages((prevMessages) => prevMessages.slice(0, -1));
+        toast.error("Context exceeds the model's maximum token limit.");
+        return;
+      }
+      await webLLMInstance.generateResponse(parts, (partialResult, done) => {
+        // console.log("Partial result:", partialResult, "Done:", done);
+        if (!done) {
+          setStatus("streaming");
+          setMessages((prevMessages) => {
+            const lastMessage = prevMessages[prevMessages.length - 1];
+            if (lastMessage && lastMessage.role === "assistant") {
+              const updatedMessage: BuddhiAIMessage = {
+                ...lastMessage,
+                content: (lastMessage.content || "") + partialResult,
+              };
+              return [...prevMessages.slice(0, -1), updatedMessage];
+            } else {
+              const newMessage: BuddhiAIMessage = {
+                role: "assistant" as const,
+                content: partialResult,
+              };
+              return [...prevMessages, newMessage];
+            }
+          });
+        } else {
+          setStatus("ready");
+        }
+      });
+    } catch (error) {
+      console.error("Error during message generation:", error);
+      setStatus("error");
+      toast.error("Error during message generation.");
+    }
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleSubmit = (message: any) => {
     const hasText = Boolean(message.text);
     const hasAttachments = Boolean(message.files?.length);
+    let attachements: BuddhiAIChatTemplate[] = [];
 
     if (!(hasText || hasAttachments)) {
       return;
     }
 
-    sendMessage(message.text);
+    if (hasAttachments) {
+      attachements = message.files.map((file: FileUIPart) => {
+        let content: BuddhiAIChatTemplate = { type: "text", text: "" };
+        if (file.mediaType.startsWith("image/")) {
+          content = {
+            type: "image",
+            url: file.url,
+            fileName: file.filename,
+            mediaType: file.mediaType,
+          };
+        } else if (file.mediaType.startsWith("audio/")) {
+          content = {
+            type: "audio",
+            url: file.url,
+            fileName: file.filename,
+            mediaType: file.mediaType,
+          };
+        }
+        return content;
+      });
+      // console.log("Attachments processed:", attachements);
+    }
+
+    sendMessage(message.text, attachements);
     setInput("");
   };
 
@@ -279,7 +310,20 @@ export default function BuddhiAIChat() {
           (msg) => msg !== lastUserMessage && msg !== lastAssistantMessage
         );
         setMessages(resetMessages);
-        sendMessage(lastUserMessage.content as string);
+        if (typeof lastUserMessage.content === "string") {
+          sendMessage(lastUserMessage.content);
+        } else {
+          const filteredContents = lastUserMessage.content.filter(
+            (contentItem) => contentItem.type === "text"
+          ) as BuddhiAIChatTemplate[];
+          const combinedText = filteredContents
+            .map((item) => item.text)
+            .join("\n");
+          const files = lastUserMessage.content.filter(
+            (contentItem) => contentItem.type !== "text"
+          ) as BuddhiAIChatTemplate[];
+          sendMessage(combinedText, files);
+        }
       }
     } catch (error) {
       console.error("Error during regeneration:", error);
@@ -321,9 +365,39 @@ export default function BuddhiAIChat() {
                 <Fragment key={`${index}`}>
                   <Message from={message.role}>
                     <MessageContent>
-                      <MessageResponse>
-                        {message.content as string}
-                      </MessageResponse>
+                      {typeof message.content === "string" ? (
+                        <MessageResponse>
+                          {message.content as string}
+                        </MessageResponse>
+                      ) : (
+                        (message.content as BuddhiAIChatTemplate[]).map(
+                          (contentItem, contentIndex) => {
+                            if (contentItem.type === "image") {
+                              const imageData: FileUIPart = {
+                                type: "file",
+                                url: contentItem.url || "",
+                                mediaType: contentItem.mediaType || "image/png",
+                                filename: contentItem.fileName || "image.png",
+                              };
+                              return (
+                                <MessageAttachments className="mb-2" key={"attachment-" + contentIndex}>
+                                  <MessageAttachment
+                                    data={imageData}
+                                    key={"img-" + contentIndex}
+                                  />
+                                </MessageAttachments>
+                              );
+                            } else if (contentItem.type === "text") {
+                              return (
+                                <MessageResponse key={contentIndex}>
+                                  {contentItem.text}
+                                </MessageResponse>
+                              );
+                            }
+                            return null;
+                          }
+                        )
+                      )}
                     </MessageContent>
                   </Message>
                   {message.role === "assistant" &&
@@ -360,6 +434,7 @@ export default function BuddhiAIChat() {
           className="mt-4"
           globalDrop
           multiple
+          accept="image/*"
         >
           <PromptInputHeader>
             <PromptInputAttachments>
@@ -374,12 +449,12 @@ export default function BuddhiAIChat() {
           </PromptInputBody>
           <PromptInputFooter>
             <PromptInputTools>
-              {/* <PromptInputActionMenu>
-                    <PromptInputActionMenuTrigger />
-                    <PromptInputActionMenuContent>
-                      <PromptInputActionAddAttachments />
-                    </PromptInputActionMenuContent>
-                  </PromptInputActionMenu> */}
+              <PromptInputActionMenu>
+                <PromptInputActionMenuTrigger />
+                <PromptInputActionMenuContent>
+                  <PromptInputActionAddAttachments />
+                </PromptInputActionMenuContent>
+              </PromptInputActionMenu>
               {/* <PromptInputButton
                     variant={webSearch ? "default" : "ghost"}
                     onClick={() => setWebSearch(!webSearch)}
@@ -387,7 +462,7 @@ export default function BuddhiAIChat() {
                     <GlobeIcon size={16} />
                     <span>Search</span>
                   </PromptInputButton> */}
-              <PromptInputSelect
+              {/*<PromptInputSelect
                 onValueChange={(value) => {
                   setModel(value);
                   setWebLLMModel(value);
@@ -407,7 +482,7 @@ export default function BuddhiAIChat() {
                     </PromptInputSelectItem>
                   ))}
                 </PromptInputSelectContent>
-              </PromptInputSelect>
+              </PromptInputSelect>*/}
             </PromptInputTools>
             <PromptInputSubmit disabled={!input && !status} status={status} />
           </PromptInputFooter>

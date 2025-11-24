@@ -17,15 +17,14 @@ const notoMono = Noto_Sans_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Buddhi AI - Private Client-Side AI Tools | Chat, Summarizer, Writer",
+    default: "Buddhi AI - Private Client-Side AI",
     template: "%s | Buddhi AI"
   },
-  description: "Experience the future of private AI with Buddhi AI - powerful client-side tools including Chat, Summarizer, and Writer. Privacy-first AI that runs directly in your browser using Chrome's Built-in AI.",
+  description: "Experience the future of private AI with Buddhi AI. Privacy-first AI that runs directly in your browser.",
   keywords: [
     "AI tools",
     "client-side AI",
     "private AI",
-    "Chrome Built-in AI",
     "browser AI",
     "AI chat",
     "text summarizer",

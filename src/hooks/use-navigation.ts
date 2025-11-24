@@ -66,7 +66,7 @@ export function useNavigation(): NavigationState {
       breadcrumbTitle,
       navItems
     };
-  }, [pathname]);
+  }, [pathname, currentChat]);
 
   return navigationState;
 }

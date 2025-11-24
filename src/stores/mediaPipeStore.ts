@@ -1,11 +1,11 @@
-import { MLCEngineInterface } from '@mlc-ai/web-llm';
+import { LlmInference } from '@mediapipe/tasks-genai';
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 
 interface WebLLMState {
-  webLLMInstance?: MLCEngineInterface;
+  webLLMInstance?: LlmInference;
   webLLMModel?: string;
-  setWebLLMInstance: (instance?: MLCEngineInterface) => void;
+  setWebLLMInstance: (instance?: LlmInference) => void;
   setWebLLMModel: (model?: string) => void;
 }
 
