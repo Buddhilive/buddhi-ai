@@ -156,7 +156,7 @@ export default function PrivacyPolicyPage() {
             </h2>
             <p className="text-muted-foreground leading-relaxed mb-6">
               While your AI interactions are completely private, we do utilize a third-party service to gather 
-              non-personal data regarding the application's overall usage and performance.
+              non-personal data regarding the application&apos;s overall usage and performance.
             </p>
 
             <div className="space-y-6">
@@ -198,7 +198,7 @@ export default function PrivacyPolicyPage() {
                 <CardContent className="p-6">
                   <h3 className="text-xl font-semibold mb-4">B. Data Minimization and Storage</h3>
                   <p className="text-muted-foreground">
-                    Your conversation history is stored within your browser's local storage (IndexedDB). You maintain full control 
+                    Your conversation history is stored within your browser&apos;s local storage (IndexedDB). You maintain full control 
                     over this data and can clear this history at any time through the application interface or your browser settings.
                   </p>
                 </CardContent>
@@ -224,7 +224,7 @@ export default function PrivacyPolicyPage() {
             <CardContent className="p-6">
               <h2 className="text-2xl font-bold mb-4">5. Updates and Contact Information</h2>
               <p className="text-muted-foreground">
-                We may update this Privacy Policy from time to time. When we make updates, the "Effective Date" at the top will be revised.
+                We may update this Privacy Policy from time to time. When we make updates, the &quot;Effective Date&quot; at the top will be revised.
               </p>
             </CardContent>
           </Card>
@@ -235,7 +235,7 @@ export default function PrivacyPolicyPage() {
               <h3 className="text-2xl font-bold mb-4">Your Privacy is Guaranteed</h3>
               <p className="text-muted-foreground max-w-2xl mx-auto">
                 With Buddhi AI, you can be confident that your conversations, data, and AI interactions remain completely private 
-                and secure on your device. We've built privacy into the core architecture, not as an afterthought.
+                and secure on your device. We&apos;ve built privacy into the core architecture, not as an afterthought.
               </p>
               <div className="flex flex-wrap justify-center gap-4 mt-6 text-sm">
                 <div className="flex items-center gap-2">
