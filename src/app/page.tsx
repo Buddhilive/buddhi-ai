@@ -191,9 +191,17 @@ export default function Home() {
             <Image src="/icons/favicon-32x32.png" alt="Buddhi AI Logo" width={32} height={32} />
             <span className="text-2xl font-extralight leading-none"><strong className="font-bold">Buddhi</strong>AI</span>
           </div>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground mb-4">
             Copyright &copy; {new Date().getFullYear()} Buddhilive Research | The future of private, client-side intelligence.
           </p>
+          <div className="flex justify-center gap-6">
+            <Link href="/privacy-policy" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+              Privacy Policy
+            </Link>
+            <Link href="/terms-and-conditions" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+              Terms and Conditions
+            </Link>
+          </div>
         </div>
       </footer>
     </div>

@@ -18,7 +18,7 @@ const initializeDB = (
 
       request.onsuccess = () => {
         const db = request.result;
-        console.log("IndexedDB opened successfully");
+        console.log("Buddhi AI IndexedDB opened successfully");
         resolve(db);
       };
 

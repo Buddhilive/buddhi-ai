@@ -15,10 +15,10 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { useNavigation } from "@/hooks/use-navigation";
-import { useWebLLM } from "@/hooks/use-webllm";
 import { WebLLMLoading } from "@/components/webllm-loading";
-import { useWebLLMStore } from "@/stores/webllmStore";
+import { useWebLLMStore } from "@/stores/mediaPipeStore";
 import { useEffect } from "react";
+import { useMediapipe } from "@/hooks/use-mediapipe";
 
 export default function AppLayout({
   children,
@@ -26,16 +26,16 @@ export default function AppLayout({
   children: React.ReactNode;
 }>) {
   const { breadcrumbTitle } = useNavigation();
-  const { webLLMState, retryInitialization } = useWebLLM();
+  const { mediaPipeState, retryInitialization } = useMediapipe();
   const { setWebLLMInstance } = useWebLLMStore();
 
   useEffect(() => {
-    if (webLLMState.engine) setWebLLMInstance(webLLMState.engine);
-  }, [webLLMState.engine, setWebLLMInstance]);
+    if (mediaPipeState.engine) setWebLLMInstance(mediaPipeState.engine);
+  }, [mediaPipeState.engine, setWebLLMInstance]);
 
   return (
     <>
-      {webLLMState.isInitialized ? (
+      {mediaPipeState.isInitialized ? (
         <SidebarProvider>
           <AppSidebar />
           <SidebarInset>
@@ -64,7 +64,7 @@ export default function AppLayout({
           </SidebarInset>
         </SidebarProvider>
       ) : (
-        <WebLLMLoading {...webLLMState} onRetry={retryInitialization} />
+        <WebLLMLoading {...mediaPipeState} onRetry={retryInitialization} />
       )}
     </>
   );

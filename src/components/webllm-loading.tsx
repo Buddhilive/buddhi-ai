@@ -1,11 +1,13 @@
-import { WebLLMState } from "@/hooks/use-webllm";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertTriangle, Info, RefreshCw } from "lucide-react";
 import Image from "next/image";
+import { mediaPipeState } from "@/hooks/use-mediapipe";
+import { useState, useEffect } from "react";
+import { version } from "../../package.json";
 
-interface WebLLMLoadingProps extends WebLLMState {
+interface WebLLMLoadingProps extends mediaPipeState {
   onRetry?: () => void;
 }
 
@@ -13,6 +15,17 @@ export const WebLLMLoading = ({
   onRetry,
   ...webLLMState
 }: WebLLMLoadingProps) => {
+  const [timeElapsed, setTimeElapsed] = useState(0);
+
+  useEffect(() => {
+    const startTime = Date.now();
+    const interval = setInterval(() => {
+      setTimeElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   if (webLLMState.error) {
     return (
       <div className="flex-1 flex items-center justify-center p-6 h-[calc(100vh-56px)]">
@@ -60,6 +73,9 @@ export const WebLLMLoading = ({
             <span className="text-4xl font-extralight leading-none">
               <strong className="font-bold">Buddhi</strong>AI
             </span>
+            <span className="text-xs text-muted-foreground mt-1">
+              Version: {version}
+            </span>
           </div>
           <p className="text-xs text-muted-foreground mt-6">
             {webLLMState.text}
@@ -67,13 +83,13 @@ export const WebLLMLoading = ({
         </div>
         <div className="space-y-2">
           <Progress
-            value={Number((webLLMState.progress * 100).toFixed(2))}
+            value={Number(webLLMState.progress.toFixed(2))}
             className="w-full"
           />
           <div className="flex justify-between items-center text-sm text-muted-foreground">
-            <span>{(webLLMState.progress * 100).toFixed(2)}%</span>
-            {webLLMState.timeElapsed > 0 ? (
-              <span>{secondsToHms(webLLMState.timeElapsed)}</span>
+            <span>{webLLMState.progress.toFixed(2)}%</span>
+            {timeElapsed > 0 ? (
+              <span>{secondsToHms(timeElapsed)}</span>
             ) : (
               <span>Waiting...</span>
             )}

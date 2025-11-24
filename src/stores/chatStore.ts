@@ -1,17 +1,17 @@
 import { BuddhiAISavedChat } from '@/lib/chat-manager';
-import { ChatCompletionAssistantMessageParam } from '@mlc-ai/web-llm';
+import { BuddhiAIMessage } from '@/lib/chat-template-generator';
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 
 interface ChatState {
-  messages: ChatCompletionAssistantMessageParam[];
+  messages: BuddhiAIMessage[];
   inputValue: string;
   chatHistory: BuddhiAISavedChat[];
   chatDB?: IDBDatabase;
   currentChat: BuddhiAISavedChat | null;
   setChatDB: (db: IDBDatabase) => void;
-  addMessage: (message: ChatCompletionAssistantMessageParam) => void;
-  setMessages: (messages: ChatCompletionAssistantMessageParam[]) => void;
+  addMessage: (message: BuddhiAIMessage) => void;
+  setMessages: (messages: BuddhiAIMessage[]) => void;
   setChatHistory: (chatHistory: BuddhiAISavedChat[]) => void;
   setInputValue: (value: string) => void;
   setCurrentChat: (chat: BuddhiAISavedChat | null) => void;
@@ -33,6 +33,6 @@ export const useChatStore = create<ChatState>()(
     setCurrentChat: (currentChat) => set({ currentChat }),   
     clearMessages: () => set({ 
       messages: [],
-    }),
+    })
   }))
 );
