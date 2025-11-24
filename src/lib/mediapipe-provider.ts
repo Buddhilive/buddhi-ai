@@ -9,9 +9,9 @@ const initMediapipeGenAI = async (callback: (response: WorkerResponse) => void) 
     }
   );
   // console.log("Mediapipe GenAI worker initialized.");
-  let baseUrl = 'http://localhost:3000';
+  let baseUrl = 'http://localhost:3000/models/gemma-3n-E2B-it-int4-Web.litertlm';
   if (process && process.env && process.env.NODE_ENV === 'production') {
-    baseUrl = 'https://buddhilive.com';
+    baseUrl = 'https://huggingface.co/berkeliumlabs/gemma-3n-E2B/resolve/main/gemma-3n-E2B-it-int4-Web.litertlm?download=true';
   }
 
   // Listen for responses
@@ -27,7 +27,7 @@ const initMediapipeGenAI = async (callback: (response: WorkerResponse) => void) 
   // Start download
   worker.postMessage({
     type: "download",
-    url: `${baseUrl}/models/gemma-3n-E2B-it-int4-Web.litertlm`, //gemma-3n-E2B-it-int4-Web.litertlm
+    url: baseUrl, //gemma-3n-E2B-it-int4-Web.litertlm
     cacheKey: "gemma-3n-E2B", // gemma-3n-E2B
   });
 };
