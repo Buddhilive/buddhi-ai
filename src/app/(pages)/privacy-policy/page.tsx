@@ -1,12 +1,40 @@
-import { Shield, Lock, Database, Eye, CheckCircle } from "lucide-react";
+"use client";
+
+import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { Shield, Lock, Database, Eye, CheckCircle, ArrowLeft } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import Image from "next/image";
 
 export default function PrivacyPolicyPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      <div className="container mx-auto px-4 py-16">
-        <div className="max-w-4xl mx-auto">
+      {/* Header */}
+      <header className="fixed top-0 w-full z-50 backdrop-blur-md bg-background/80 border-b border-border/50">
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2 animate-fade-in">
+            <Image src="/icons/favicon-32x32.png" alt="Buddhi AI Logo" width={32} height={32} />
+            <span className="text-2xl font-extralight leading-none"><strong className="font-bold">Buddhi</strong>AI</span>
+          </div>
+          <ThemeToggle />
+        </div>
+      </header>
+
+      {/* Content */}
+      <div className="pt-24 pb-16 px-4">
+        <div className="container mx-auto">
+          <div className="max-w-4xl mx-auto">
+            {/* Back Button */}
+            <div className="mb-8">
+              <Button asChild variant="outline" size="sm" className="animate-fade-in">
+                <Link href="/">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Home
+                </Link>
+              </Button>
+            </div>
           {/* Header */}
           <div className="text-center mb-12 animate-fade-in-up">
             <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-6">
@@ -224,9 +252,31 @@ export default function PrivacyPolicyPage() {
                 </div>
               </div>
             </div>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Footer */}
+      <footer className="py-12 px-4 border-t border-border/50">
+        <div className="container mx-auto text-center">
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <Image src="/icons/favicon-32x32.png" alt="Buddhi AI Logo" width={32} height={32} />
+            <span className="text-2xl font-extralight leading-none"><strong className="font-bold">Buddhi</strong>AI</span>
+          </div>
+          <p className="text-muted-foreground mb-4">
+            Copyright &copy; {new Date().getFullYear()} Buddhilive Academy | The future of private, client-side intelligence.
+          </p>
+          <div className="flex justify-center gap-6">
+            <Link href="/privacy-policy" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+              Privacy Policy
+            </Link>
+            <Link href="/terms-and-conditions" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+              Terms and Conditions
+            </Link>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -194,9 +194,12 @@ export default function Home() {
           <p className="text-muted-foreground mb-4">
             Copyright &copy; {new Date().getFullYear()} Buddhilive Research | The future of private, client-side intelligence.
           </p>
-          <div className="flex justify-center">
+          <div className="flex justify-center gap-6">
             <Link href="/privacy-policy" className="text-sm text-muted-foreground hover:text-primary transition-colors">
               Privacy Policy
+            </Link>
+            <Link href="/terms-and-conditions" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+              Terms and Conditions
             </Link>
           </div>
         </div>
