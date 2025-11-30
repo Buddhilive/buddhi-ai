@@ -20,7 +20,7 @@ import {
   PromptInputAttachment,
   PromptInputAttachments,
   PromptInputBody,
-  /* PromptInputButton, */
+  PromptInputButton,
   PromptInputHeader,
   /* PromptInputSelect,
   PromptInputSelectContent,
@@ -38,7 +38,7 @@ import {
   MessageAction,
   MessageResponse,
 } from "@/components/ai-elements/message";
-import { CopyIcon, /* GlobeIcon, */ RefreshCcwIcon } from "lucide-react";
+import { CopyIcon, FilePlus2, RefreshCcwIcon } from "lucide-react";
 /* import {
   Source,
   Sources,
@@ -68,6 +68,7 @@ import {
   generateChatTemplate,
 } from "@/lib/chat-template-generator";
 import { FileUIPart } from "ai";
+import { getEmbeddings } from "@/lib/text-embeddings";
 
 /* const models = [
   {
@@ -83,7 +84,7 @@ import { FileUIPart } from "ai";
 export default function BuddhiAIChat() {
   const [input, setInput] = useState("");
   /* const [model, setModel] = useState<string>(models[0].value); */
-  /* const [webSearch, setWebSearch] = useState(false); */
+  const [sourceFiles, setSourceFiles] = useState([]);
   const { webLLMInstance } = useWebLLMStore();
   const [messages, setMessages] = useState<Array<BuddhiAIMessage>>([]);
   const [status, setStatus] = useState<
@@ -331,6 +332,12 @@ export default function BuddhiAIChat() {
     }
   };
 
+  const handleSourceFiles = () => {
+    // Implement file picker logic here
+    getEmbeddings(['namo buddhaya!']);
+    console.log("Add source files button clicked");
+  }
+
   return (
     <div className="mx-auto max-w-4xl px-6 pb-6 relative size-full h-[calc(100vh-4rem)] no-scrollbar">
       <div className="flex flex-col h-full">
@@ -455,13 +462,13 @@ export default function BuddhiAIChat() {
                   <PromptInputActionAddAttachments />
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
-              {/* <PromptInputButton
-                    variant={webSearch ? "default" : "ghost"}
-                    onClick={() => setWebSearch(!webSearch)}
+              <PromptInputButton
+                    variant={sourceFiles.length > 0 ? "default" : "ghost"}
+                    onClick={handleSourceFiles}
                   >
-                    <GlobeIcon size={16} />
-                    <span>Search</span>
-                  </PromptInputButton> */}
+                    <FilePlus2 size={16} />
+                    <span>Add Files</span>
+                  </PromptInputButton>
               {/*<PromptInputSelect
                 onValueChange={(value) => {
                   setModel(value);
