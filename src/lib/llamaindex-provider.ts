@@ -11,6 +11,13 @@ import {
 } from "llamaindex";
 import { FilesetResolver, TextEmbedder } from "@mediapipe/tasks-text";
 
+let modelPath =
+  "https://storage.googleapis.com/mediapipe-models/text_embedder/universal_sentence_encoder/float32/1/universal_sentence_encoder.tflite";
+
+if (process.env.NODE_ENV === "development") {
+  modelPath = "http://localhost:3000/models/universal_sentence_encoder.tflite";
+}
+
 class MediaPipeEmbedding extends BaseEmbedding {
   private embedder: TextEmbedder | null = null;
 
@@ -24,8 +31,7 @@ class MediaPipeEmbedding extends BaseEmbedding {
     );
     this.embedder = await TextEmbedder.createFromOptions(textFileset, {
       baseOptions: {
-        modelAssetPath:
-          "https://storage.googleapis.com/mediapipe-models/text_embedder/universal_sentence_encoder/float32/1/universal_sentence_encoder.tflite",
+        modelAssetPath: modelPath,
       },
     });
   }

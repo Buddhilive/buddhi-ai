@@ -68,7 +68,11 @@ import {
   generateChatTemplate,
 } from "@/lib/chat-template-generator";
 import { FileUIPart } from "ai";
-import { getEmbeddings } from "@/lib/text-embeddings";
+import {
+  chunkText,
+  createVectorIndex,
+  retrieveSegments,
+} from "@/lib/llamaindex-provider";
 
 /* const models = [
   {
@@ -332,11 +336,34 @@ export default function BuddhiAIChat() {
     }
   };
 
-  const handleSourceFiles = () => {
+  const handleSourceFiles = async () => {
     // Implement file picker logic here
-    getEmbeddings(['namo buddhaya!']);
-    console.log("Add source files button clicked");
-  }
+    const sampleText = `
+    LlamaIndex is a data framework for LLM-based applications. 
+    It allows users to ingest, structure, and access private data.
+    MediaPipe is a cross-platform framework for building multimodal machine learning pipelines.
+    It provides ready-to-use solutions for vision, text, and audio tasks.
+    By combining LlamaIndex and MediaPipe, developers can build powerful local RAG systems.
+    Typescript support in LlamaIndex is growing and supports Vercel AI SDK.
+  `;
+
+    try {
+      // Step 1: Chunk the text
+      const chunks = await chunkText(sampleText);
+
+      // Step 2: Create Index (Embedding happens here)
+      const index = await createVectorIndex(chunks);
+
+      // Step 3: Retrieve relevant chunks
+      const retrievedSegments = await retrieveSegments(
+        index,
+        "What is MediaPipe?"
+      );
+      console.log("Retrieved segments:", retrievedSegments);
+    } catch (error) {
+      console.error("Error:", error);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-4xl px-6 pb-6 relative size-full h-[calc(100vh-4rem)] no-scrollbar">
@@ -387,7 +414,10 @@ export default function BuddhiAIChat() {
                                 filename: contentItem.fileName || "image.png",
                               };
                               return (
-                                <MessageAttachments className="mb-2" key={"attachment-" + contentIndex}>
+                                <MessageAttachments
+                                  className="mb-2"
+                                  key={"attachment-" + contentIndex}
+                                >
                                   <MessageAttachment
                                     data={imageData}
                                     key={"img-" + contentIndex}
@@ -463,12 +493,12 @@ export default function BuddhiAIChat() {
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
               <PromptInputButton
-                    variant={sourceFiles.length > 0 ? "default" : "ghost"}
-                    onClick={handleSourceFiles}
-                  >
-                    <FilePlus2 size={16} />
-                    <span>Add Files</span>
-                  </PromptInputButton>
+                variant={sourceFiles.length > 0 ? "default" : "ghost"}
+                onClick={handleSourceFiles}
+              >
+                <FilePlus2 size={16} />
+                <span>Add Files</span>
+              </PromptInputButton>
               {/*<PromptInputSelect
                 onValueChange={(value) => {
                   setModel(value);
