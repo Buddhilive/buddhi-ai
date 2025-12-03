@@ -10,6 +10,8 @@ import {
   MessageContentDetail,
 } from "llamaindex";
 import { FilesetResolver, TextEmbedder } from "@mediapipe/tasks-text";
+import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 
 let modelPath =
   "https://storage.googleapis.com/mediapipe-models/text_embedder/universal_sentence_encoder/float32/1/universal_sentence_encoder.tflite";
@@ -100,6 +102,20 @@ const createVectorIndex = async (nodes: any[]) => {
 
   console.log("\n--- Generating Embeddings & Indexing ---");
 
+  const db = new PGlite("idb://my-pgdata", {
+    extensions: { vector },
+  });
+  await db.waitReady; // Ensure WASM is loaded
+  await db.query(`
+    CREATE EXTENSION IF NOT EXISTS vector;
+    CREATE TABLE IF NOT EXISTS embeddings (
+      id TEXT PRIMARY KEY,
+      text TEXT,
+      metadata JSONB,
+      embedding vector(512)
+    );
+  `);
+  console.log("DB initialized with persistence.", db);
   // VectorStoreIndex.fromDocuments automatically:
   // 1. Calculates embeddings using Settings.embedModel
   // 2. Stores them in a default in-memory SimpleVectorStore
