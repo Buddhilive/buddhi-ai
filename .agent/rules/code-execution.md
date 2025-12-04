@@ -6,23 +6,26 @@ trigger: always_on
 
 ## Project Overview
 
-Buddhilive AI is an advanced AI-powered web search platform which search the web in real-time to provide users with the most accurate and up-to-date information using WebLLM.
+Buddhi AI is an advanced AI-powered in-browser AI.
 
-## Instructions for GitHub Copilot
+## Instructions
 
 1. **Understand the Project**: Familiarize yourself with the Buddhilive AI project.
 2. **Code Quality**: Ensure that all code suggestions adhere to best practices for readability, maintainability, and performance.
 3. **Feature Implementation**: When suggesting code for new features, ensure they align with the overall architecture and design patterns of the project.
 4. **Bug Fixes**: When suggesting fixes for bugs, provide clear explanations of the changes made and why they resolve the issue.
 5. **Error Handling**: Ensure that all code suggestions include appropriate error handling and edge case considerations. Handle potential exceptions gracefully.
+6. **UI Design**: Always make sure the UI match the current theme of the application and always add Tailwind style classes for light mode and dark mode.
 
 ## Core technologies
 
 - Next.js
 - Shadcn UI
 - Tailwind CSS
-- LangSearch
-- WebLLM
+- Mediapipe
+- PGlite
+- LlamaIndex TypeScript
+- Gemma 3n
 
 ## Don'ts
 

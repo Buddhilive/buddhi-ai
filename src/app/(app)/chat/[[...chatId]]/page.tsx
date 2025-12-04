@@ -73,6 +73,7 @@ import {
   createVectorIndex,
   retrieveSegments,
 } from "@/lib/llamaindex-provider";
+import DocumentManager from "@/components/custom/document-manager";
 
 /* const models = [
   {
@@ -336,34 +337,7 @@ export default function BuddhiAIChat() {
     }
   };
 
-  const handleSourceFiles = async () => {
-    // Implement file picker logic here
-    const sampleText = `
-    LlamaIndex is a data framework for LLM-based applications. 
-    It allows users to ingest, structure, and access private data.
-    MediaPipe is a cross-platform framework for building multimodal machine learning pipelines.
-    It provides ready-to-use solutions for vision, text, and audio tasks.
-    By combining LlamaIndex and MediaPipe, developers can build powerful local RAG systems.
-    Typescript support in LlamaIndex is growing and supports Vercel AI SDK.
-  `;
-
-    try {
-      // Step 1: Chunk the text
-      const chunks = await chunkText(sampleText);
-
-      // Step 2: Create Index (Embedding happens here)
-      const index = await createVectorIndex(chunks);
-
-      // Step 3: Retrieve relevant chunks
-      const retrievedSegments = await retrieveSegments(
-        index,
-        "What is MediaPipe?"
-      );
-      console.log("Retrieved segments:", retrievedSegments);
-    } catch (error) {
-      console.error("Error:", error);
-    }
-  };
+  const handleSourceFiles = async () => {};
 
   return (
     <div className="mx-auto max-w-4xl px-6 pb-6 relative size-full h-[calc(100vh-4rem)] no-scrollbar">
@@ -492,13 +466,7 @@ export default function BuddhiAIChat() {
                   <PromptInputActionAddAttachments />
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
-              <PromptInputButton
-                variant={sourceFiles.length > 0 ? "default" : "ghost"}
-                onClick={handleSourceFiles}
-              >
-                <FilePlus2 size={16} />
-                <span>Add Files</span>
-              </PromptInputButton>
+              <DocumentManager />
               {/*<PromptInputSelect
                 onValueChange={(value) => {
                   setModel(value);
