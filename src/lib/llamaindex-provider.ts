@@ -8,10 +8,12 @@ import {
   Metadata,
   MetadataMode,
   MessageContentDetail,
+  storageContextFromDefaults,
 } from "llamaindex";
 import { FilesetResolver, TextEmbedder } from "@mediapipe/tasks-text";
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
+import { PGliteVectorStore } from "./pglite-vectore-store";
 
 let modelPath =
   "https://storage.googleapis.com/mediapipe-models/text_embedder/universal_sentence_encoder/float32/1/universal_sentence_encoder.tflite";
@@ -102,7 +104,7 @@ const createVectorIndex = async (nodes: any[]) => {
 
   console.log("\n--- Generating Embeddings & Indexing ---");
 
-  const db = new PGlite("idb://my-pgdata", {
+  const db = new PGlite("idb://buddhi-ai-embeddings", {
     extensions: { vector },
   });
   await db.waitReady; // Ensure WASM is loaded
@@ -110,17 +112,23 @@ const createVectorIndex = async (nodes: any[]) => {
     CREATE EXTENSION IF NOT EXISTS vector;
     CREATE TABLE IF NOT EXISTS embeddings (
       id TEXT PRIMARY KEY,
+      chatId TEXT,
       text TEXT,
       metadata JSONB,
       embedding vector(512)
     );
   `);
   console.log("DB initialized with persistence.", db);
-  // VectorStoreIndex.fromDocuments automatically:
+  const vectorStore = new PGliteVectorStore(db);
+
+  // Create a storage context connecting LlamaIndex to our PGlite instance
+  const storageContext = await storageContextFromDefaults({ vectorStore });
+  // VectorStoreIndex.fromDocuments with custom storage:
   // 1. Calculates embeddings using Settings.embedModel
-  // 2. Stores them in a default in-memory SimpleVectorStore
+  // 2. Stores them in our PGliteVectorStore
   const index = await VectorStoreIndex.fromDocuments(
-    nodes.map((n) => new Document({ text: n.text, metadata: n.metadata }))
+    nodes.map((n) => new Document({ text: n.text, metadata: n.metadata })),
+    { storageContext }
   );
 
   return index;
