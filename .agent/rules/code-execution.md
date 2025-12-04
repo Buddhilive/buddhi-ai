@@ -16,6 +16,7 @@ Buddhi AI is an advanced AI-powered in-browser AI.
 4. **Bug Fixes**: When suggesting fixes for bugs, provide clear explanations of the changes made and why they resolve the issue.
 5. **Error Handling**: Ensure that all code suggestions include appropriate error handling and edge case considerations. Handle potential exceptions gracefully.
 6. **UI Design**: Always make sure the UI match the current theme of the application and always add Tailwind style classes for light mode and dark mode.
+7. **Package Manager**: Use PNPM as the package manager.
 
 ## Core technologies
 

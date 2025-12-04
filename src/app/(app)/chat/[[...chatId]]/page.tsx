@@ -466,7 +466,7 @@ export default function BuddhiAIChat() {
                   <PromptInputActionAddAttachments />
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
-              <DocumentManager />
+              <DocumentManager chatId={chatId || undefined} />
               {/*<PromptInputSelect
                 onValueChange={(value) => {
                   setModel(value);

@@ -13,7 +13,7 @@ import {
 import { FilesetResolver, TextEmbedder } from "@mediapipe/tasks-text";
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
-import { PGliteVectorStore } from "./pglite-vectore-store";
+import { PGliteVectorStore, DocumentInfo } from "./pglite-vectore-store";
 
 let modelPath =
   "https://storage.googleapis.com/mediapipe-models/text_embedder/universal_sentence_encoder/float32/1/universal_sentence_encoder.tflite";
@@ -63,11 +63,60 @@ class MediaPipeEmbedding extends BaseEmbedding {
   }
 }
 
+// Singleton instances
+let dbInstance: PGlite | null = null;
+let vectorStoreInstance: PGliteVectorStore | null = null;
+let embedModelInstance: MediaPipeEmbedding | null = null;
+
+// Initialize the vector database (singleton pattern)
+const initializeVectorDB = async (): Promise<{
+  db: PGlite;
+  vectorStore: PGliteVectorStore;
+  embedModel: MediaPipeEmbedding;
+}> => {
+  if (dbInstance && vectorStoreInstance && embedModelInstance) {
+    return {
+      db: dbInstance,
+      vectorStore: vectorStoreInstance,
+      embedModel: embedModelInstance,
+    };
+  }
+
+  console.log("Initializing vector database...");
+
+  // Initialize PGlite with persistence
+  dbInstance = new PGlite("idb://buddhi-ai-embeddings", {
+    extensions: { vector },
+  });
+  await dbInstance.waitReady;
+
+  // Initialize vector store
+  vectorStoreInstance = new PGliteVectorStore(dbInstance);
+  await vectorStoreInstance.initializeSchema();
+
+  // Initialize embedder
+  embedModelInstance = new MediaPipeEmbedding();
+  await embedModelInstance.init();
+
+  // Set global settings
+  Settings.embedModel = embedModelInstance;
+  Settings.llm = undefined as any;
+
+  console.log("Vector database initialized successfully");
+
+  return {
+    db: dbInstance,
+    vectorStore: vectorStoreInstance,
+    embedModel: embedModelInstance,
+  };
+};
+
 // Breaks raw text into manageable nodes (chunks) with overlap
 const chunkText = async (
   rawText: string,
   chunkSize = 200,
-  chunkOverlap = 20
+  chunkOverlap = 20,
+  documentId?: string
 ) => {
   const splitter = new SentenceSplitter({
     chunkSize: chunkSize,
@@ -75,7 +124,10 @@ const chunkText = async (
   });
 
   // Wrap raw text in a Document object
-  const document = new Document({ text: rawText, id_: "doc_1" });
+  const document = new Document({
+    text: rawText,
+    id_: documentId || `doc_${Date.now()}`,
+  });
 
   // Get nodes (chunks)
   const nodes = await splitter.getNodesFromDocuments([document]);
@@ -92,70 +144,112 @@ const chunkText = async (
   return nodes;
 };
 
-const createVectorIndex = async (nodes: any[]) => {
-  // Initialize our custom MediaPipe embedder
-  const embedModel = new MediaPipeEmbedding();
-  await embedModel.init();
-
-  // Set Global Settings
-  // IMPT: We explicitly do NOT set an LLM here to ensure one isn't used.
-  Settings.embedModel = embedModel;
-  Settings.llm = undefined as any; // Force disable LLM
+// Create vector index with chat context
+const createVectorIndex = async (
+  nodes: any[],
+  chatId: string,
+  documentId: string,
+  fileName: string
+) => {
+  const { vectorStore, embedModel } = await initializeVectorDB();
 
   console.log("\n--- Generating Embeddings & Indexing ---");
 
-  const db = new PGlite("idb://buddhi-ai-embeddings", {
-    extensions: { vector },
-  });
-  await db.waitReady; // Ensure WASM is loaded
-  await db.query(`
-    CREATE EXTENSION IF NOT EXISTS vector;
-    CREATE TABLE IF NOT EXISTS embeddings (
-      id TEXT PRIMARY KEY,
-      chatId TEXT,
-      text TEXT,
-      metadata JSONB,
-      embedding vector(512)
-    );
-  `);
-  console.log("DB initialized with persistence.", db);
-  const vectorStore = new PGliteVectorStore(db);
-
   // Create a storage context connecting LlamaIndex to our PGlite instance
   const storageContext = await storageContextFromDefaults({ vectorStore });
-  // VectorStoreIndex.fromDocuments with custom storage:
-  // 1. Calculates embeddings using Settings.embedModel
-  // 2. Stores them in our PGliteVectorStore
-  const index = await VectorStoreIndex.fromDocuments(
-    nodes.map((n) => new Document({ text: n.text, metadata: n.metadata })),
-    { storageContext }
+
+  // Convert nodes to documents and create index
+  const documents = nodes.map(
+    (n) => new Document({ text: n.text, metadata: n.metadata })
+  );
+
+  // Create index (this generates embeddings)
+  const index = await VectorStoreIndex.fromDocuments(documents, {
+    storageContext,
+  });
+
+  // Get the nodes with embeddings from the index
+  const indexNodes = await index.asRetriever().retrieve({ query: "" });
+
+  // Store with chat context using our custom method
+  await vectorStore.addWithChatContext(
+    indexNodes.map((n) => n.node),
+    chatId,
+    documentId,
+    fileName
+  );
+
+  console.log(
+    `Stored ${indexNodes.length} chunks for document ${fileName} in chat ${chatId}`
   );
 
   return index;
 };
 
+// Retrieve segments for a specific chat
 async function retrieveSegments(
-  index: VectorStoreIndex,
+  chatId: string,
   query: string,
   topK = 3
-) {
-  console.log(`\n--- Retrieving for query: "${query}" ---`);
+): Promise<NodeWithScore<Metadata>[]> {
+  console.log(`\n--- Retrieving for query: "${query}" in chat ${chatId} ---`);
 
-  // Create a retriever, NOT a query engine.
-  // A retriever simply fetches nodes; it does not synthesize answers.
-  const retriever = index.asRetriever({ similarityTopK: topK });
+  const { vectorStore, embedModel } = await initializeVectorDB();
 
-  const results: NodeWithScore<Metadata>[] = await retriever.retrieve({
-    query: query,
-  });
+  // Get query embedding
+  const queryEmbedding = await embedModel.getTextEmbedding(query);
+
+  if (!queryEmbedding) {
+    console.error("Failed to generate query embedding");
+    return [];
+  }
+
+  // Query with chat filter
+  const results = await vectorStore.queryByChatId(
+    {
+      queryEmbedding,
+      similarityTopK: topK,
+      mode: "default" as any,
+    },
+    chatId
+  );
 
   // Display Results
-  results.forEach((result, i) => {
-    console.log(`\nResult #${i + 1} (Score: ${result.score?.toFixed(4)})`);
-    console.log(`Text: "${result.node.getContent(MetadataMode.NONE)}"`);
-  });
+  if (results.nodes) {
+    results.nodes.forEach((node, i) => {
+      console.log(
+        `\nResult #${i + 1} (Score: ${results.similarities[i]?.toFixed(4)})`
+      );
+      console.log(`Text: "${node.getContent(MetadataMode.NONE)}"`);
+    });
 
-  return results;
+    return results.nodes.map((node, i) => ({
+      node,
+      score: results.similarities[i],
+    }));
+  }
+
+  return [];
 }
 
-export { chunkText, createVectorIndex, retrieveSegments };
+// Delete document embeddings
+async function deleteDocumentEmbeddings(documentId: string): Promise<void> {
+  const { vectorStore } = await initializeVectorDB();
+  await vectorStore.deleteByDocumentId(documentId);
+  console.log(`Deleted all embeddings for document ${documentId}`);
+}
+
+// Get document list for a chat
+async function getDocumentList(chatId: string): Promise<DocumentInfo[]> {
+  const { vectorStore } = await initializeVectorDB();
+  return await vectorStore.getDocumentsByChatId(chatId);
+}
+
+export {
+  chunkText,
+  createVectorIndex,
+  retrieveSegments,
+  initializeVectorDB,
+  deleteDocumentEmbeddings,
+  getDocumentList,
+};
