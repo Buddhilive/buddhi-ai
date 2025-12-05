@@ -33,9 +33,13 @@ import { Progress } from "@/components/ui/progress";
 
 interface DocumentManagerProps {
   chatId?: string;
+  onChatCreated?: (chatId: string) => void;
 }
 
-export default function DocumentManager({ chatId }: DocumentManagerProps) {
+export default function DocumentManager({
+  chatId,
+  onChatCreated,
+}: DocumentManagerProps) {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<string | null>(null);
@@ -81,9 +85,13 @@ export default function DocumentManager({ chatId }: DocumentManagerProps) {
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
-    if (!chatId) {
-      toast.error("No active chat session. Please start a chat first.");
-      return;
+    // Create a new chat session if chatId doesn't exist
+    let activeChatId = chatId;
+    let isNewChat = false;
+    if (!activeChatId) {
+      activeChatId = Date.now().toString();
+      isNewChat = true;
+      // Don't call onChatCreated yet - wait until documents are processed
     }
 
     // Validate file types
@@ -118,6 +126,8 @@ export default function DocumentManager({ chatId }: DocumentManagerProps) {
       return;
     }
 
+    let allSuccessful = true;
+
     // Process each file
     for (const file of validFiles) {
       const documentId = `doc_${Date.now()}_${Math.random()
@@ -138,7 +148,7 @@ export default function DocumentManager({ chatId }: DocumentManagerProps) {
       try {
         await processDocument(
           file,
-          chatId,
+          activeChatId,
           documentId,
           (message: WorkerMessage) => {
             handleWorkerMessage(documentId, message);
@@ -157,6 +167,7 @@ export default function DocumentManager({ chatId }: DocumentManagerProps) {
         toast.success(`Successfully processed ${file.name}`);
       } catch (error) {
         console.error(`Error processing ${file.name}:`, error);
+        allSuccessful = false;
         setDocuments((prev) =>
           prev.map((doc) =>
             doc.id === documentId
@@ -173,6 +184,11 @@ export default function DocumentManager({ chatId }: DocumentManagerProps) {
         );
         toast.error(`Failed to process ${file.name}`);
       }
+    }
+
+    // If this was a new chat and all documents were processed successfully, create the chat now
+    if (isNewChat && allSuccessful && onChatCreated) {
+      onChatCreated(activeChatId);
     }
 
     // Reset file input
@@ -288,7 +304,7 @@ export default function DocumentManager({ chatId }: DocumentManagerProps) {
         <DialogTrigger asChild>
           <Button variant="outline" className="relative">
             <FileText className="mr-2 h-4 w-4" />
-            Manage Documents
+            {documents.length > 0 ? "Manage" : "Add"}
             {documents.filter((d) => d.status === "ready").length > 0 && (
               <Badge
                 variant="secondary"
@@ -315,7 +331,6 @@ export default function DocumentManager({ chatId }: DocumentManagerProps) {
               variant="default"
               className="w-full bg-primary text-primary-foreground hover:bg-primary/90 dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90"
               onClick={() => fileInputRef.current?.click()}
-              disabled={!chatId}
             >
               <Upload className="mr-2 h-4 w-4" />
               Add Documents

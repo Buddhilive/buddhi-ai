@@ -150,6 +150,27 @@ export default function BuddhiAIChat() {
     }
   };
 
+  const handleChatCreated = async (newChatId: string) => {
+    try {
+      // Set the new chatId
+      setChatId(newChatId);
+
+      // Create and save the new chat session
+      const title = `Document Chat ${newChatId}`;
+      if (chatDB) {
+        await saveOrUpdateChatMessages(chatDB, newChatId, [], title, true);
+      }
+
+      // Navigate to the new chat URL
+      router.push(`/chat/${newChatId}`);
+
+      toast.success("Chat session created!");
+    } catch (error) {
+      console.error("Error creating chat session:", error);
+      toast.error("Error creating chat session.");
+    }
+  };
+
   const saveChatMessages = async () => {
     try {
       if (!chatId && messages.length > 0) {
@@ -466,7 +487,10 @@ export default function BuddhiAIChat() {
                   <PromptInputActionAddAttachments />
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
-              <DocumentManager chatId={chatId || undefined} />
+              <DocumentManager
+                chatId={chatId || undefined}
+                onChatCreated={handleChatCreated}
+              />
               {/*<PromptInputSelect
                 onValueChange={(value) => {
                   setModel(value);
