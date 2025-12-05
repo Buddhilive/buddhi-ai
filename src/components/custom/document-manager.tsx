@@ -25,6 +25,7 @@ import { processDocument } from "@/lib/text-embeddings";
 import {
   deleteDocumentEmbeddings,
   getDocumentList,
+  initializeVectorDB,
 } from "@/lib/llamaindex-provider";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +58,9 @@ export default function DocumentManager({ chatId }: DocumentManagerProps) {
     if (!chatId) return;
 
     try {
+      // Initialize the database first to ensure schema exists
+      await initializeVectorDB();
+
       const docList = await getDocumentList(chatId);
       const loadedDocs: DocumentItem[] = docList.map((doc) => ({
         id: doc.documentId,
@@ -104,6 +108,15 @@ export default function DocumentManager({ chatId }: DocumentManagerProps) {
     }
 
     if (validFiles.length === 0) return;
+
+    // Initialize database before processing files
+    try {
+      await initializeVectorDB();
+    } catch (error) {
+      console.error("Error initializing database:", error);
+      toast.error("Failed to initialize database");
+      return;
+    }
 
     // Process each file
     for (const file of validFiles) {

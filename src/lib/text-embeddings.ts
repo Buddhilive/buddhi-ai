@@ -12,8 +12,9 @@ async function extractTextFromPDF(file: File): Promise<string> {
     // Dynamically import pdfjs-dist
     const pdfjsLib = await import("pdfjs-dist");
 
-    // Set worker source
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    // Use unpkg CDN for the worker (more reliable than cdnjs)
+    // This avoids bundler issues with worker files
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -63,87 +64,82 @@ export async function processDocument(
   documentId: string,
   onProgress: (message: WorkerMessage) => void
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(
-      new URL("@/workers/embedding-worker.ts", import.meta.url),
-      {
-        type: "module",
-      }
-    );
-
-    // Handle messages from worker
-    worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
-      const message = event.data;
-
-      // Forward progress to caller
-      onProgress(message);
-
-      if (message.type === "complete") {
-        worker.terminate();
-        resolve();
-      } else if (message.type === "error") {
-        worker.terminate();
-        reject(new Error(message.error || "Unknown error"));
-      }
+  try {
+    // Helper to send progress updates
+    const sendProgress = (
+      stage: "reading" | "chunking" | "embedding" | "saving",
+      progress: number,
+      total: number
+    ) => {
+      const progressMsg: WorkerMessage = {
+        type: "progress",
+        documentId,
+        progress: { stage, progress, total, documentId },
+      };
+      onProgress(progressMsg);
     };
 
-    // Handle worker errors
-    worker.onerror = (error) => {
-      console.error("Embedding worker error:", error.message);
-      worker.terminate();
-      reject(new Error(`Worker error: ${error.message}`));
-    };
+    // Step 1: Extract text from file
+    sendProgress("reading", 0, 100);
 
-    // Extract text based on file type
+    let text: string;
     const fileExtension = file.name.split(".").pop()?.toLowerCase();
 
     if (fileExtension === "pdf") {
-      extractTextFromPDF(file)
-        .then((text) => {
-          if (!text || text.trim().length === 0) {
-            throw new Error("PDF contains no extractable text");
-          }
-
-          const request: WorkerRequest = {
-            type: "process",
-            documentId,
-            fileName: file.name,
-            text,
-            chatId,
-          };
-
-          worker.postMessage(request);
-        })
-        .catch((error) => {
-          worker.terminate();
-          reject(error);
-        });
+      text = await extractTextFromPDF(file);
     } else if (fileExtension === "txt") {
-      extractTextFromTXT(file)
-        .then((text) => {
-          if (!text || text.trim().length === 0) {
-            throw new Error("Text file is empty");
-          }
-
-          const request: WorkerRequest = {
-            type: "process",
-            documentId,
-            fileName: file.name,
-            text,
-            chatId,
-          };
-
-          worker.postMessage(request);
-        })
-        .catch((error) => {
-          worker.terminate();
-          reject(error);
-        });
+      text = await extractTextFromTXT(file);
     } else {
-      worker.terminate();
-      reject(new Error(`Unsupported file type: ${fileExtension}`));
+      throw new Error(`Unsupported file type: ${fileExtension}`);
     }
-  });
+
+    if (!text || text.trim().length === 0) {
+      throw new Error("File contains no extractable text");
+    }
+
+    sendProgress("reading", 100, 100);
+
+    // Step 2: Chunk the text
+    sendProgress("chunking", 0, 100);
+
+    // Import chunking function
+    const { chunkText } = await import("@/lib/llamaindex-provider");
+    const chunks = await chunkText(text, 200, 20);
+
+    sendProgress("chunking", 100, 100);
+    console.log(`Created ${chunks.length} chunks for ${file.name}`);
+
+    // Step 3: Generate embeddings and save
+    sendProgress("embedding", 0, chunks.length);
+
+    // Import vector index creation
+    const { createVectorIndex } = await import("@/lib/llamaindex-provider");
+    await createVectorIndex(chunks, chatId, documentId, file.name);
+
+    sendProgress("embedding", chunks.length, chunks.length);
+
+    // Step 4: Save complete
+    sendProgress("saving", 100, 100);
+    console.log(`Successfully processed document: ${file.name}`);
+
+    // Send completion message
+    const completeMsg: WorkerMessage = {
+      type: "complete",
+      documentId,
+    };
+    onProgress(completeMsg);
+  } catch (error) {
+    console.error("Error processing document:", error);
+
+    const errorMsg: WorkerMessage = {
+      type: "error",
+      documentId,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+    onProgress(errorMsg);
+
+    throw error;
+  }
 }
 
 /**

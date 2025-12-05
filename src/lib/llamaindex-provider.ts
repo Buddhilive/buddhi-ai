@@ -9,6 +9,7 @@ import {
   MetadataMode,
   MessageContentDetail,
   storageContextFromDefaults,
+  TextNode,
 } from "llamaindex";
 import { FilesetResolver, TextEmbedder } from "@mediapipe/tasks-text";
 import { PGlite } from "@electric-sql/pglite";
@@ -67,13 +68,19 @@ class MediaPipeEmbedding extends BaseEmbedding {
 let dbInstance: PGlite | null = null;
 let vectorStoreInstance: PGliteVectorStore | null = null;
 let embedModelInstance: MediaPipeEmbedding | null = null;
+let initializationPromise: Promise<{
+  db: PGlite;
+  vectorStore: PGliteVectorStore;
+  embedModel: MediaPipeEmbedding;
+}> | null = null;
 
-// Initialize the vector database (singleton pattern)
+// Initialize the vector database (singleton pattern with race condition protection)
 const initializeVectorDB = async (): Promise<{
   db: PGlite;
   vectorStore: PGliteVectorStore;
   embedModel: MediaPipeEmbedding;
 }> => {
+  // If already initialized, return immediately
   if (dbInstance && vectorStoreInstance && embedModelInstance) {
     return {
       db: dbInstance,
@@ -82,33 +89,43 @@ const initializeVectorDB = async (): Promise<{
     };
   }
 
-  console.log("Initializing vector database...");
+  // If initialization is in progress, wait for it
+  if (initializationPromise) {
+    return initializationPromise;
+  }
 
-  // Initialize PGlite with persistence
-  dbInstance = new PGlite("idb://buddhi-ai-embeddings", {
-    extensions: { vector },
-  });
-  await dbInstance.waitReady;
+  // Start initialization and store the promise
+  initializationPromise = (async () => {
+    console.log("Initializing vector database...");
 
-  // Initialize embedder FIRST (before vector store)
-  embedModelInstance = new MediaPipeEmbedding();
-  await embedModelInstance.init();
+    // Initialize PGlite with persistence
+    dbInstance = new PGlite("idb://buddhi-ai-embeddings", {
+      extensions: { vector },
+    });
+    await dbInstance.waitReady;
 
-  // Set global settings BEFORE creating vector store
-  Settings.embedModel = embedModelInstance;
-  Settings.llm = undefined as any;
+    // Initialize embedder FIRST (before vector store)
+    embedModelInstance = new MediaPipeEmbedding();
+    await embedModelInstance.init();
 
-  // Now initialize vector store (it will use Settings.embedModel)
-  vectorStoreInstance = new PGliteVectorStore(dbInstance);
-  await vectorStoreInstance.initializeSchema();
+    // Set global settings BEFORE creating vector store
+    Settings.embedModel = embedModelInstance;
+    Settings.llm = undefined as any;
 
-  console.log("Vector database initialized successfully");
+    // Now initialize vector store (it will use Settings.embedModel)
+    vectorStoreInstance = new PGliteVectorStore(dbInstance);
+    await vectorStoreInstance.initializeSchema();
 
-  return {
-    db: dbInstance,
-    vectorStore: vectorStoreInstance,
-    embedModel: embedModelInstance,
-  };
+    console.log("Vector database initialized successfully");
+
+    return {
+      db: dbInstance,
+      vectorStore: vectorStoreInstance,
+      embedModel: embedModelInstance,
+    };
+  })();
+
+  return initializationPromise;
 };
 
 // Breaks raw text into manageable nodes (chunks) with overlap
@@ -155,35 +172,42 @@ const createVectorIndex = async (
 
   console.log("\n--- Generating Embeddings & Indexing ---");
 
-  // Create a storage context connecting LlamaIndex to our PGlite instance
-  const storageContext = await storageContextFromDefaults({ vectorStore });
+  // Convert nodes to BaseNode objects with embeddings
+  const nodesWithEmbeddings: TextNode[] = [];
 
-  // Convert nodes to documents and create index
-  const documents = nodes.map(
-    (n) => new Document({ text: n.text, metadata: n.metadata })
-  );
+  for (const node of nodes) {
+    // Generate embedding for this node
+    const embedding = await embedModel.getTextEmbedding(node.text);
 
-  // Create index (this generates embeddings)
-  const index = await VectorStoreIndex.fromDocuments(documents, {
-    storageContext,
-  });
+    // Create a TextNode with the embedding
+    const textNode: TextNode = new TextNode({
+      text: node.text,
+      metadata: node.metadata || {},
+      id_: node.id_ || `${documentId}_chunk_${nodesWithEmbeddings.length}`,
+    });
 
-  // Get the nodes with embeddings from the index
-  const indexNodes = await index.asRetriever().retrieve({ query: "" });
+    // Set the embedding on the node
+    textNode.embedding = embedding;
+
+    nodesWithEmbeddings.push(textNode);
+  }
+
+  console.log(`Generated embeddings for ${nodesWithEmbeddings.length} chunks`);
 
   // Store with chat context using our custom method
   await vectorStore.addWithChatContext(
-    indexNodes.map((n) => n.node),
+    nodesWithEmbeddings,
     chatId,
     documentId,
     fileName
   );
 
   console.log(
-    `Stored ${indexNodes.length} chunks for document ${fileName} in chat ${chatId}`
+    `Stored ${nodesWithEmbeddings.length} chunks for document ${fileName} in chat ${chatId}`
   );
 
-  return index;
+  // Return a mock index (we don't actually need it since we're storing directly)
+  return { documentId, fileName, chunkCount: nodesWithEmbeddings.length };
 };
 
 // Retrieve segments for a specific chat

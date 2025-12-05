@@ -23,8 +23,11 @@ export class PGliteVectorStore extends BaseVectorStore {
 
   // Initialize the database schema with chatId and documentId support
   async initializeSchema(): Promise<void> {
+    // PGlite doesn't support multiple commands in a single query
+    // Split into separate queries
+    await this.client.query(`CREATE EXTENSION IF NOT EXISTS vector`);
+
     await this.client.query(`
-      CREATE EXTENSION IF NOT EXISTS vector;
       CREATE TABLE IF NOT EXISTS embeddings (
         id TEXT PRIMARY KEY,
         chatId TEXT NOT NULL,
@@ -32,11 +35,17 @@ export class PGliteVectorStore extends BaseVectorStore {
         fileName TEXT NOT NULL,
         text TEXT,
         metadata JSONB,
-        embedding vector(512)
-      );
-      CREATE INDEX IF NOT EXISTS idx_embeddings_chatId ON embeddings(chatId);
-      CREATE INDEX IF NOT EXISTS idx_embeddings_documentId ON embeddings(documentId);
+        embedding vector(100)
+      )
     `);
+
+    await this.client.query(
+      `CREATE INDEX IF NOT EXISTS idx_embeddings_chatId ON embeddings(chatId)`
+    );
+
+    await this.client.query(
+      `CREATE INDEX IF NOT EXISTS idx_embeddings_documentId ON embeddings(documentId)`
+    );
   }
 
   // Add nodes with chatId and documentId context
