@@ -90,17 +90,17 @@ const initializeVectorDB = async (): Promise<{
   });
   await dbInstance.waitReady;
 
-  // Initialize vector store
-  vectorStoreInstance = new PGliteVectorStore(dbInstance);
-  await vectorStoreInstance.initializeSchema();
-
-  // Initialize embedder
+  // Initialize embedder FIRST (before vector store)
   embedModelInstance = new MediaPipeEmbedding();
   await embedModelInstance.init();
 
-  // Set global settings
+  // Set global settings BEFORE creating vector store
   Settings.embedModel = embedModelInstance;
   Settings.llm = undefined as any;
+
+  // Now initialize vector store (it will use Settings.embedModel)
+  vectorStoreInstance = new PGliteVectorStore(dbInstance);
+  await vectorStoreInstance.initializeSchema();
 
   console.log("Vector database initialized successfully");
 
