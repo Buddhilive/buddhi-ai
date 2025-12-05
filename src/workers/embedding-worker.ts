@@ -16,7 +16,7 @@ self.addEventListener("message", async (event) => {
   const { documentId, fileName, text, chatId } = request;
 
   try {
-    console.log(
+    // console.log(
       `[Worker] Processing document: ${fileName} for chat: ${chatId}`
     );
 
@@ -38,7 +38,7 @@ self.addEventListener("message", async (event) => {
     const chunks = await chunkText(text, 200, 20);
     sendProgress("chunking", 100, 100);
 
-    console.log(`[Worker] Created ${chunks.length} chunks`);
+    // console.log(`[Worker] Created ${chunks.length} chunks`);
 
     // Step 2: Generate embeddings and save
     sendProgress("embedding", 0, chunks.length);
@@ -49,7 +49,7 @@ self.addEventListener("message", async (event) => {
     sendProgress("embedding", chunks.length, chunks.length);
     sendProgress("saving", 100, 100);
 
-    console.log(`[Worker] Successfully processed document: ${fileName}`);
+    // console.log(`[Worker] Successfully processed document: ${fileName}`);
 
     const completeMsg: WorkerMessage = {
       type: "complete",

@@ -111,7 +111,7 @@ export default function BuddhiAIChat() {
   /* On load */
   useEffect(() => {
     initChat();
-    /* console.log("Chat page loaded with params:", params, params.chatId); */
+    /* // console.log("Chat page loaded with params:", params, params.chatId); */
     return () => {
       closeDatabase(chatDB!);
     };
@@ -137,7 +137,7 @@ export default function BuddhiAIChat() {
           "chats",
           params.chatId[0]
         );
-        /* console.log("Loaded old chat messages:", oldChatMessages); */
+        /* // console.log("Loaded old chat messages:", oldChatMessages); */
         setCurrentChat(oldChatMessages);
         setMessages(oldChatMessages.messages);
       } else {
@@ -242,7 +242,7 @@ export default function BuddhiAIChat() {
       try {
         const docsExist = await hasDocuments(chatId);
         if (docsExist) {
-          console.log("Documents found, performing RAG retrieval...");
+          // console.log("Documents found, performing RAG retrieval...");
           const retrievedSegments = await retrieveSegments(chatId, prompt, 3);
 
           if (retrievedSegments.length > 0) {
@@ -318,7 +318,7 @@ export default function BuddhiAIChat() {
       ],
     };
 
-    // console.log("User prompt:", userPrompt, files);
+    // // console.log("User prompt:", userPrompt, files);
 
     // Use augmented prompt for LLM, but display original prompt in chat
     const promptMessages = [systemPrompt, ...messages, augmentedUserPrompt];
@@ -340,7 +340,7 @@ export default function BuddhiAIChat() {
       let assistantResponse = "";
 
       await webLLMInstance.generateResponse(parts, (partialResult, done) => {
-        // console.log("Partial result:", partialResult, "Done:", done);
+        // // console.log("Partial result:", partialResult, "Done:", done);
         if (!done) {
           setStatus("streaming");
           assistantResponse += partialResult;
@@ -424,7 +424,7 @@ export default function BuddhiAIChat() {
         }
         return content;
       });
-      // console.log("Attachments processed:", attachements);
+      // // console.log("Attachments processed:", attachements);
     }
 
     sendMessage(message.text, attachements);

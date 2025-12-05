@@ -96,7 +96,7 @@ const initializeVectorDB = async (): Promise<{
 
   // Start initialization and store the promise
   initializationPromise = (async () => {
-    console.log("Initializing vector database...");
+    // console.log("Initializing vector database...");
 
     // Initialize PGlite with persistence
     dbInstance = new PGlite("idb://buddhi-ai-embeddings", {
@@ -116,7 +116,7 @@ const initializeVectorDB = async (): Promise<{
     vectorStoreInstance = new PGliteVectorStore(dbInstance);
     await vectorStoreInstance.initializeSchema();
 
-    console.log("Vector database initialized successfully");
+    // console.log("Vector database initialized successfully");
 
     return {
       db: dbInstance,
@@ -149,9 +149,9 @@ const chunkText = async (
   // Get nodes (chunks)
   const nodes = await splitter.getNodesFromDocuments([document]);
 
-  console.log(`\n--- Chunking Result: Created ${nodes.length} chunks ---`);
+  // console.log(`\n--- Chunking Result: Created ${nodes.length} chunks ---`);
   nodes.forEach((node, idx) => {
-    console.log(
+    // console.log(
       `[Chunk ${idx}]: ${node
         .getContent(MetadataMode.NONE)
         .substring(0, 50)}...`
@@ -170,7 +170,7 @@ const createVectorIndex = async (
 ) => {
   const { vectorStore, embedModel } = await initializeVectorDB();
 
-  console.log("\n--- Generating Embeddings & Indexing ---");
+  // console.log("\n--- Generating Embeddings & Indexing ---");
 
   // Convert nodes to BaseNode objects with embeddings
   const nodesWithEmbeddings: TextNode[] = [];
@@ -192,7 +192,7 @@ const createVectorIndex = async (
     nodesWithEmbeddings.push(textNode);
   }
 
-  console.log(`Generated embeddings for ${nodesWithEmbeddings.length} chunks`);
+  // console.log(`Generated embeddings for ${nodesWithEmbeddings.length} chunks`);
 
   // Store with chat context using our custom method
   await vectorStore.addWithChatContext(
@@ -202,7 +202,7 @@ const createVectorIndex = async (
     fileName
   );
 
-  console.log(
+  // console.log(
     `Stored ${nodesWithEmbeddings.length} chunks for document ${fileName} in chat ${chatId}`
   );
 
@@ -222,7 +222,7 @@ async function retrieveSegments(
     documentId: string;
   }>
 > {
-  console.log(`\n--- Retrieving for query: "${query}" in chat ${chatId} ---`);
+  // console.log(`\n--- Retrieving for query: "${query}" in chat ${chatId} ---`);
 
   const { vectorStore, embedModel } = await initializeVectorDB();
 
@@ -247,9 +247,9 @@ async function retrieveSegments(
 
   // Display Results
   const results = result.rows.map((row: any, i: number) => {
-    console.log(`\nResult #${i + 1} (Score: ${row.score?.toFixed(4)})`);
-    console.log(`Text: "${row.text}"`);
-    console.log(`Document: ${row.filename}`);
+    // console.log(`\nResult #${i + 1} (Score: ${row.score?.toFixed(4)})`);
+    // console.log(`Text: "${row.text}"`);
+    // console.log(`Document: ${row.filename}`);
 
     // PGlite returns JSONB as object, not string
     const metadata =
@@ -280,7 +280,7 @@ async function retrieveSegments(
 async function deleteDocumentEmbeddings(documentId: string): Promise<void> {
   const { vectorStore } = await initializeVectorDB();
   await vectorStore.deleteByDocumentId(documentId);
-  console.log(`Deleted all embeddings for document ${documentId}`);
+  // console.log(`Deleted all embeddings for document ${documentId}`);
 }
 
 // Get document list for a chat

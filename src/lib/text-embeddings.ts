@@ -107,7 +107,7 @@ export async function processDocument(
     const chunks = await chunkText(text, 200, 20);
 
     sendProgress("chunking", 100, 100);
-    console.log(`Created ${chunks.length} chunks for ${file.name}`);
+    // console.log(`Created ${chunks.length} chunks for ${file.name}`);
 
     // Step 3: Generate embeddings and save
     sendProgress("embedding", 0, chunks.length);
@@ -120,7 +120,7 @@ export async function processDocument(
 
     // Step 4: Save complete
     sendProgress("saving", 100, 100);
-    console.log(`Successfully processed document: ${file.name}`);
+    // console.log(`Successfully processed document: ${file.name}`);
 
     // Send completion message
     const completeMsg: WorkerMessage = {
