@@ -210,12 +210,18 @@ const createVectorIndex = async (
   return { documentId, fileName, chunkCount: nodesWithEmbeddings.length };
 };
 
-// Retrieve segments for a specific chat
+// Retrieve segments for a specific chat with document metadata
 async function retrieveSegments(
   chatId: string,
   query: string,
   topK = 3
-): Promise<NodeWithScore<Metadata>[]> {
+): Promise<
+  Array<{
+    node: NodeWithScore<Metadata>;
+    fileName: string;
+    documentId: string;
+  }>
+> {
   console.log(`\n--- Retrieving for query: "${query}" in chat ${chatId} ---`);
 
   const { vectorStore, embedModel } = await initializeVectorDB();
@@ -228,32 +234,46 @@ async function retrieveSegments(
     return [];
   }
 
-  // Query with chat filter
-  const results = await vectorStore.queryByChatId(
-    {
-      queryEmbedding,
-      similarityTopK: topK,
-      mode: "default" as any,
-    },
-    chatId
+  // Query with chat filter - get raw results with fileName
+  const vectorStr = `[${queryEmbedding.join(",")}]`;
+  const result = await vectorStore.client.query(
+    `SELECT id, text, metadata, fileName, documentId, 1 - (embedding <=> $1) as score
+     FROM embeddings
+     WHERE chatId = $3
+     ORDER BY embedding <=> $1
+     LIMIT $2`,
+    [vectorStr, topK, chatId]
   );
 
   // Display Results
-  if (results.nodes) {
-    results.nodes.forEach((node, i) => {
-      console.log(
-        `\nResult #${i + 1} (Score: ${results.similarities[i]?.toFixed(4)})`
-      );
-      console.log(`Text: "${node.getContent(MetadataMode.NONE)}"`);
+  const results = result.rows.map((row: any, i: number) => {
+    console.log(`\nResult #${i + 1} (Score: ${row.score?.toFixed(4)})`);
+    console.log(`Text: "${row.text}"`);
+    console.log(`Document: ${row.filename}`);
+
+    // PGlite returns JSONB as object, not string
+    const metadata =
+      typeof row.metadata === "string"
+        ? JSON.parse(row.metadata)
+        : row.metadata || {};
+
+    const textNode = new TextNode({
+      text: row.text,
+      metadata: metadata,
+      id_: row.id,
     });
 
-    return results.nodes.map((node, i) => ({
-      node,
-      score: results.similarities[i],
-    }));
-  }
+    return {
+      node: {
+        node: textNode,
+        score: row.score,
+      },
+      fileName: row.filename,
+      documentId: row.documentid,
+    };
+  });
 
-  return [];
+  return results;
 }
 
 // Delete document embeddings
@@ -269,6 +289,12 @@ async function getDocumentList(chatId: string): Promise<DocumentInfo[]> {
   return await vectorStore.getDocumentsByChatId(chatId);
 }
 
+// Check if chat has any documents
+async function hasDocuments(chatId: string): Promise<boolean> {
+  const docs = await getDocumentList(chatId);
+  return docs.length > 0;
+}
+
 export {
   chunkText,
   createVectorIndex,
@@ -276,4 +302,5 @@ export {
   initializeVectorDB,
   deleteDocumentEmbeddings,
   getDocumentList,
+  hasDocuments,
 };
