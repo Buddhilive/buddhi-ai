@@ -18,7 +18,7 @@ const initializeDB = (
 
       request.onsuccess = () => {
         const db = request.result;
-        console.log("Buddhi AI IndexedDB opened successfully");
+        // console.log("Buddhi AI IndexedDB opened successfully");
         resolve(db);
       };
 
@@ -29,7 +29,7 @@ const initializeDB = (
         stores.forEach((store) => {
           if (!db.objectStoreNames.contains(store.name)) {
             db.createObjectStore(store.name);
-            console.log(`Object store ${store.name} created`);
+            // console.log(`Object store ${store.name} created`);
           }
         });
       };
@@ -169,10 +169,7 @@ const deleteItemFromStore = (
   }
 };
 
-const clearStore = (
-  idb: IDBDatabase,
-  storeName: string
-): Promise<boolean> => {
+const clearStore = (idb: IDBDatabase, storeName: string): Promise<boolean> => {
   try {
     return new Promise<boolean>((resolve, reject) => {
       const transaction = idb.transaction(storeName, "readwrite");
@@ -223,7 +220,7 @@ const queryStoreByIndex = <T>(
 const closeDatabase = (idb: IDBDatabase): void => {
   if (idb) {
     idb.close();
-    console.log("IndexedDB connection closed");
+    // console.log("IndexedDB connection closed");
   }
 };
 

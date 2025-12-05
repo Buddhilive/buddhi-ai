@@ -59,19 +59,36 @@ export const SourcesContent = ({
 
 export type SourceProps = ComponentProps<"a">;
 
-export const Source = ({ href, title, children, ...props }: SourceProps) => (
-  <a
-    className="flex items-center gap-2"
-    href={href}
-    rel="noreferrer"
-    target="_blank"
-    {...props}
-  >
-    {children ?? (
-      <>
-        <BookIcon className="h-4 w-4" />
-        <span className="block font-medium">{title}</span>
-      </>
-    )}
-  </a>
-);
+export const Source = ({ href, title, children, ...props }: SourceProps) => {
+  // If no href, render as a div (for document sources)
+  if (!href) {
+    return (
+      <div className="flex items-center gap-2">
+        {children ?? (
+          <>
+            <BookIcon className="h-4 w-4" />
+            <span className="block font-medium">{title}</span>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // Otherwise, render as a link (for URL sources)
+  return (
+    <a
+      className="flex items-center gap-2"
+      href={href}
+      rel="noreferrer"
+      target="_blank"
+      {...props}
+    >
+      {children ?? (
+        <>
+          <BookIcon className="h-4 w-4" />
+          <span className="block font-medium">{title}</span>
+        </>
+      )}
+    </a>
+  );
+};

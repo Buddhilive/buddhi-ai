@@ -30,24 +30,24 @@ export const useMediapipe = () => {
 
     switch (response.type) {
       case "progress":
-        //console.log(`Download ${response.percentage}% complete`);
+        //// console.log(`Download ${response.percentage}% complete`);
         text = `Model downloading. ${bytesToMegabytes(
           response.loaded || 0
         )}/${bytesToMegabytes(response.total || 0)} MB complete...`;
         progress = response.percentage;
         if (response.status === "caching") {
-          // console.log("Caching model...");
+          // // console.log("Caching model...");
           text = "Caching model...";
         }
         if (response.fromCache) {
-          // console.log("Model loaded from cache instantly!");
+          // // console.log("Model loaded from cache instantly!");
           progress = 100;
           text = "Model loaded from cache.";
         }
         break;
 
       case "complete":
-        // console.log("Model ready:", response);
+        // // console.log("Model ready:", response);
         text = "Model initializing...";
         progress = 100;
         loadEngine(response.data);

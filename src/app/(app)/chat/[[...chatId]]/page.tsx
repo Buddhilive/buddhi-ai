@@ -20,7 +20,7 @@ import {
   PromptInputAttachment,
   PromptInputAttachments,
   PromptInputBody,
-  /* PromptInputButton, */
+  PromptInputButton,
   PromptInputHeader,
   /* PromptInputSelect,
   PromptInputSelectContent,
@@ -38,14 +38,14 @@ import {
   MessageAction,
   MessageResponse,
 } from "@/components/ai-elements/message";
-import { CopyIcon, /* GlobeIcon, */ RefreshCcwIcon } from "lucide-react";
-/* import {
+import { CopyIcon, FilePlus2, RefreshCcwIcon } from "lucide-react";
+import {
   Source,
   Sources,
   SourcesContent,
   SourcesTrigger,
 } from "@/components/ai-elements/sources";
-import {
+/* import {
   Reasoning,
   ReasoningContent,
   ReasoningTrigger,
@@ -68,6 +68,14 @@ import {
   generateChatTemplate,
 } from "@/lib/chat-template-generator";
 import { FileUIPart } from "ai";
+import { MetadataMode } from "llamaindex";
+import {
+  chunkText,
+  createVectorIndex,
+  retrieveSegments,
+  hasDocuments,
+} from "@/lib/llamaindex-provider";
+import DocumentManager from "@/components/custom/document-manager";
 
 /* const models = [
   {
@@ -83,7 +91,7 @@ import { FileUIPart } from "ai";
 export default function BuddhiAIChat() {
   const [input, setInput] = useState("");
   /* const [model, setModel] = useState<string>(models[0].value); */
-  /* const [webSearch, setWebSearch] = useState(false); */
+  const [sourceFiles, setSourceFiles] = useState([]);
   const { webLLMInstance } = useWebLLMStore();
   const [messages, setMessages] = useState<Array<BuddhiAIMessage>>([]);
   const [status, setStatus] = useState<
@@ -103,7 +111,7 @@ export default function BuddhiAIChat() {
   /* On load */
   useEffect(() => {
     initChat();
-    /* console.log("Chat page loaded with params:", params, params.chatId); */
+    /* // console.log("Chat page loaded with params:", params, params.chatId); */
     return () => {
       closeDatabase(chatDB!);
     };
@@ -129,7 +137,7 @@ export default function BuddhiAIChat() {
           "chats",
           params.chatId[0]
         );
-        /* console.log("Loaded old chat messages:", oldChatMessages); */
+        /* // console.log("Loaded old chat messages:", oldChatMessages); */
         setCurrentChat(oldChatMessages);
         setMessages(oldChatMessages.messages);
       } else {
@@ -141,6 +149,27 @@ export default function BuddhiAIChat() {
       console.error("Error initializing chat:", error);
       toast.error("Error initializing chat.");
       router.push("/chat");
+    }
+  };
+
+  const handleChatCreated = async (newChatId: string) => {
+    try {
+      // Set the new chatId
+      setChatId(newChatId);
+
+      // Create and save the new chat session
+      const title = `Document Chat ${newChatId}`;
+      if (chatDB) {
+        await saveOrUpdateChatMessages(chatDB, newChatId, [], title, true);
+      }
+
+      // Navigate to the new chat URL
+      router.push(`/chat/${newChatId}`);
+
+      toast.success("Chat session created!");
+    } catch (error) {
+      console.error("Error creating chat session:", error);
+      toast.error("Error creating chat session.");
     }
   };
 
@@ -204,6 +233,74 @@ export default function BuddhiAIChat() {
     }
     const systemPrompt: BuddhiAIMessage = SYSTEM_PROMPT;
 
+    // RAG: Check if documents exist for this chat
+    let ragContext = "";
+    let sources: BuddhiAIChatTemplate[] = [];
+    let useRAG = false;
+
+    if (chatId) {
+      try {
+        const docsExist = await hasDocuments(chatId);
+        if (docsExist) {
+          // console.log("Documents found, performing RAG retrieval...");
+          const retrievedSegments = await retrieveSegments(chatId, prompt, 3);
+
+          if (retrievedSegments.length > 0) {
+            // Check confidence scores
+            const maxScore = Math.max(
+              ...retrievedSegments.map((seg) => seg.node.score || 0)
+            );
+
+            if (maxScore < 0.3) {
+              // Very low confidence - respond with "don't know"
+              ragContext =
+                "\n\nIMPORTANT: The retrieved information has very low relevance (confidence < 0.3). You should respond: 'I don't know based on the provided documents.'";
+            } else if (maxScore < 0.5) {
+              // Low confidence - add warning
+              ragContext = "\n\nContext from documents:\n";
+              retrievedSegments.forEach((seg, idx) => {
+                ragContext += `\n[Document: ${
+                  seg.fileName
+                }]\n${seg.node.node.getContent(MetadataMode.NONE)}\n`;
+                sources.push({
+                  type: "text",
+                  source: seg.fileName,
+                  documentId: seg.documentId,
+                  chunkId: seg.node.node.id_,
+                  score: seg.node.score,
+                });
+              });
+              ragContext +=
+                "\n\nIMPORTANT: The retrieved information has low confidence (0.3-0.5). Mention in your response: 'I have low confidence in this answer based on the available documents.'";
+            } else {
+              // Good confidence - normal RAG
+              ragContext = "\n\nContext from documents:\n";
+              retrievedSegments.forEach((seg, idx) => {
+                ragContext += `\n[Document: ${
+                  seg.fileName
+                }]\n${seg.node.node.getContent(MetadataMode.NONE)}\n`;
+                sources.push({
+                  type: "text",
+                  source: seg.fileName,
+                  documentId: seg.documentId,
+                  chunkId: seg.node.node.id_,
+                  score: seg.node.score,
+                });
+              });
+              ragContext +=
+                "\n\nInstructions: Answer the user's question based on the context above from the documents. Be specific and cite information from the context.";
+            }
+
+            useRAG = true;
+          }
+        }
+      } catch (error) {
+        console.error("Error during RAG retrieval:", error);
+        // Continue with normal chat if RAG fails
+      }
+    }
+
+    // Create user message for display (without RAG context)
     const userPrompt: BuddhiAIMessage = {
       role: "user",
       content: [
@@ -212,9 +309,19 @@ export default function BuddhiAIChat() {
       ],
     };
 
-    // console.log("User prompt:", userPrompt, files);
+    // Create augmented prompt for LLM (with RAG context if available)
+    const augmentedUserPrompt: BuddhiAIMessage = {
+      role: "user",
+      content: [
+        ...(files && files.length > 0 ? files : []),
+        { type: "text", text: prompt + ragContext },
+      ],
+    };
 
-    const promptMessages = [systemPrompt, ...messages, userPrompt];
+    // // console.log("User prompt:", userPrompt, files);
+
+    // Use augmented prompt for LLM, but display original prompt in chat
+    const promptMessages = [systemPrompt, ...messages, augmentedUserPrompt];
 
     setMessages((prevMessages) => [...prevMessages, userPrompt]);
 
@@ -229,10 +336,14 @@ export default function BuddhiAIChat() {
         toast.error("Context exceeds the model's maximum token limit.");
         return;
       }
+
+      let assistantResponse = "";
+
       await webLLMInstance.generateResponse(parts, (partialResult, done) => {
-        // console.log("Partial result:", partialResult, "Done:", done);
+        // // console.log("Partial result:", partialResult, "Done:", done);
         if (!done) {
           setStatus("streaming");
+          assistantResponse += partialResult;
           setMessages((prevMessages) => {
             const lastMessage = prevMessages[prevMessages.length - 1];
             if (lastMessage && lastMessage.role === "assistant") {
@@ -250,6 +361,29 @@ export default function BuddhiAIChat() {
             }
           });
         } else {
+          // Add sources to the assistant message if RAG was used
+          if (useRAG && sources.length > 0) {
+            setMessages((prevMessages) => {
+              const lastMessage = prevMessages[prevMessages.length - 1];
+              if (lastMessage && lastMessage.role === "assistant") {
+                const updatedMessage: BuddhiAIMessage = {
+                  ...lastMessage,
+                  content: [
+                    ...sources,
+                    {
+                      type: "text",
+                      text:
+                        typeof lastMessage.content === "string"
+                          ? lastMessage.content
+                          : "",
+                    },
+                  ],
+                };
+                return [...prevMessages.slice(0, -1), updatedMessage];
+              }
+              return prevMessages;
+            });
+          }
           setStatus("ready");
         }
       });
@@ -290,7 +424,7 @@ export default function BuddhiAIChat() {
         }
         return content;
       });
-      // console.log("Attachments processed:", attachements);
+      // // console.log("Attachments processed:", attachements);
     }
 
     sendMessage(message.text, attachements);
@@ -331,6 +465,8 @@ export default function BuddhiAIChat() {
     }
   };
 
+  const handleSourceFiles = async () => {};
+
   return (
     <div className="mx-auto max-w-4xl px-6 pb-6 relative size-full h-[calc(100vh-4rem)] no-scrollbar">
       <div className="flex flex-col h-full">
@@ -338,30 +474,31 @@ export default function BuddhiAIChat() {
           <ConversationContent>
             {messages.map((message, index) => (
               <div key={index}>
-                {/* {message.role === "assistant" &&
-                  message.parts.filter((part) => part.type === "source-url")
-                    .length > 0 && (
+                {message.role === "assistant" &&
+                  Array.isArray(message.content) &&
+                  message.content.filter(
+                    (part) => part.type === "text" && part.source
+                  ).length > 0 && (
                     <Sources>
                       <SourcesTrigger
                         count={
-                          message.parts.filter(
-                            (part) => part.type === "source-url"
+                          message.content.filter(
+                            (part) => part.type === "text" && part.source
                           ).length
                         }
                       />
-                      {message.parts
-                        .filter((part) => part.type === "source-url")
-                        .map((part, i) => (
-                          <SourcesContent key={`${message.id}-${i}`}>
+                      <SourcesContent>
+                        {message.content
+                          .filter((part) => part.type === "text" && part.source)
+                          .map((part, i) => (
                             <Source
-                              key={`${message.id}-${i}`}
-                              href={part.url}
-                              title={part.url}
+                              key={`${index}-${i}`}
+                              title={part.source || "Unknown"}
                             />
-                          </SourcesContent>
-                        ))}
+                          ))}
+                      </SourcesContent>
                     </Sources>
-                  )} */}
+                  )}
                 <Fragment key={`${index}`}>
                   <Message from={message.role}>
                     <MessageContent>
@@ -380,7 +517,10 @@ export default function BuddhiAIChat() {
                                 filename: contentItem.fileName || "image.png",
                               };
                               return (
-                                <MessageAttachments className="mb-2" key={"attachment-" + contentIndex}>
+                                <MessageAttachments
+                                  className="mb-2"
+                                  key={"attachment-" + contentIndex}
+                                >
                                   <MessageAttachment
                                     data={imageData}
                                     key={"img-" + contentIndex}
@@ -455,13 +595,10 @@ export default function BuddhiAIChat() {
                   <PromptInputActionAddAttachments />
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
-              {/* <PromptInputButton
-                    variant={webSearch ? "default" : "ghost"}
-                    onClick={() => setWebSearch(!webSearch)}
-                  >
-                    <GlobeIcon size={16} />
-                    <span>Search</span>
-                  </PromptInputButton> */}
+              <DocumentManager
+                chatId={chatId || undefined}
+                onChatCreated={handleChatCreated}
+              />
               {/*<PromptInputSelect
                 onValueChange={(value) => {
                   setModel(value);

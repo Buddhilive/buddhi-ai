@@ -35,7 +35,7 @@ export default function Home() {
           <div className="animate-fade-in-up">
             <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-8 animate-bounce-slow">
               <Sparkles className="h-4 w-4" />
-              Private, Client-Side AI Intelligence
+              Private Document Chat — Upload & Ask Locally
             </div>
             
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold mb-6 bg-gradient-to-r from-foreground via-primary to-foreground bg-clip-text text-transparent animate-gradient">
@@ -45,15 +45,13 @@ export default function Home() {
             </h1>
             
             <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto mb-8 leading-relaxed">
-              Harness the power of artificial intelligence directly within your browser. 
-              Built for <span className="text-primary font-semibold">privacy</span>, 
-              designed for <span className="text-primary font-semibold">efficiency</span>.
+              Harness the power of artificial intelligence directly within your browser. Upload confidential documents and ask questions — everything stays on your device. Built for <span className="text-primary font-semibold">privacy</span>, designed for <span className="text-primary font-semibold">efficiency</span>.
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
               <Button asChild size="lg" className="animate-bounce-subtle hover:scale-105 transition-transform">
                 <Link href="/chat">
-                  Start chat <ArrowRight className="ml-2 h-4 w-4" />
+                  Upload & Chat <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
             </div>
@@ -61,12 +59,12 @@ export default function Home() {
             {/* Feature Badges */}
             <div className="flex flex-wrap justify-center gap-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-2 animate-fade-in delay-300">
-                <Lock className="h-4 w-4 text-green-500" />
-                100% Private
+                <Shield className="h-4 w-4 text-primary" />
+                Private Document Chat
               </div>
               <div className="flex items-center gap-2 animate-fade-in delay-500">
-                <CircleDollarSign className="h-4 w-4 text-yellow-500" />
-                100% Free
+                <Lock className="h-4 w-4 text-green-500" />
+                100% Private
               </div>
               <div className="flex items-center gap-2 animate-fade-in delay-700">
                 <Globe className="h-4 w-4 text-blue-500" />
@@ -91,11 +89,10 @@ export default function Home() {
                   <Shield className="h-6 w-6 text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-semibold mb-2">Ultimate Privacy</h3>
-                  <p className="text-muted-foreground">
-                    By utilizing client-side AI models, all computation happens locally on your device. 
-                    Your sensitive data and prompts never leave your browser, ensuring unmatched privacy.
-                  </p>
+                      <h3 className="text-xl font-semibold mb-2">Ultimate Privacy</h3>
+                      <p className="text-muted-foreground">
+                        By utilizing client-side AI models, all computation happens locally on your device. Your sensitive data, uploaded documents, and prompts never leave your browser — ensuring unmatched privacy for confidential and private files.
+                      </p>
                 </div>
               </div>
               
@@ -152,6 +149,9 @@ export default function Home() {
               as championed by modern browser technologies. Our vision is an ever-expanding collection 
               of useful tools that continuously adopts new, powerful on-device models as they become available.
             </p>
+            <p className="text-lg text-muted-foreground leading-relaxed mb-8">
+              The newest capability is secure, on-device RAG (retrieval-augmented generation): upload your documents and ask questions directly in the browser. This makes Buddhi AI ideal for confidential research, contracts, medical notes, or any private material — nothing is uploaded to a server.
+            </p>
             <p className="text-lg text-muted-foreground leading-relaxed">
               More than just a set of tools, Buddhi AI is a platform championing the shift towards 
               a more <span className="text-primary font-semibold">distributed</span>, 
@@ -168,10 +168,10 @@ export default function Home() {
         <div className="container mx-auto text-center">
           <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 rounded-3xl p-12 animate-fade-in-up">
             <h2 className="text-3xl md:text-4xl font-bold mb-6">
-              Support the Future of Private AI
+              Securely Ask Questions From Your Documents
             </h2>
             <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
-              Your sponsorship fuels the development of this platform, enabling us to bring cutting-edge AI capabilities to everyone while maintaining the highest standards of privacy and security.
+              Your sponsorship fuels the development of this platform, helping us expand secure on-device features like document upload and private chat so everyone can use powerful AI without compromising confidentiality.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button asChild variant="outline" size="lg" className="animate-bounce-subtle hover:scale-105 transition-transform">
@@ -192,7 +192,7 @@ export default function Home() {
             <span className="text-2xl font-extralight leading-none"><strong className="font-bold">Buddhi</strong>AI</span>
           </div>
           <p className="text-muted-foreground mb-4">
-            Copyright &copy; {new Date().getFullYear()} Buddhilive Research | The future of private, client-side intelligence.
+            Copyright &copy; {new Date().getFullYear()} Buddhi AI | The future of private, client-side intelligence.
           </p>
           <div className="flex justify-center gap-6">
             <Link href="/privacy-policy" className="text-sm text-muted-foreground hover:text-primary transition-colors">

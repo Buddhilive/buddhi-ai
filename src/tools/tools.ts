@@ -15,7 +15,7 @@ export const BUDDHI_TOOLS = [
       required: ["query"],
     },
     async execute({ query }: { query: string }) {
-      console.log("Executing web search with query:", query);
+      // console.log("Executing web search with query:", query);
       const res = await webSearch({ query });
       return JSON.stringify(res);
     },
@@ -23,5 +23,5 @@ export const BUDDHI_TOOLS = [
 ];
 
 export const TEMP_TOOLS = {
-  webSearch
+  webSearch,
 };
