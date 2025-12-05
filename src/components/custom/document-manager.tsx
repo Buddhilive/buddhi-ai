@@ -51,12 +51,12 @@ export default function DocumentManager({
     (doc) => doc.status !== "ready" && doc.status !== "error"
   );
 
-  // Load existing documents when dialog opens
+  // Load existing documents when chatId changes or dialog opens
   useEffect(() => {
-    if (isDialogOpen && chatId) {
+    if (chatId) {
       loadDocuments();
     }
-  }, [isDialogOpen, chatId]);
+  }, [chatId]);
 
   const loadDocuments = async () => {
     if (!chatId) return;
