@@ -151,11 +151,11 @@ const chunkText = async (
 
   // console.log(`\n--- Chunking Result: Created ${nodes.length} chunks ---`);
   nodes.forEach((node, idx) => {
-    // console.log(
+    /* console.log(
       `[Chunk ${idx}]: ${node
         .getContent(MetadataMode.NONE)
         .substring(0, 50)}...`
-    );
+    ); */
   });
 
   return nodes;
@@ -202,9 +202,9 @@ const createVectorIndex = async (
     fileName
   );
 
-  // console.log(
+  /* console.log(
     `Stored ${nodesWithEmbeddings.length} chunks for document ${fileName} in chat ${chatId}`
-  );
+  ); */
 
   // Return a mock index (we don't actually need it since we're storing directly)
   return { documentId, fileName, chunkCount: nodesWithEmbeddings.length };
