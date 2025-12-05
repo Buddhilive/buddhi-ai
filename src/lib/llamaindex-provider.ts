@@ -110,6 +110,7 @@ const initializeVectorDB = async (): Promise<{
 
     // Set global settings BEFORE creating vector store
     Settings.embedModel = embedModelInstance;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Settings.llm = undefined as any;
 
     // Now initialize vector store (it will use Settings.embedModel)
@@ -163,6 +164,7 @@ const chunkText = async (
 
 // Create vector index with chat context
 const createVectorIndex = async (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   nodes: any[],
   chatId: string,
   documentId: string,
@@ -246,6 +248,7 @@ async function retrieveSegments(
   );
 
   // Display Results
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const results = result.rows.map((row: any, i: number) => {
     // console.log(`\nResult #${i + 1} (Score: ${row.score?.toFixed(4)})`);
     // console.log(`Text: "${row.text}"`);

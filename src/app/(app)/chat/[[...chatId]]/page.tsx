@@ -235,7 +235,7 @@ export default function BuddhiAIChat() {
 
     // RAG: Check if documents exist for this chat
     let ragContext = "";
-    let sources: BuddhiAIChatTemplate[] = [];
+    const sources: BuddhiAIChatTemplate[] = [];
     let useRAG = false;
 
     if (chatId) {

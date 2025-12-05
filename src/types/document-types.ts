@@ -27,6 +27,7 @@ export interface WorkerMessage {
   documentId: string;
   progress?: ProcessingProgress;
   error?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   index?: any;
 }
 

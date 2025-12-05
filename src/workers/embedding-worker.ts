@@ -16,9 +16,9 @@ self.addEventListener("message", async (event) => {
   const { documentId, fileName, text, chatId } = request;
 
   try {
-    // console.log(
+    /* console.log(
       `[Worker] Processing document: ${fileName} for chat: ${chatId}`
-    );
+    ); */
 
     // Step 1: Chunk the text
     const sendProgress = (
