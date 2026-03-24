@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation"
 import { NavMain } from "@/components/nav-main"
 import { NavProjects } from "@/components/nav-projects"
 import { NavUser } from "@/components/nav-user"
-import { NavChatHistory } from "@/components/nav-chat-history"
+/* import { NavChatHistory } from "@/components/nav-chat-history" */
 import { TeamSwitcher } from "@/components/team-switcher"
 import {
   Sidebar,
@@ -16,7 +16,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 import { GalleryVerticalEndIcon, BotIcon, BookOpenIcon, Settings2Icon, FrameIcon, PieChartIcon, MapIcon, DatabaseIcon, MessageSquarePlusIcon } from "lucide-react"
-import { useChatStore } from "@/store/chatStore"
+/* import { useChatStore } from "@/store/chatStore" */
 
 // This is sample data.
 const data = {
@@ -143,12 +143,12 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
-  const { fetchChats } = useChatStore()
+  /* const { fetchChats } = useChatStore() */
 
   // Load recent chats on mount
-  React.useEffect(() => {
+  /* React.useEffect(() => {
     fetchChats()
-  }, [fetchChats])
+  }, [fetchChats]) */
 
   const navItems = data.navMain.map((item) => ({
     ...item,
@@ -166,7 +166,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navItems} />
-        <NavChatHistory />
+        {/* <NavChatHistory /> */}
         {/* <NavProjects projects={data.projects} /> */}
       </SidebarContent>
       <SidebarFooter>

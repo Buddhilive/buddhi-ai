@@ -1,6 +1,5 @@
 "use client";
 
-import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import type { UIMessage } from "@ai-sdk/react";
 
 import {
@@ -30,6 +29,7 @@ import {
     PromptInputBody,
     PromptInputFooter,
     PromptInputHeader,
+    PromptInputMessage,
     PromptInputSubmit,
     PromptInputTextarea,
     PromptInputTools,
@@ -40,10 +40,11 @@ import { Source, Sources, SourcesContent, SourcesTrigger } from "@/components/ai
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+import { useCallback, useState } from "react";
 import { useChat } from "@ai-sdk/react";
-import { useParams, useRouter } from "next/navigation";
+import { TransformersUIMessage } from "@browser-ai/transformers-js";
+import { lastAssistantMessageIsCompleteWithApprovalResponses } from "ai";
+import { TransformersChatTransport } from "@/lib/chat-transport";
 
 const suggestions = [
     "hello",
@@ -131,17 +132,20 @@ const SuggestionItem = ({
     return <Suggestion onClick={handleClick} suggestion={suggestion} />;
 };
 
-// ─────────────────────────────────────────────────────────
-// ChatInterface — owns useChat and message-save logic
-// ─────────────────────────────────────────────────────────
+export default function ChatPage() {
+    const {
+        messages,
+        sendMessage,
+        status,
+        stop,
+        addToolApprovalResponse,
+    } = useChat<TransformersUIMessage>({
+        transport: new TransformersChatTransport(),
+        experimental_throttle: 75,
+        // Automatically resumes after tool approval responses are submitted
+        sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
+    });
 
-interface ChatInterfaceProps {
-    initialMessages: UIMessage[];
-    chatId: number | null;
-}
-
-function ChatInterface({ initialMessages, chatId: initialChatId }: ChatInterfaceProps) {
-    const { messages, status, sendMessage, setMessages } = useChat({});
     const [inputValue, setInputValue] = useState("");
 
 
@@ -163,16 +167,12 @@ function ChatInterface({ initialMessages, chatId: initialChatId }: ChatInterface
         []
     );
 
-    const handleSubmit = useCallback(
-        (message: PromptInputMessage) => {
-            sendMessage({
-                text: message.text,
-                files: message.files,
-            });
+    const handleSubmit = (message: PromptInputMessage) => {
+        if (message.text.trim() && status === "ready") {
+            sendMessage({ text: message.text, files: message.files });
             setInputValue("");
-        },
-        [sendMessage]
-    );
+        }
+    };
 
     const isStreaming = status === "streaming" || status === "submitted";
     const isSubmitDisabled = isStreaming || !inputValue.trim();

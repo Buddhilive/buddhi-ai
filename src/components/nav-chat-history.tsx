@@ -24,7 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 
-import { chatsApi, type ChatInfo } from "@/lib/api/chats"
+import { chatsApi, type ChatInfo } from "@/lib/chats"
 import { useChatStore } from "@/store/chatStore"
 
 export function NavChatHistory() {
