@@ -1,9 +1,17 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
-import { modelsApi, ModelInfo } from "@/lib/model-manager";
+import { useEffect, useState } from "react";
+import { modelsApi } from "@/lib/model-manager";
+import { MODELS } from "@/lib/models";
+import { useModelStore } from "@/lib/stores/model-store";
 import { toast } from "sonner";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -15,79 +23,61 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Trash2Icon, XCircleIcon, DownloadIcon, RefreshCcwIcon, AlertCircleIcon, CheckCircleIcon, BrainCircuitIcon } from "lucide-react";
-
-// ─── Static recommended model catalogue ──────────────────────────────────────
-
-interface RecommendedModel {
-  model_id: string;  // Ollama model name, e.g. "qwen3.5:3b"
-  label: string;
-  description: string;
-  type: "language" | "embedding";
-}
-
-const RECOMMENDED_MODELS: RecommendedModel[] = [
-  {
-    model_id: "qwen3.5:2b",
-    label: "Qwen 3.5 2B",
-    description: "Lightweight language model optimised for fast inference on CPU.",
-    type: "language",
-  },
-  {
-    model_id: "embeddinggemma:300m",
-    label: "Embedding Gemma 300M",
-    description: "Compact embedding model for semantic search and retrieval tasks.",
-    type: "embedding",
-  },
-];
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Trash2Icon,
+  XCircleIcon,
+  DownloadIcon,
+  RefreshCcwIcon,
+  AlertCircleIcon,
+  CheckCircleIcon,
+  BrainCircuitIcon,
+} from "lucide-react";
 
 // ─── Root view ────────────────────────────────────────────────────────────────
 
 export function ModelsView() {
-  const [installedModels, setInstalledModels] = useState<ModelInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [backendError, setBackendError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [availableModels] = useState(MODELS);
+  const hydrated = useModelStore((state) => state.hydrated);
+  const allModels = useModelStore((state) => state.models);
 
-  const fetchModels = useCallback(async () => {
+  const anyDownloading = Object.values(allModels).some(
+    (m) => m.status === "downloading"
+  );
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (anyDownloading) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [anyDownloading]);
+
+  const fetchModels = async () => {
     try {
       setLoading(true);
-      setBackendError(null);
-      const data = await modelsApi.listModels();
-      setInstalledModels(data || []);
+      setError(null);
+      await modelsApi.listModels();
     } catch (err: unknown) {
-      const msg = (err as Error).message || "Failed to connect to backend";
-      setBackendError(msg);
+      const msg = (err as Error).message || "Failed to load models";
+      setError(msg);
       toast.error(msg);
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
-    fetchModels();
-  }, [fetchModels]);
-
-  const handleInstalled = (newModel: ModelInfo) => {
-    setInstalledModels(prev => {
-      const idx = prev.findIndex(m => m.id === newModel.id);
-      if (idx !== -1) {
-        const next = [...prev];
-        next[idx] = newModel;
-        return next;
-      }
-      return [...prev, newModel];
-    });
-  };
-
-  const handleDeleted = (id: string) => {
-    setInstalledModels(prev => prev.filter(m => m.id !== id));
-  };
-
-  const handleUpdated = (id: string, updates: Partial<ModelInfo>) => {
-    setInstalledModels(prev =>
-      prev.map(m => (m.id === id ? { ...m, ...updates } : m))
-    );
-  };
+    if (hydrated) {
+      fetchModels();
+    }
+  }, [hydrated]);
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -98,23 +88,40 @@ export function ModelsView() {
             Install and manage AI models for use in Buddhi AI Studio.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchModels} disabled={loading}>
-          <RefreshCcwIcon className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={fetchModels}
+          disabled={loading}
+        >
+          <RefreshCcwIcon
+            className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`}
+          />
           Refresh
         </Button>
       </div>
 
-      {backendError && (
+      {anyDownloading && (
+        <Alert className="border-amber-500/50 bg-amber-500/10 text-amber-600 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-400">
+          <AlertCircleIcon className="h-4 w-4 !text-amber-600 dark:!text-amber-400" />
+          <AlertTitle>Download in Progress</AlertTitle>
+          <AlertDescription>
+            Please do not close or refresh this tab while a model is downloading. It will interrupt the process. Navigation within the app is fine.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {error && (
         <div className="flex items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           <AlertCircleIcon className="h-4 w-4 shrink-0" />
-          <span>Backend unavailable: {backendError}. Make sure the API server is running.</span>
+          <span>{error}</span>
         </div>
       )}
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {RECOMMENDED_MODELS.map(m => (
-            <Card key={m.model_id} className="animate-pulse opacity-60">
+          {availableModels.map((m) => (
+            <Card key={m.id} className="animate-pulse opacity-60">
               <CardHeader>
                 <div className="h-5 w-32 rounded bg-muted" />
                 <div className="h-4 w-48 rounded bg-muted" />
@@ -127,22 +134,9 @@ export function ModelsView() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {RECOMMENDED_MODELS.map(recommended => {
-            const installed = installedModels.find(
-              m => m.model_id === recommended.model_id || m.id === recommended.model_id.replace(":", "_")
-            ) ?? null;
-            return (
-              <ModelCard
-                key={recommended.model_id}
-                recommended={recommended}
-                installed={installed}
-                backendAvailable={!backendError}
-                onInstalled={handleInstalled}
-                onDeleted={handleDeleted}
-                onUpdated={handleUpdated}
-              />
-            );
-          })}
+          {availableModels.map((model) => (
+            <ModelCard key={model.id} model={model} />
+          ))}
         </div>
       )}
     </div>
@@ -152,128 +146,34 @@ export function ModelsView() {
 // ─── Per-model card ───────────────────────────────────────────────────────────
 
 interface ModelCardProps {
-  recommended: RecommendedModel;
-  installed: ModelInfo | null;
-  backendAvailable: boolean;
-  onInstalled: (m: ModelInfo) => void;
-  onDeleted: (id: string) => void;
-  onUpdated: (id: string, updates: Partial<ModelInfo>) => void;
+  model: typeof MODELS[number];
 }
 
-function ModelCard({
-  recommended,
-  installed,
-  backendAvailable,
-  onInstalled,
-  onDeleted,
-  onUpdated,
-}: ModelCardProps) {
-  const [localProgress, setLocalProgress] = useState(installed?.progress ?? 0);
-  const [localStatus, setLocalStatus] = useState<ModelInfo["status"] | "not_installed">(
-    installed ? installed.status : "not_installed"
-  );
+function ModelCard({ model }: ModelCardProps) {
   const [isInstalling, setIsInstalling] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  const installedIdRef = useRef<string | null>(installed?.id ?? null);
-  const onUpdatedRef = useRef(onUpdated);
-  useEffect(() => { onUpdatedRef.current = onUpdated; });
+  // Subscribe to the entire models map to detect any changes
+  const allModels = useModelStore((state) => state.models);
+  const { removeModel } = useModelStore();
 
-  // Sync external state changes (e.g. after refresh)
-  useEffect(() => {
-    installedIdRef.current = installed?.id ?? null;
-    if (!installed) {
-      setLocalStatus("not_installed");
-      setLocalProgress(0);
-    } else {
-      setLocalStatus(installed.status);
-      setLocalProgress(installed.progress ?? 0);
-    }
-  }, [installed]);
+  // Extract current model state with proper defaults
+  const modelState = allModels[model.id];
+  const status = modelState?.status || "not_installed";
+  const progress = modelState?.progress || 0;
+  const error = modelState?.error;
 
-  // SSE / polling for active downloads
-  useEffect(() => {
-    const currentId = installedIdRef.current;
-    if (!currentId) return;
-
-    if (localStatus === "pending") {
-      // Keep retrying until backend transitions out of "pending".
-      // A single one-shot setTimeout would stop if the first poll still returns
-      // "pending" (React bails out on same-value setState, so the effect never
-      // re-runs and the model gets stuck in the "pending" UI state forever).
-      let cancelled = false;
-      const doPoll = async () => {
-        if (cancelled) return;
-        try {
-          const data = await modelsApi.getModelStatus(currentId);
-          if (cancelled) return;
-          if (data.status !== "pending") {
-            setLocalStatus(data.status);
-            setLocalProgress(data.progress ?? 0);
-            onUpdatedRef.current(currentId, { status: data.status, progress: data.progress });
-          } else {
-            setTimeout(doPoll, 1000); // still pending — retry
-          }
-        } catch {
-          if (!cancelled) setTimeout(doPoll, 2000); // network error — back off
-        }
-      };
-      const timer = setTimeout(doPoll, 1000);
-      return () => { cancelled = true; clearTimeout(timer); };
-    }
-
-    if (localStatus === "pulling") {
-      const url = modelsApi.getProgress(currentId);
-      const sse = new EventSource(url);
-
-      sse.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.progress !== undefined) {
-            setLocalProgress(data.progress);
-            onUpdatedRef.current(currentId, { progress: data.progress });
-          }
-          if (data.status) {
-            setLocalStatus(data.status);
-            onUpdatedRef.current(currentId, { status: data.status });
-            if (["completed", "failed"].includes(data.status)) {
-              sse.close();
-            }
-          }
-        } catch {
-          console.error("SSE parse error");
-        }
-      };
-
-      sse.onerror = () => {
-        sse.close();
-        modelsApi.getModelStatus(currentId).then(data => {
-          setLocalStatus(data.status);
-          setLocalProgress(data.progress ?? 0);
-          onUpdatedRef.current(currentId, { status: data.status, progress: data.progress });
-        }).catch(() => { });
-      };
-
-      return () => sse.close();
-    }
-  }, [localStatus]);
+  const inProgress = status === "downloading";
 
   const handleInstall = async () => {
     try {
       setIsInstalling(true);
-      const result = await modelsApi.downloadModel({
-        model: recommended.model_id,
-      });
-      installedIdRef.current = result.id;
-      setLocalStatus(result.status);
-      setLocalProgress(result.progress ?? 0);
-      onInstalled(result);
-      toast.success(`Download started for ${recommended.label}`);
+      await modelsApi.downloadModel({ model: model.id });
+      toast.success(`Download started for ${model.name}`);
     } catch (err: unknown) {
-      const error = err as Error;
-      const msg = error.message || "Failed to start download";
+      const msg = (err as Error).message || "Failed to start download";
       toast.error(msg);
     } finally {
       setIsInstalling(false);
@@ -281,16 +181,11 @@ function ModelCard({
   };
 
   const handleCancel = async () => {
-    const id = installedIdRef.current;
-    if (!id) return;
     try {
       setIsCanceling(true);
-      await modelsApi.deleteModel(id);
-      setLocalStatus("not_installed");
-      setLocalProgress(0);
-      installedIdRef.current = null;
-      onDeleted(id);
-      toast.success(`Cancelled download for ${recommended.label}`);
+      await modelsApi.deleteModel(model.id);
+      removeModel(model.id);
+      toast.success(`Cancelled download for ${model.name}`);
     } catch (err: unknown) {
       toast.error((err as Error).message || "Failed to cancel download");
     } finally {
@@ -299,25 +194,18 @@ function ModelCard({
   };
 
   const handleDelete = async () => {
-    const id = installedIdRef.current;
-    if (!id) return;
     try {
       setIsDeleting(true);
-      await modelsApi.deleteModel(id);
-      setLocalStatus("not_installed");
-      setLocalProgress(0);
-      installedIdRef.current = null;
-      onDeleted(id);
+      await modelsApi.deleteModel(model.id);
+      removeModel(model.id);
       setDeleteDialogOpen(false);
-      toast.success(`Deleted ${recommended.label}`);
+      toast.success(`Deleted ${model.name}`);
     } catch (err: unknown) {
       toast.error((err as Error).message || "Failed to delete model");
     } finally {
       setIsDeleting(false);
     }
   };
-
-  const inProgress = localStatus === "pulling" || localStatus === "pending";
 
   return (
     <>
@@ -326,59 +214,69 @@ function ModelCard({
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2">
               <BrainCircuitIcon className="h-5 w-5 text-muted-foreground shrink-0" />
-              <CardTitle className="text-base leading-snug">{recommended.label}</CardTitle>
+              <CardTitle className="text-base leading-snug">
+                {model.name}
+              </CardTitle>
             </div>
-            <StatusBadge status={localStatus} />
+            <StatusBadge status={status} />
           </div>
-          <CardDescription className="text-xs">
-            {recommended.model_id}
-          </CardDescription>
+          <div className="text-xs text-muted-foreground font-mono">
+            {model.id}
+          </div>
         </CardHeader>
 
         <CardContent className="flex-1 space-y-3">
-          <p className="text-sm text-muted-foreground">{recommended.description}</p>
+          <p className="text-sm text-muted-foreground">{model.description}</p>
 
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="text-xs font-mono">
-              {recommended.model_id.includes(":") ? recommended.model_id.split(":")[1] : "latest"}
+              {typeof model.dtype === "string" ? model.dtype : "auto"}
             </Badge>
             <Badge variant="outline" className="text-xs capitalize">
-              {recommended.type}
+              {model.type}
             </Badge>
           </div>
 
           {inProgress && (
             <div className="flex items-center gap-2">
-              <Progress value={localProgress} className="h-1.5" />
-              <p className="text-xs text-muted-foreground text-right">
-                {localProgress}%
+              <Progress value={progress} className="h-1.5" />
+              <p className="text-xs text-muted-foreground text-right whitespace-nowrap">
+                {progress}%
               </p>
             </div>
           )}
 
-          {localStatus === "failed" && (
+          {status === "failed" && (
             <div className="flex items-center gap-2 text-xs text-destructive">
               <AlertCircleIcon className="h-3.5 w-3.5 shrink-0" />
-              <span>Download failed. Try installing again.</span>
+              <span>{error || "Download failed"}</span>
             </div>
           )}
 
+          {status === "unavailable" && (
+            <div className="flex items-center gap-2 text-xs text-destructive">
+              <AlertCircleIcon className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                {error || "Browser does not support this model"}
+              </span>
+            </div>
+          )}
         </CardContent>
 
         <CardFooter>
-          {localStatus === "not_installed" || localStatus === "failed" ? (
+          {status === "not_installed" || status === "failed" ? (
             <Button
               className="w-full"
               size="sm"
               onClick={handleInstall}
-              disabled={isInstalling || !backendAvailable}
+              disabled={isInstalling}
             >
               {isInstalling ? (
                 <RefreshCcwIcon className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <DownloadIcon className="mr-2 h-4 w-4" />
               )}
-              {localStatus === "failed" ? "Retry Install" : "Install"}
+              {status === "failed" ? "Retry Install" : "Install"}
             </Button>
           ) : inProgress ? (
             <Button
@@ -395,7 +293,7 @@ function ModelCard({
               )}
               Cancel
             </Button>
-          ) : localStatus === "completed" ? (
+          ) : status === "completed" ? (
             <Button
               className="w-full"
               variant="outline"
@@ -413,10 +311,10 @@ function ModelCard({
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Uninstall {recommended.label}?</DialogTitle>
+            <DialogTitle>Uninstall {model.name}?</DialogTitle>
             <DialogDescription>
-              This will permanently delete the model files from disk. You can
-              reinstall the model at any time.
+              This will permanently delete the model files from the browser
+              cache. You can reinstall the model at any time.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -448,7 +346,11 @@ function ModelCard({
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: ModelInfo["status"] | "not_installed" }) {
+function StatusBadge({
+  status,
+}: {
+  status: "not_installed" | "downloading" | "completed" | "failed" | "unavailable";
+}) {
   switch (status) {
     case "completed":
       return (
@@ -457,14 +359,30 @@ function StatusBadge({ status }: { status: ModelInfo["status"] | "not_installed"
           Installed
         </Badge>
       );
-    case "pulling":
-      return <Badge variant="secondary" className="animate-pulse shrink-0">Pulling</Badge>;
-    case "pending":
-      return <Badge variant="outline" className="shrink-0">Pending</Badge>;
+    case "downloading":
+      return (
+        <Badge variant="secondary" className="animate-pulse shrink-0">
+          Downloading
+        </Badge>
+      );
     case "failed":
-      return <Badge variant="destructive" className="shrink-0">Failed</Badge>;
+      return (
+        <Badge variant="destructive" className="shrink-0">
+          Failed
+        </Badge>
+      );
+    case "unavailable":
+      return (
+        <Badge variant="destructive" className="shrink-0">
+          Unavailable
+        </Badge>
+      );
     case "not_installed":
     default:
-      return <Badge variant="outline" className="text-muted-foreground shrink-0">Not Installed</Badge>;
+      return (
+        <Badge variant="outline" className="text-muted-foreground shrink-0">
+          Not Installed
+        </Badge>
+      );
   }
 }
