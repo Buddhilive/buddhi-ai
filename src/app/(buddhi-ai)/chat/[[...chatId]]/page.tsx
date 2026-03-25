@@ -40,11 +40,15 @@ import { Source, Sources, SourcesContent, SourcesTrigger } from "@/components/ai
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
+import { useRouter } from "next/navigation";
 import { TransformersUIMessage } from "@browser-ai/transformers-js";
 import { lastAssistantMessageIsCompleteWithApprovalResponses } from "ai";
 import { TransformersChatTransport } from "@/lib/chat-transport";
+import { chatsApi } from "@/lib/chats";
+import { useChatStore } from "@/store/chatStore";
+import { toast } from "sonner";
 
 const suggestions = [
     "hello",
@@ -132,7 +136,10 @@ const SuggestionItem = ({
     return <Suggestion onClick={handleClick} suggestion={suggestion} />;
 };
 
-export default function ChatPage() {
+export default function ChatPage({ params }: { params: Promise<{ chatId?: string[] }> }) {
+    const router = useRouter();
+    const { addChat, setCurrentChatId } = useChatStore();
+
     const {
         messages,
         sendMessage,
@@ -147,7 +154,56 @@ export default function ChatPage() {
     });
 
     const [inputValue, setInputValue] = useState("");
+    const [savedChatId, setSavedChatId] = useState<number | null>(null);
+    const chatSavedRef = useRef(false);
+    const lastSavedMessageIndexRef = useRef(-1);
 
+    // Handle route params and initialize chat state
+    useEffect(() => {
+        (async () => {
+            const resolvedParams = await params;
+            const chatId = resolvedParams.chatId?.[0];
+            if (chatId) {
+                const id = Number(chatId);
+                if (!isNaN(id)) {
+                    setSavedChatId(id);
+                    setCurrentChatId(id);
+                    chatSavedRef.current = true; // Don't create a new chat
+                }
+            }
+        })();
+
+        return () => {
+            setCurrentChatId(null);
+        };
+    }, [params, setCurrentChatId]);
+
+    // Save messages after streaming completes
+    useEffect(() => {
+        if (status !== "ready" || !savedChatId || messages.length === lastSavedMessageIndexRef.current + 1) {
+            return;
+        }
+
+        const unsavedMessages = messages.slice(lastSavedMessageIndexRef.current + 1);
+        if (unsavedMessages.length === 0) return;
+
+        (async () => {
+            try {
+                const messagesToSave = unsavedMessages.map((msg) => ({
+                    role: msg.role,
+                    content: extractTextContent(msg),
+                }));
+
+                await chatsApi.addMessages(savedChatId, messagesToSave);
+                lastSavedMessageIndexRef.current = messages.length - 1;
+            } catch (err) {
+                console.error("[ChatPage] failed to save messages:", err);
+                toast.error("Failed to save chat messages", {
+                    description: err instanceof Error ? err.message : "Please try again.",
+                });
+            }
+        })();
+    }, [messages, savedChatId, status]);
 
     const handleSuggestionClick = useCallback(
         (suggestion: string) => {
@@ -167,11 +223,31 @@ export default function ChatPage() {
         []
     );
 
-    const handleSubmit = (message: PromptInputMessage) => {
-        if (message.text.trim() && status === "ready") {
-            sendMessage({ text: message.text, files: message.files });
-            setInputValue("");
+    const handleSubmit = async (message: PromptInputMessage) => {
+        if (!message.text.trim() || status !== "ready") return;
+
+        // Create chat on first message only
+        if (!chatSavedRef.current) {
+            chatSavedRef.current = true;
+            try {
+                const title = makeTitle(message.text);
+                const chatInfo = await chatsApi.create(title);
+                setSavedChatId(chatInfo.id);
+                setCurrentChatId(chatInfo.id);
+                addChat(chatInfo);
+                router.replace(`/chat/${chatInfo.id}`);
+            } catch (err) {
+                console.error("[ChatPage] failed to create chat:", err);
+                toast.error("Failed to create chat", {
+                    description: err instanceof Error ? err.message : "Please try again.",
+                });
+                chatSavedRef.current = false; // Allow retry
+                return;
+            }
         }
+
+        sendMessage({ text: message.text, files: message.files });
+        setInputValue("");
     };
 
     const isStreaming = status === "streaming" || status === "submitted";
