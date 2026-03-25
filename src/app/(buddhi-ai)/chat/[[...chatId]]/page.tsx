@@ -22,10 +22,10 @@ import {
 } from "@/components/ai-elements/message";
 import {
     PromptInput,
-    PromptInputActionAddAttachments,
+    /* PromptInputActionAddAttachments,
     PromptInputActionMenu,
     PromptInputActionMenuContent,
-    PromptInputActionMenuTrigger,
+    PromptInputActionMenuTrigger, */
     PromptInputBody,
     PromptInputFooter,
     PromptInputHeader,
@@ -42,7 +42,6 @@ import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { useCallback, useState, useEffect, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
-import { useRouter } from "next/navigation";
 import { TransformersUIMessage } from "@browser-ai/transformers-js";
 import { lastAssistantMessageIsCompleteWithApprovalResponses } from "ai";
 import { TransformersChatTransport } from "@/lib/chat-transport";
@@ -137,12 +136,17 @@ const SuggestionItem = ({
 };
 
 export default function ChatPage({ params }: { params: Promise<{ chatId?: string[] }> }) {
-    const router = useRouter();
     const { addChat, setCurrentChatId } = useChatStore();
+
+    const [inputValue, setInputValue] = useState("");
+    const [savedChatId, setSavedChatId] = useState<number | null>(null);
+    const chatSavedRef = useRef(false);
+    const savedChatIdRef = useRef<number | null>(null);
 
     const {
         messages,
         sendMessage,
+        setMessages,
         status,
         stop,
         addToolApprovalResponse,
@@ -151,12 +155,20 @@ export default function ChatPage({ params }: { params: Promise<{ chatId?: string
         experimental_throttle: 75,
         // Automatically resumes after tool approval responses are submitted
         sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
+        // Save assistant message when it finishes
+        onFinish: async (params) => {
+            const chatId = savedChatIdRef.current;
+            if (!chatId) return;
+            const message = params.message;
+            const content = extractTextContent(message as any);
+            if (!content) return;
+            try {
+                await chatsApi.addMessages(chatId, [{ role: message.role, content }]);
+            } catch (err) {
+                console.error("[ChatPage] onFinish: failed to save assistant message:", err);
+            }
+        },
     });
-
-    const [inputValue, setInputValue] = useState("");
-    const [savedChatId, setSavedChatId] = useState<number | null>(null);
-    const chatSavedRef = useRef(false);
-    const lastSavedMessageIndexRef = useRef(-1);
 
     // Handle route params and initialize chat state
     useEffect(() => {
@@ -167,8 +179,28 @@ export default function ChatPage({ params }: { params: Promise<{ chatId?: string
                 const id = Number(chatId);
                 if (!isNaN(id)) {
                     setSavedChatId(id);
+                    savedChatIdRef.current = id;
                     setCurrentChatId(id);
                     chatSavedRef.current = true; // Don't create a new chat
+
+                    // Load stored messages
+                    try {
+                        const chatDetail = await chatsApi.get(id);
+                        if (chatDetail.messages.length > 0) {
+                            const loaded: TransformersUIMessage[] = chatDetail.messages.map(
+                                (msg) => ({
+                                    id: `persisted-${msg.id}`,
+                                    role: msg.role as "user" | "assistant",
+                                    content: msg.content,
+                                    parts: [{ type: "text" as const, text: msg.content }],
+                                    createdAt: new Date(msg.created_at),
+                                })
+                            );
+                            setMessages(loaded);
+                        }
+                    } catch (err) {
+                        console.error("[ChatPage] failed to load chat history:", err);
+                    }
                 }
             }
         })();
@@ -176,34 +208,7 @@ export default function ChatPage({ params }: { params: Promise<{ chatId?: string
         return () => {
             setCurrentChatId(null);
         };
-    }, [params, setCurrentChatId]);
-
-    // Save messages after streaming completes
-    useEffect(() => {
-        if (status !== "ready" || !savedChatId || messages.length === lastSavedMessageIndexRef.current + 1) {
-            return;
-        }
-
-        const unsavedMessages = messages.slice(lastSavedMessageIndexRef.current + 1);
-        if (unsavedMessages.length === 0) return;
-
-        (async () => {
-            try {
-                const messagesToSave = unsavedMessages.map((msg) => ({
-                    role: msg.role,
-                    content: extractTextContent(msg),
-                }));
-
-                await chatsApi.addMessages(savedChatId, messagesToSave);
-                lastSavedMessageIndexRef.current = messages.length - 1;
-            } catch (err) {
-                console.error("[ChatPage] failed to save messages:", err);
-                toast.error("Failed to save chat messages", {
-                    description: err instanceof Error ? err.message : "Please try again.",
-                });
-            }
-        })();
-    }, [messages, savedChatId, status]);
+    }, [params, setCurrentChatId, setMessages]);
 
     const handleSuggestionClick = useCallback(
         (suggestion: string) => {
@@ -233,9 +238,22 @@ export default function ChatPage({ params }: { params: Promise<{ chatId?: string
                 const title = makeTitle(message.text);
                 const chatInfo = await chatsApi.create(title);
                 setSavedChatId(chatInfo.id);
+                savedChatIdRef.current = chatInfo.id;
                 setCurrentChatId(chatInfo.id);
                 addChat(chatInfo);
-                router.replace(`/chat/${chatInfo.id}`);
+
+                // Update URL without causing remount
+                window.history.replaceState(null, "", `/chat/${chatInfo.id}`);
+
+                // Save user message immediately
+                try {
+                    await chatsApi.addMessages(chatInfo.id, [
+                        { role: "user", content: message.text.trim() },
+                    ]);
+                } catch (err) {
+                    console.error("[ChatPage] failed to save user message:", err);
+                    // Don't block conversation if message save fails
+                }
             } catch (err) {
                 console.error("[ChatPage] failed to create chat:", err);
                 toast.error("Failed to create chat", {

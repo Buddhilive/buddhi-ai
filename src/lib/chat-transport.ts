@@ -1,7 +1,7 @@
 import {
     ChatTransport, UIMessageChunk, streamText,
     convertToModelMessages, ChatRequestOptions,
-    createUIMessageStream, stepCountIs, embed,
+    createUIMessageStream, stepCountIs,
 } from "ai";
 import {
     TransformersJSLanguageModel,
@@ -15,7 +15,8 @@ import { retrieveSimilarChunks } from "./documents";
 export class TransformersChatTransport
     implements ChatTransport<TransformersUIMessage> {
     private model: TransformersJSLanguageModel | null = null;
-    private embeddingModel: any = null;
+    private embeddingWorker: Worker | null = null;
+    private pendingEmbeds = new Map<string, { resolve: (v: number[]) => void; reject: (e: Error) => void }>();
     private tools: ReturnType<typeof createTools> | null = null;
 
     private getModel(): TransformersJSLanguageModel {
@@ -36,15 +37,41 @@ export class TransformersChatTransport
         return this.model;
     }
 
-    private getEmbeddingModel() {
-        if (!this.embeddingModel) {
-            const config = MODELS[1]; // onnx-community/embeddinggemma-300m-ONNX
-            this.embeddingModel = transformersJS.embedding(config.id, {
-                device: config.device,
-                dtype: config.dtype,
-            });
+    private getEmbeddingWorker(): Worker {
+        if (!this.embeddingWorker) {
+            this.embeddingWorker = new Worker(
+                new URL("@/lib/embedding-worker.ts", import.meta.url),
+                { type: "module" }
+            );
+            this.embeddingWorker.onmessage = (evt: MessageEvent) => {
+                const { type, id, embedding, message } = evt.data;
+                const pending = this.pendingEmbeds.get(id);
+                if (!pending) return;
+                this.pendingEmbeds.delete(id);
+                if (type === "result") {
+                    pending.resolve(embedding);
+                } else {
+                    pending.reject(new Error(message ?? "Embedding worker error"));
+                }
+            };
+            this.embeddingWorker.onerror = (err) => {
+                const msg = err.message ?? "Embedding worker crashed";
+                for (const pending of this.pendingEmbeds.values()) {
+                    pending.reject(new Error(msg));
+                }
+                this.pendingEmbeds.clear();
+                this.embeddingWorker = null;
+            };
         }
-        return this.embeddingModel;
+        return this.embeddingWorker;
+    }
+
+    private embedQuery(text: string): Promise<number[]> {
+        return new Promise((resolve, reject) => {
+            const id = `embed-${Date.now()}-${Math.random()}`;
+            this.pendingEmbeds.set(id, { resolve, reject });
+            this.getEmbeddingWorker().postMessage({ type: "embed", id, text });
+        });
     }
 
     private getTools(): ReturnType<typeof createTools> {
@@ -123,11 +150,7 @@ export class TransformersChatTransport
 
                 if (queryText) {
                     try {
-                        const embeddingModel = this.getEmbeddingModel();
-                        const { embedding } = await embed({
-                            model: embeddingModel,
-                            value: queryText,
-                        });
+                        const embedding = await this.embedQuery(queryText);
 
                         const chunks = await retrieveSimilarChunks(embedding, 5);
                         if (chunks.length > 0) {
