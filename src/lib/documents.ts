@@ -23,6 +23,7 @@ export interface EmbeddingResult {
   doc_id: number;
   chunk_index: number;
   chunk_text: string;
+  original_name: string;
   score?: number;
 }
 
@@ -354,7 +355,7 @@ export async function retrieveSimilarChunks(
   const db = await getDB();
   const vectorStr = `[${queryEmbedding.join(",")}]`;
   const result = await db.query<EmbeddingResult & { score: number }>(
-    `SELECT e.id, e.doc_id, e.chunk_index, e.chunk_text,
+    `SELECT e.id, e.doc_id, e.chunk_index, e.chunk_text, d.original_name,
             1 - (e.embedding <=> $1::vector) AS score
      FROM embeddings e
      JOIN documents d ON d.id = e.doc_id

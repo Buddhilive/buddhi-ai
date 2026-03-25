@@ -279,12 +279,12 @@ export default function ChatPage() {
                         </PromptInputBody>
                         <PromptInputFooter>
                             <PromptInputTools>
-                                <PromptInputActionMenu>
+                                {/* <PromptInputActionMenu>
                                     <PromptInputActionMenuTrigger />
                                     <PromptInputActionMenuContent>
                                         <PromptInputActionAddAttachments />
                                     </PromptInputActionMenuContent>
-                                </PromptInputActionMenu>
+                                </PromptInputActionMenu> */}
                                 <SpeechInput
                                     className="shrink-0 cursor-pointer"
                                     onTranscriptionChange={handleTranscriptionChange}

@@ -1,7 +1,7 @@
 import {
     ChatTransport, UIMessageChunk, streamText,
     convertToModelMessages, ChatRequestOptions,
-    createUIMessageStream, stepCountIs,
+    createUIMessageStream, stepCountIs, embed,
 } from "ai";
 import {
     TransformersJSLanguageModel,
@@ -10,10 +10,12 @@ import {
 } from "@browser-ai/transformers-js";
 import { MODELS } from "./models";
 import { createTools } from "./tools";
+import { retrieveSimilarChunks } from "./documents";
 
 export class TransformersChatTransport
     implements ChatTransport<TransformersUIMessage> {
     private model: TransformersJSLanguageModel | null = null;
+    private embeddingModel: any = null;
     private tools: ReturnType<typeof createTools> | null = null;
 
     private getModel(): TransformersJSLanguageModel {
@@ -32,6 +34,17 @@ export class TransformersChatTransport
             });
         }
         return this.model;
+    }
+
+    private getEmbeddingModel() {
+        if (!this.embeddingModel) {
+            const config = MODELS[1]; // onnx-community/embeddinggemma-300m-ONNX
+            this.embeddingModel = transformersJS.embedding(config.id, {
+                device: config.device,
+                dtype: config.dtype,
+            });
+        }
+        return this.embeddingModel;
     }
 
     private getTools(): ReturnType<typeof createTools> {
@@ -97,11 +110,77 @@ export class TransformersChatTransport
                     );
                 }
 
+                // ─── RAG Retrieval ────────────────────────────────────────────────────
+                let ragContext = "";
+                const ragSources: Array<{ docId: number; originalName: string }> = [];
+
+                // Extract the latest user message text
+                const lastUserMsg = messages.findLast(m => m.role === "user");
+                const textPart = lastUserMsg?.parts?.find(
+                    (p: any) => p.type === "text"
+                ) as any;
+                const queryText = textPart?.text ?? "";
+
+                if (queryText) {
+                    try {
+                        const embeddingModel = this.getEmbeddingModel();
+                        const { embedding } = await embed({
+                            model: embeddingModel,
+                            value: queryText,
+                        });
+
+                        const chunks = await retrieveSimilarChunks(embedding, 5);
+                        if (chunks.length > 0) {
+                            ragContext = chunks
+                                .map(
+                                    (c, i) =>
+                                        `[Context ${i + 1}] (from: ${c.original_name})\n${c.chunk_text}`
+                                )
+                                .join("\n\n");
+
+                            // Deduplicate sources by doc_id
+                            const seen = new Set<number>();
+                            for (const c of chunks) {
+                                if (!seen.has(c.doc_id)) {
+                                    seen.add(c.doc_id);
+                                    ragSources.push({
+                                        docId: c.doc_id,
+                                        originalName: c.original_name,
+                                    });
+                                }
+                            }
+                        }
+                    } catch (err) {
+                        console.warn("[RAG] Retrieval skipped:", err);
+                    }
+                }
+
+                // Inject RAG context as a system message if we found relevant chunks
+                const messagesWithContext = ragContext
+                    ? [
+                        {
+                            role: "system" as const,
+                            content: `Use the following document excerpts to answer the user's question:\n\n${ragContext}\n\nIf the documents don't contain relevant information, answer from your general knowledge.`,
+                        },
+                        ...prompt,
+                    ]
+                    : prompt;
+
+                // Emit source-url chunks for each unique document
+                for (const source of ragSources) {
+                    writer.write({
+                        type: "source-url",
+                        id: `rag-source-${source.docId}`,
+                        url: `#doc-${source.docId}`,
+                        title: source.originalName,
+                    } as any);
+                }
+
                 const result = streamText({
                     model,
                     tools,
                     stopWhen: stepCountIs(5),
-                    messages: prompt,
+                    messages: messagesWithContext,
                     abortSignal,
                 });
 

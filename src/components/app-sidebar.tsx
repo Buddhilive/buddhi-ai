@@ -4,8 +4,8 @@ import * as React from "react"
 import { usePathname } from "next/navigation"
 
 import { NavMain } from "@/components/nav-main"
-import { NavProjects } from "@/components/nav-projects"
-import { NavUser } from "@/components/nav-user"
+/* import { NavProjects } from "@/components/nav-projects";
+import { NavUser } from "@/components/nav-user"; */
 /* import { NavChatHistory } from "@/components/nav-chat-history" */
 import { TeamSwitcher } from "@/components/team-switcher"
 import {
@@ -60,33 +60,7 @@ const data = {
         />
       ),
     },
-    {
-      title: "Documentation",
-      url: "#",
-      icon: (
-        <BookOpenIcon
-        />
-      ),
-      items: [
-        {
-          title: "Introduction",
-          url: "#",
-        },
-        {
-          title: "Get Started",
-          url: "#",
-        },
-        {
-          title: "Tutorials",
-          url: "#",
-        },
-        {
-          title: "Changelog",
-          url: "#",
-        },
-      ],
-    },
-    {
+    /* {
       title: "Settings",
       url: "#",
       icon: (
@@ -111,7 +85,7 @@ const data = {
           url: "#",
         },
       ],
-    },
+    }, */
   ],
   projects: [
     {
@@ -119,22 +93,6 @@ const data = {
       url: "#",
       icon: (
         <FrameIcon
-        />
-      ),
-    },
-    {
-      name: "Sales & Marketing",
-      url: "#",
-      icon: (
-        <PieChartIcon
-        />
-      ),
-    },
-    {
-      name: "Travel",
-      url: "#",
-      icon: (
-        <MapIcon
         />
       ),
     },

@@ -12,7 +12,8 @@ import {
 import React from "react"
 
 const SEGMENT_LABELS: Record<string, string> = {
-  chat: "Playground",
+  chat: "Chat",
+  history: "History",
   models: "Models",
   settings: "Settings",
   documentation: "Documentation",
