@@ -3,7 +3,7 @@
   "version": "0.4.1",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
@@ -13,6 +13,7 @@
     "@ai-sdk/provider-utils": "^3.0.12",
     "@ai-sdk/react": "^2.0.76",
     "@electric-sql/pglite": "^0.3.14",
+    "@huggingface/hub": "^2.11.0",
     "@mediapipe/tasks-genai": "^0.10.25",
     "@mediapipe/tasks-text": "0.10.22-rc.20250304",
     "@next/third-parties": "^16.0.1",

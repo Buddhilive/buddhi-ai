@@ -38,7 +38,7 @@ import {
   MessageAction,
   MessageResponse,
 } from "@/components/ai-elements/message";
-import { CopyIcon, FilePlus2, RefreshCcwIcon } from "lucide-react";
+import { BrainCircuitIcon, CopyIcon, FilePlus2, RefreshCcwIcon } from "lucide-react";
 import {
   Source,
   Sources,
@@ -52,6 +52,7 @@ import {
 } from "@/components/ai-elements/reasoning"; */
 import { Loader } from "@/components/ai-elements/loader";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   BuddhiAISavedChat,
   initChatManager,
@@ -466,6 +467,26 @@ export default function BuddhiAIChat() {
   };
 
   const handleSourceFiles = async () => {};
+
+  // No model loaded — prompt user to install one from the Models page
+  if (!webLLMInstance) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] gap-4 text-center px-6">
+        <BrainCircuitIcon className="h-12 w-12 text-muted-foreground" />
+        <h2 className="text-xl font-semibold">No AI model installed</h2>
+        <p className="text-muted-foreground max-w-sm">
+          You need to install a language model before you can start chatting.
+          Visit the Models page to download one.
+        </p>
+        <Link
+          href="/models"
+          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          Go to Models
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-4xl px-6 pb-6 relative size-full h-[calc(100vh-4rem)] no-scrollbar">
