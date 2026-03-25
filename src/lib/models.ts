@@ -10,8 +10,8 @@ export interface ModelConfig extends Omit<WorkerLoadOptions, "modelId"> {
 
 export const MODELS: ModelConfig[] = [
     {
-        id: "huggingworld/Qwen3.5-0.8B-ONNX",
-        name: "Qwen3.5 0.8B",
+        id: "onnx-community/gemma-3-270m-it-ONNX",
+        name: "Gemma 3 270M",
         description: "Lightweight language model optimised for fast inference on CPU.",
         type: "language",
         device: "webgpu",

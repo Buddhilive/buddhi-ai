@@ -6,7 +6,8 @@ let embeddingModel: any = null;
 
 async function getModel() {
     if (!embeddingModel) {
-        const config = MODELS[1]; // onnx-community/embeddinggemma-300m-ONNX
+        const config = MODELS.find(m => m.type === "embedding");
+        if (!config) throw new Error("No embedding model found in MODELS config.");
         embeddingModel = transformersJS.embedding(config.id, {
             device: config.device,
             dtype: config.dtype,

@@ -92,7 +92,7 @@ export class TransformersChatTransport
         } & ChatRequestOptions,
     ): Promise<ReadableStream<UIMessageChunk>> {
         const { messages, abortSignal } = options;
-        const prompt = await convertToModelMessages(messages);
+        let prompt = await convertToModelMessages(messages);
 
         return createUIMessageStream<TransformersUIMessage>({
             execute: async ({ writer }) => {
@@ -178,16 +178,25 @@ export class TransformersChatTransport
                     }
                 }
 
-                // Inject RAG context as a system message if we found relevant chunks
-                const messagesWithContext = ragContext
-                    ? [
-                        {
-                            role: "system" as const,
-                            content: `Use the following document excerpts to answer the user's question:\n\n${ragContext}\n\nIf the documents don't contain relevant information, answer from your general knowledge.`,
-                        },
-                        ...prompt,
-                    ]
-                    : prompt;
+                // Inject RAG context into the last user message to avoid system-message
+                // incompatibility with models like Gemma that require strict role alternation.
+                if (ragContext) {
+                    const lastUserIdx = prompt.findLastIndex(m => m.role === "user");
+                    if (lastUserIdx >= 0) {
+                        const lastUser = prompt[lastUserIdx] as any;
+                        const contextPrefix = `[Relevant document context]\n${ragContext}\n\n[User question]\n`;
+                        const updatedContent =
+                            typeof lastUser.content === "string"
+                                ? contextPrefix + lastUser.content
+                                : [{ type: "text" as const, text: contextPrefix }, ...(lastUser.content as any[])];
+                        prompt = [
+                            ...prompt.slice(0, lastUserIdx),
+                            { ...lastUser, content: updatedContent },
+                            ...prompt.slice(lastUserIdx + 1),
+                        ];
+                    }
+                }
+                const messagesWithContext = prompt;
 
                 // Emit source-url chunks for each unique document
                 for (const source of ragSources) {
