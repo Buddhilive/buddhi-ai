@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { documentsApi, DocumentInfo } from "@/lib/documents";
+import { documentsApi, DocumentInfo, reconcileInterruptedDocuments } from "@/lib/documents";
+import { useDocumentStore } from "@/lib/stores/document-store";
 import { toast } from "sonner";
 import {
   AlertCircleIcon,
@@ -32,6 +33,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -84,7 +86,7 @@ function stepText(doc: DocumentInfo): string {
   }
 }
 
-// ─── Active upload row (with SSE) ────────────────────────────────────────────
+// ─── Active upload row (Zustand-driven, no SSE) ───────────────────────────────
 
 interface UploadRowProps {
   doc: DocumentInfo;
@@ -93,52 +95,72 @@ interface UploadRowProps {
 
 function UploadRow({ doc, onUpdate }: UploadRowProps) {
   const onUpdateRef = useRef(onUpdate);
-  useEffect(() => { onUpdateRef.current = onUpdate; });
-
-  // Open SSE stream for in-progress docs
   useEffect(() => {
-    if (doc.status !== "pending" && doc.status !== "processing") return;
+    onUpdateRef.current = onUpdate;
+  });
 
-    const sse = new EventSource(documentsApi.getProgress(doc.id));
+  // Subscribe to live processing state from Zustand store
+  const processingState = useDocumentStore(
+    useCallback((s) => s.docs[doc.id], [doc.id])
+  );
 
-    sse.onmessage = (e) => {
-      try {
-        const data: DocumentInfo = JSON.parse(e.data);
-        onUpdateRef.current(data);
-        if (data.status === "completed" || data.status === "failed") {
-          sse.close();
-        }
-      } catch {
-        // ignore parse errors
-      }
-    };
+  // Derive live status: Zustand is the source of truth while processing
+  const liveStatus: DocumentInfo["status"] =
+    processingState?.status ?? doc.status;
 
-    sse.onerror = () => {
-      sse.close();
-      // Try one final REST fetch to pick up terminal state
-      documentsApi.getDocument(doc.id).then(onUpdateRef.current).catch(() => { });
-    };
+  // When processing reaches a terminal state, fetch the final PGlite record
+  const prevStatusRef = useRef(liveStatus);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = liveStatus;
 
-    return () => sse.close();
-  }, [doc.id, doc.status]);
+    if (
+      (liveStatus === "completed" || liveStatus === "failed") &&
+      prev !== liveStatus
+    ) {
+      documentsApi
+        .getDocument(doc.id)
+        .then(onUpdateRef.current)
+        .catch(() => {
+          // Fallback: synthesize the doc from store state
+          onUpdateRef.current({
+            ...doc,
+            status: liveStatus,
+            chunk_count: processingState?.chunkCount ?? null,
+            error_msg: processingState?.errorMsg ?? null,
+          });
+        });
+    }
+  }, [liveStatus, doc, processingState]);
 
-  const isActive = doc.status === "pending" || doc.status === "processing";
+  const isActive = liveStatus === "pending" || liveStatus === "processing";
+  const overallPct = processingState?.overallPct ?? (liveStatus === "completed" ? 100 : 0);
+
+  // Build descriptive phase text
+  const phaseLabel = processingState?.phase
+    ? `${processingState.phase.charAt(0).toUpperCase()}${processingState.phase.slice(1)}… (${overallPct}%)`
+    : stepText({ ...doc, status: liveStatus });
 
   return (
     <div
-      className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${isActive ? "bg-muted/40" : ""
-        }`}
+      className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${
+        isActive ? "bg-muted/40" : ""
+      }`}
     >
       <FileTextIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex items-center gap-2">
           <span className="truncate font-medium">{doc.original_name}</span>
-          <StatusBadge status={doc.status} />
+          <StatusBadge status={liveStatus} />
         </div>
-        <p className={`text-xs ${doc.status === "failed" ? "text-destructive" : "text-muted-foreground"}`}>
-          {stepText(doc)}
+        <p
+          className={`text-xs ${
+            liveStatus === "failed" ? "text-destructive" : "text-muted-foreground"
+          }`}
+        >
+          {phaseLabel}
         </p>
-        {isActive && <Progress value={doc.status === "processing" ? 60 : 20} className="h-1" />}
+        {isActive && <Progress value={overallPct} className="h-1" />}
       </div>
     </div>
   );
@@ -156,20 +178,35 @@ function UploadTab({ onDocumentReady }: UploadTabProps) {
   const [isUploading, setIsUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleUpdate = useCallback((updated: DocumentInfo) => {
-    setUploads((prev) =>
-      prev.map((d) => (d.id === updated.id ? updated : d))
-    );
-    if (updated.status === "completed") {
-      onDocumentReady(updated);
-    }
-  }, [onDocumentReady]);
+  const activeCount = useDocumentStore((s) => s.activeCount);
+  const atCapacity = activeCount >= 5;
+
+  const handleUpdate = useCallback(
+    (updated: DocumentInfo) => {
+      setUploads((prev) =>
+        prev.map((d) => (d.id === updated.id ? updated : d))
+      );
+      if (updated.status === "completed") {
+        onDocumentReady(updated);
+      }
+    },
+    [onDocumentReady]
+  );
 
   const uploadFiles = async (files: File[]) => {
     if (!files.length) return;
     setIsUploading(true);
 
     for (const file of files) {
+      // Check capacity before each file
+      const currentActive = useDocumentStore.getState().activeCount;
+      if (currentActive >= 5) {
+        toast.warning(
+          `Processing queue is full (5/5 slots in use). "${file.name}" was skipped. Wait for a slot to free up.`
+        );
+        continue;
+      }
+
       try {
         const doc = await documentsApi.uploadDocument(file);
         setUploads((prev) => [doc, ...prev]);
@@ -191,6 +228,10 @@ function UploadTab({ onDocumentReady }: UploadTabProps) {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
+    if (atCapacity) {
+      toast.warning("Processing queue is full (5/5). Wait for documents to finish before uploading more.");
+      return;
+    }
     const files = Array.from(e.dataTransfer.files);
     uploadFiles(files);
   };
@@ -199,50 +240,72 @@ function UploadTab({ onDocumentReady }: UploadTabProps) {
     <div className="space-y-6">
       {/* Drop zone */}
       <label
-        className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-12 text-center transition-colors ${isDragOver
-          ? "border-primary bg-primary/5"
-          : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"
-          }`}
-        onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+        className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-12 text-center transition-colors ${
+          atCapacity
+            ? "cursor-not-allowed border-muted-foreground/15 opacity-50"
+            : isDragOver
+            ? "border-primary bg-primary/5"
+            : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"
+        }`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (!atCapacity) setIsDragOver(true);
+        }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}
       >
         <UploadCloudIcon className="h-10 w-10 text-muted-foreground" />
         <div className="space-y-1">
           <p className="font-medium">
-            {isDragOver ? "Drop files here" : "Drag & drop files or click to browse"}
+            {atCapacity
+              ? "Queue full — wait for a slot to free up"
+              : isDragOver
+              ? "Drop files here"
+              : "Drag & drop files or click to browse"}
           </p>
           <p className="text-xs text-muted-foreground">
-            PDF, TXT, MD — up to 50 MB each
+            TXT, MD — up to 25 MB each · PDF not yet supported
           </p>
+          {activeCount > 0 && (
+            <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+              {activeCount}/5 processing slots in use
+            </p>
+          )}
         </div>
         <input
           ref={inputRef}
           type="file"
-          accept=".txt,.md,.pdf"
+          accept=".txt,.md"
           multiple
           className="sr-only"
           onChange={handleFileChange}
+          disabled={atCapacity}
         />
       </label>
 
       <Button
         className="w-full"
         onClick={() => inputRef.current?.click()}
-        disabled={isUploading}
+        disabled={isUploading || atCapacity}
       >
         {isUploading ? (
           <RefreshCcwIcon className="mr-2 h-4 w-4 animate-spin" />
         ) : (
           <UploadCloudIcon className="mr-2 h-4 w-4" />
         )}
-        {isUploading ? "Uploading…" : "Upload Files"}
+        {isUploading
+          ? "Uploading…"
+          : atCapacity
+          ? "Queue Full (5/5)"
+          : "Upload Files"}
       </Button>
 
-      {/* Active uploads */}
+      {/* Active uploads this session */}
       {uploads.length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-muted-foreground">This session</h3>
+          <h3 className="text-sm font-medium text-muted-foreground">
+            This session
+          </h3>
           <div className="space-y-2">
             {uploads.map((doc) => (
               <UploadRow key={doc.id} doc={doc} onUpdate={handleUpdate} />
@@ -278,9 +341,14 @@ function KnowledgeBaseTab() {
     }
   }, []);
 
+  // On first mount: reconcile any interrupted docs then load the list
   useEffect(() => {
-    fetchDocs();
-  }, [fetchDocs]);
+    (async () => {
+      await reconcileInterruptedDocuments();
+      await fetchDocs();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -288,7 +356,9 @@ function KnowledgeBaseTab() {
       setIsDeleting(true);
       await documentsApi.deleteDocument(deleteTarget.id);
       setDocs((prev) => prev.filter((d) => d.id !== deleteTarget.id));
-      toast.success(`"${deleteTarget.original_name}" removed from knowledge base`);
+      toast.success(
+        `"${deleteTarget.original_name}" removed from knowledge base`
+      );
       setDeleteTarget(null);
     } catch (err: unknown) {
       toast.error((err as Error).message || "Failed to delete document");
@@ -310,8 +380,15 @@ function KnowledgeBaseTab() {
         <p className="text-sm text-muted-foreground">
           {docs.length} document{docs.length !== 1 ? "s" : ""} in knowledge base
         </p>
-        <Button variant="outline" size="sm" onClick={fetchDocs} disabled={loading}>
-          <RefreshCcwIcon className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={fetchDocs}
+          disabled={loading}
+        >
+          <RefreshCcwIcon
+            className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`}
+          />
           Refresh
         </Button>
       </div>
@@ -319,7 +396,7 @@ function KnowledgeBaseTab() {
       {backendError && (
         <div className="flex items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           <AlertCircleIcon className="h-4 w-4 shrink-0" />
-          <span>Backend unavailable: {backendError}</span>
+          <span>Failed to load knowledge base: {backendError}</span>
         </div>
       )}
 
@@ -333,7 +410,9 @@ function KnowledgeBaseTab() {
         <div className="flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-muted-foreground/20 py-16 text-center">
           <DatabaseIcon className="h-10 w-10 text-muted-foreground/40" />
           <div className="space-y-1">
-            <p className="font-medium text-muted-foreground">No documents yet</p>
+            <p className="font-medium text-muted-foreground">
+              No documents yet
+            </p>
             <p className="text-xs text-muted-foreground">
               Upload files in the Upload tab to populate the knowledge base.
             </p>
@@ -357,7 +436,9 @@ function KnowledgeBaseTab() {
                   <TableCell className="max-w-[240px]">
                     <div className="flex items-center gap-2 min-w-0">
                       <FileTextIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <span className="truncate text-sm font-medium">{doc.original_name}</span>
+                      <span className="truncate text-sm font-medium">
+                        {doc.original_name}
+                      </span>
                     </div>
                   </TableCell>
                   <TableCell>
@@ -387,18 +468,26 @@ function KnowledgeBaseTab() {
       )}
 
       {/* Delete confirmation */}
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Remove document?</DialogTitle>
             <DialogDescription>
               This will permanently remove{" "}
-              <span className="font-medium">{deleteTarget?.original_name}</span> and all its indexed
-              chunks from the knowledge base. The original file on disk is kept for audit purposes.
+              <span className="font-medium">{deleteTarget?.original_name}</span>{" "}
+              and all its indexed chunks from the knowledge base. The original
+              file on disk is kept for audit purposes.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              disabled={isDeleting}
+            >
               Cancel
             </Button>
             <Button
@@ -423,9 +512,26 @@ function KnowledgeBaseTab() {
 // ─── Root view ────────────────────────────────────────────────────────────────
 
 export function DocumentsView() {
+  const activeCount = useDocumentStore((s) => s.activeCount);
+
   const handleDocumentReady = useCallback((doc: DocumentInfo) => {
-    toast.success(`"${doc.original_name}" is ready — ${doc.chunk_count} chunks indexed`);
+    toast.success(
+      `"${doc.original_name}" is ready — ${doc.chunk_count} chunks indexed`
+    );
   }, []);
+
+  // Warn user before tab close / refresh while processing is active
+  useEffect(() => {
+    if (activeCount === 0) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Modern browsers show a generic dialog; preventDefault triggers it
+      e.preventDefault();
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [activeCount]);
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -435,6 +541,19 @@ export function DocumentsView() {
           Upload documents for RAG retrieval and manage the knowledge base.
         </p>
       </div>
+
+      {/* Processing alert banner — persists across tab navigation */}
+      {activeCount > 0 && (
+        <Alert className="border-amber-500/50 bg-amber-500/10 text-amber-600 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-400">
+          <AlertCircleIcon className="h-4 w-4 !text-amber-600 dark:!text-amber-400" />
+          <AlertTitle>Processing in Progress</AlertTitle>
+          <AlertDescription>
+            {activeCount} document{activeCount !== 1 ? "s are" : " is"} being
+            processed. Please do not close or refresh this tab — it will
+            interrupt the pipeline. Navigation within the app is fine.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Tabs defaultValue="upload" className="w-full">
         <TabsList className="grid w-full max-w-sm grid-cols-2">
