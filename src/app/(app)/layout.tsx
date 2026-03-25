@@ -15,6 +15,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { useNavigation } from "@/hooks/use-navigation";
+import { useModelEngine } from "@/hooks/use-model-engine";
 
 export default function AppLayout({
   children,
@@ -22,6 +23,7 @@ export default function AppLayout({
   children: React.ReactNode;
 }>) {
   const { breadcrumbTitle } = useNavigation();
+  useModelEngine();
 
   return (
     <SidebarProvider>

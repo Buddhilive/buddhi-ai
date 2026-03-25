@@ -63,6 +63,8 @@ import { toast } from "sonner";
 import { SYSTEM_PROMPT } from "@/const/system-prompt";
 import { useChatStore } from "@/stores/chatStore";
 import { useWebLLMStore } from "@/stores/mediaPipeStore";
+import { useModelStore } from "@/stores/model-store";
+import { MODELS } from "@/const/models";
 import {
   BuddhiAIChatTemplate,
   BuddhiAIMessage,
@@ -94,6 +96,10 @@ export default function BuddhiAIChat() {
   /* const [model, setModel] = useState<string>(models[0].value); */
   const [sourceFiles, setSourceFiles] = useState([]);
   const { webLLMInstance } = useWebLLMStore();
+  const storeModels = useModelStore((s) => s.models);
+  const hasCompletedLanguageModel = MODELS.some(
+    (m) => m.type === "language" && storeModels[m.id]?.status === "completed"
+  );
   const [messages, setMessages] = useState<Array<BuddhiAIMessage>>([]);
   const [status, setStatus] = useState<
     "submitted" | "streaming" | "ready" | "error"
@@ -468,22 +474,31 @@ export default function BuddhiAIChat() {
 
   const handleSourceFiles = async () => {};
 
-  // No model loaded — prompt user to install one from the Models page
   if (!webLLMInstance) {
+    if (!hasCompletedLanguageModel) {
+      // No model downloaded — prompt user to install one
+      return (
+        <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] gap-4 text-center px-6">
+          <BrainCircuitIcon className="h-12 w-12 text-muted-foreground" />
+          <h2 className="text-xl font-semibold">No AI model installed</h2>
+          <p className="text-muted-foreground max-w-sm">
+            You need to install a language model before you can start chatting.
+            Visit the Models page to download one.
+          </p>
+          <Link
+            href="/models"
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            Go to Models
+          </Link>
+        </div>
+      );
+    }
+    // Model is downloaded — engine is initializing
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] gap-4 text-center px-6">
-        <BrainCircuitIcon className="h-12 w-12 text-muted-foreground" />
-        <h2 className="text-xl font-semibold">No AI model installed</h2>
-        <p className="text-muted-foreground max-w-sm">
-          You need to install a language model before you can start chatting.
-          Visit the Models page to download one.
-        </p>
-        <Link
-          href="/models"
-          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          Go to Models
-        </Link>
+        <Loader />
+        <p className="text-muted-foreground">Loading model into memory…</p>
       </div>
     );
   }

@@ -135,6 +135,32 @@ function checkCacheForModel(modelId: string): Promise<boolean> {
     });
 }
 
+// ─── Cache access (main thread) ───────────────────────────────────────────────
+//
+// Must mirror the constants in model-download-worker.ts exactly.
+
+const CACHE_NAME = "buddhi-ai-models-cache-v1";
+function modelCacheKey(modelId: string): string {
+    return `https://cache.buddhi-ai.local/models/${modelId.replace(/\//g, "_")}`;
+}
+
+/**
+ * Retrieve the downloaded model from the Cache API and return a blob: URL.
+ * The caller is responsible for calling URL.revokeObjectURL() when done.
+ * Returns null if the model is not in the cache.
+ */
+export async function getModelObjectURL(modelId: string): Promise<string | null> {
+    try {
+        const cache = await caches.open(CACHE_NAME);
+        const response = await cache.match(new Request(modelCacheKey(modelId)));
+        if (!response) return null;
+        const blob = await response.blob();
+        return URL.createObjectURL(blob);
+    } catch {
+        return null;
+    }
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export const modelsApi = {
