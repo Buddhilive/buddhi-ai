@@ -13,13 +13,84 @@ The guiding principle of Buddhi AI is to deliver robust AI utility while upholdi
 
 ***
 
-### 🛠️ Initial Tool Collection
+### 🧠 Models & RAG Architecture
 
-Buddhi AI launches with a carefully curated suite of three essential applications, all powered by its client-side foundation:
+Buddhi AI utilizes a sophisticated **Local-First RAG (Retrieval-Augmented Generation)** architecture to provide context-aware responses without compromising privacy.
 
-1.  **Chat:** A dynamic, private conversational AI assistant.
-2.  **Summarizer:** A tool for instantly generating concise summaries of text content.
-3.  **Writer:** A versatile assistant designed to aid in drafting, editing, and generating text.
+#### Architecture Overview
+```mermaid
+graph TD
+    User((User)) -->|Query| UI[Chat UI]
+    UI -->|Prompt| RAG[RAG Orchestrator]
+    
+    subgraph Browser_Environment [Browser Environment - Client Side]
+        direction TB
+        RAG -->|Generate Embedding| EMB[Gemma 300M - LiteRT]
+        EMB -->|Vector Search| PGL[PGlite Vector Store]
+        PGL -->|Retrieved Context| CF[Confidence Filter]
+        
+        CF -->|Score > 0.3| AUG[Prompt Augmentor]
+        CF -->|Score < 0.3| NO_AUG[Direct Prompt]
+        
+        AUG -->|System Prompt + Context| INF[LLM Inference]
+        NO_AUG -->|System Prompt| INF
+        
+        INF -->|Local AI Models| LLM{LLM Engine}
+        LLM -->|Gemini Nano| CHR[Chrome Built-in AI]
+        LLM -->|Llama/Phi-3| WLLM[WebLLM / WASM]
+    end
+    
+    INF -->|Stream Response| UI
+```
+
+#### Local Inference Models
+- **LLMs:** Supports **Chrome Built-in AI (Gemini Nano)** and **WebLLM** (e.g., Llama 3, Phi-3) for browser-based text generation.
+- **Embeddings:** Uses a custom **Gemma 300M** model via **LiteRT (TensorFlow.js)** to generate high-quality text embeddings directly in the browser.
+
+#### Local Naive RAG Pipeline
+1.  **Ingestion:** Documents are parsed and chunked client-side.
+2.  **Vector Storage:** Uses **PGlite** (WASM version of PostgreSQL) with the `vector` extension for persistent, local vector storage.
+3.  **Retrieval:** When a query is made, the system performs a similarity search in PGlite.
+4.  **Confidence Filtering:** Implements threshold-based logic to ensure accuracy:
+    - **Score < 0.3:** Skips RAG to avoid hallucinations from irrelevant context.
+    - **Score 0.3 - 0.5:** Augments the prompt with context but flags a "low confidence" warning to the system.
+5.  **Augmentation:** Relevant snippets are injected into the system prompt before the final inference.
+
+***
+
+### 💻 Developer Documentation
+
+#### Tech Stack
+- **Framework:** Next.js 15 (App Router)
+- **Database:** PGlite (Postgres-in-the-browser)
+- **RAG Orchestration:** LlamaIndex.ts
+- **State Management:** Zustand
+- **Styling:** Tailwind CSS 4 & Shadcn UI
+- **Local AI:** WebLLM, Mediapipe, LiteRT (TensorFlow.js)
+
+#### Getting Started
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/buddhilive/buddhi-ai.git
+   cd buddhi-ai
+   ```
+2. **Install dependencies:**
+   ```bash
+   pnpm install
+   ```
+3. **Run the development server:**
+   ```bash
+   pnpm dev
+   ```
+4. **Environment Variables:**
+   Create a `.env.local` file (optional, as most features are local-first).
+
+#### Project Structure
+- `src/app/`: Next.js application routes and main logic.
+- `src/lib/`: Core providers (PGlite, LlamaIndex, Embeddings).
+- `src/workers/`: Dedicated workers for heavy AI tasks (model downloading, embedding generation).
+- `src/stores/`: Global state management using Zustand.
+- `src/tools/`: Definitions for agentic tools (e.g., web search).
 
 ***
 

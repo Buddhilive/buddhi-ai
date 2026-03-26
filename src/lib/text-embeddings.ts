@@ -1,8 +1,4 @@
-import {
-  WorkerMessage,
-  WorkerRequest,
-  DocumentItem,
-} from "@/types/document-types";
+import { WorkerMessage } from "@/types/document-types";
 
 /**
  * Extract text from a PDF file
@@ -39,6 +35,9 @@ export async function extractTextFromPDF(file: File): Promise<string> {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pageText = textContent.items.map((item: any) => item.str).join(" ");
       fullText += pageText + "\n";
+      // Yield to the event loop after each page so the UI stays responsive
+      // during extraction of large, multi-page PDFs.
+      await new Promise((r) => setTimeout(r, 0));
     }
 
     URL.revokeObjectURL(workerBlobUrl);
@@ -56,7 +55,7 @@ export async function extractTextFromPDF(file: File): Promise<string> {
 /**
  * Extract text from a TXT file
  */
-async function extractTextFromTXT(file: File): Promise<string> {
+export async function extractTextFromTXT(file: File): Promise<string> {
   try {
     return await file.text();
   } catch (error) {
