@@ -38,7 +38,7 @@ import {
   MessageAction,
   MessageResponse,
 } from "@/components/ai-elements/message";
-import { BrainCircuitIcon, CopyIcon, FilePlus2, RefreshCcwIcon } from "lucide-react";
+import { BrainCircuitIcon, CopyIcon, DatabaseIcon, RefreshCcwIcon } from "lucide-react";
 import {
   Source,
   Sources,
@@ -72,13 +72,7 @@ import {
 } from "@/lib/chat-template-generator";
 import { FileUIPart } from "ai";
 import { MetadataMode } from "llamaindex";
-import {
-  chunkText,
-  createVectorIndex,
-  retrieveSegments,
-  hasDocuments,
-} from "@/lib/llamaindex-provider";
-import DocumentManager from "@/components/custom/document-manager";
+import { retrieveSegments, hasDocuments } from "@/lib/llamaindex-provider";
 
 /* const models = [
   {
@@ -159,27 +153,6 @@ export default function BuddhiAIChat() {
     }
   };
 
-  const handleChatCreated = async (newChatId: string) => {
-    try {
-      // Set the new chatId
-      setChatId(newChatId);
-
-      // Create and save the new chat session
-      const title = `Document Chat ${newChatId}`;
-      if (chatDB) {
-        await saveOrUpdateChatMessages(chatDB, newChatId, [], title, true);
-      }
-
-      // Navigate to the new chat URL
-      router.push(`/chat/${newChatId}`);
-
-      toast.success("Chat session created!");
-    } catch (error) {
-      console.error("Error creating chat session:", error);
-      toast.error("Error creating chat session.");
-    }
-  };
-
   const saveChatMessages = async () => {
     try {
       if (!chatId && messages.length > 0) {
@@ -240,69 +213,6 @@ export default function BuddhiAIChat() {
     }
     const systemPrompt: BuddhiAIMessage = SYSTEM_PROMPT;
 
-    // RAG: Check if documents exist for this chat
-    let ragContext = "";
-    const sources: BuddhiAIChatTemplate[] = [];
-    let useRAG = false;
-
-    if (chatId) {
-      try {
-        const docsExist = await hasDocuments(chatId);
-        if (docsExist) {
-          // console.log("Documents found, performing RAG retrieval...");
-          const retrievedSegments = await retrieveSegments(chatId, prompt, 3);
-          ragContext = "Answer the question based on the context below.";
-
-          if (retrievedSegments.length > 0) {
-            // Check confidence scores
-            const maxScore = Math.max(
-              ...retrievedSegments.map((seg) => seg.node.score || 0)
-            );
-
-            if (maxScore < 0.3) {
-              // Very low confidence - respond with "don't know"
-              ragContext = "";
-            } else if (maxScore < 0.5) {
-              // Low confidence - add warning
-              ragContext += "\n\nContext from documents:\n";
-              retrievedSegments.forEach((seg, idx) => {
-                ragContext += `\n[Document: ${seg.fileName
-                  }]\n${seg.node.node.getContent(MetadataMode.NONE)}\n`;
-                sources.push({
-                  type: "text",
-                  source: seg.fileName,
-                  documentId: seg.documentId,
-                  chunkId: seg.node.node.id_,
-                  score: seg.node.score,
-                });
-              });
-              ragContext +=
-                "\n\nIMPORTANT: The retrieved information has low confidence (0.3-0.5). Mention in your response: 'I have low confidence in this answer based on the available documents.'";
-              useRAG = true;
-            } else {
-              // Good confidence - normal RAG
-              ragContext += "\n\nContext from documents:\n";
-              retrievedSegments.forEach((seg, idx) => {
-                ragContext += `\n[Document: ${seg.fileName
-                  }]\n${seg.node.node.getContent(MetadataMode.NONE)}\n`;
-                sources.push({
-                  type: "text",
-                  source: seg.fileName,
-                  documentId: seg.documentId,
-                  chunkId: seg.node.node.id_,
-                  score: seg.node.score,
-                });
-              });
-              useRAG = true;
-            }
-          }
-        }
-      } catch (error) {
-        console.error("Error during RAG retrieval:", error);
-        // Continue with normal chat if RAG fails
-      }
-    }
-
     // Create user message for display (without RAG context)
     const userPrompt: BuddhiAIMessage = {
       role: "user",
@@ -311,6 +221,65 @@ export default function BuddhiAIChat() {
         { type: "text", text: prompt },
       ],
     };
+
+    setMessages((prevMessages) => [...prevMessages, userPrompt]);
+
+    // RAG: Check global knowledge base and augment prompt if relevant docs exist
+    let ragContext = "";
+    const sources: BuddhiAIChatTemplate[] = [];
+    let useRAG = false;
+
+    try {
+      const docsExist = await hasDocuments();
+      if (docsExist) {
+        const retrievedSegments = await retrieveSegments(prompt, 3);
+        ragContext = "Answer the question based on the context below.";
+
+        if (retrievedSegments.length > 0) {
+          const maxScore = Math.max(
+            ...retrievedSegments.map((seg) => seg.node.score || 0)
+          );
+
+          if (maxScore < 0.3) {
+            // Very low confidence — skip RAG
+            ragContext = "";
+          } else if (maxScore < 0.5) {
+            // Low confidence — use with warning
+            ragContext += "\n\nContext from documents:\n";
+            retrievedSegments.forEach((seg) => {
+              ragContext += `\n[Document: ${seg.fileName}]\n${seg.node.node.getContent(MetadataMode.NONE)}\n`;
+              sources.push({
+                type: "text",
+                source: seg.fileName,
+                documentId: seg.documentId,
+                chunkId: seg.node.node.id_,
+                score: seg.node.score,
+              });
+            });
+            ragContext +=
+              "\n\nIMPORTANT: The retrieved information has low confidence (0.3-0.5). Mention in your response: 'I have low confidence in this answer based on the available documents.'";
+            useRAG = true;
+          } else {
+            // Good confidence — normal RAG
+            ragContext += "\n\nContext from documents:\n";
+            retrievedSegments.forEach((seg) => {
+              ragContext += `\n[Document: ${seg.fileName}]\n${seg.node.node.getContent(MetadataMode.NONE)}\n`;
+              sources.push({
+                type: "text",
+                source: seg.fileName,
+                documentId: seg.documentId,
+                chunkId: seg.node.node.id_,
+                score: seg.node.score,
+              });
+            });
+            useRAG = true;
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error during RAG retrieval:", error);
+      // Continue with normal chat if RAG fails
+    }
 
     let augmentedUserPrompt: BuddhiAIMessage = userPrompt;
 
@@ -331,8 +300,6 @@ export default function BuddhiAIChat() {
 
     // Use augmented prompt for LLM, but display original prompt in chat
     const promptMessages = [systemPrompt, ...messages, augmentedUserPrompt];
-
-    setMessages((prevMessages) => [...prevMessages, userPrompt]);
 
     const parts = await generateChatTemplate(promptMessages);
 
@@ -474,7 +441,15 @@ export default function BuddhiAIChat() {
     }
   };
 
-  const handleSourceFiles = async () => { };
+  // handle sources
+  const handleSourceFiles = (part: BuddhiAIChatTemplate): string | null => {
+    if (part.source) {
+      const file = JSON.stringify(part);
+      console.log("[Source]: ", file);
+      return file;
+    }
+    return null;
+  };
 
   if (!webLLMInstance) {
     if (!hasCompletedLanguageModel) {
@@ -633,10 +608,14 @@ export default function BuddhiAIChat() {
                   <PromptInputActionAddAttachments />
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
-              <DocumentManager
-                chatId={chatId || undefined}
-                onChatCreated={handleChatCreated}
-              />
+              <Link
+                href="/knowledge"
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                title="Manage Knowledge Base"
+              >
+                <DatabaseIcon className="h-4 w-4" />
+                Knowledge Base
+              </Link>
               {/*<PromptInputSelect
                 onValueChange={(value) => {
                   setModel(value);

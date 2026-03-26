@@ -11,14 +11,14 @@ export interface ModelConfig {
 
 export const MODELS: ModelConfig[] = [
     {
-        id: "litert-community/Gemma3-1B-IT",
-        name: "Gemma 3 1B",
+        id: "google/gemma-3n-E2B-it-litert-lm",
+        name: "Gemma 3n E2B",
         description: "Lightweight language model optimised for fast inference on CPU.",
         type: "language",
         device: "webgpu",
         dtype: "q4",
         supportsWorker: true,
-        modelFile: "gemma3-1b-it-q4_0-web.task",
+        modelFile: "gemma-3n-E2B-it-int4-Web.litertlm",
     },
     {
         id: "litert-community/embeddinggemma-300m",

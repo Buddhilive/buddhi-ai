@@ -3,7 +3,7 @@
 import * as React from "react";
 import { NavFavorites } from "@/components/nav-favorites";
 import { NavMain } from "@/components/nav-main";
-import { NavSecondary } from "@/components/nav-secondary";
+/* import { NavSecondary } from "@/components/nav-secondary"; */
 /* import { NavWorkspaces } from "@/components/nav-workspaces" */
 import { TeamSwitcher } from "@/components/team-switcher";
 import {
@@ -26,7 +26,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavMain items={navItems} />
       </SidebarHeader>
       <SidebarContent>
-        <NavSecondary items={data.navSecondary} className="mt-auto" />
+        {/* <NavSecondary items={data.navSecondary} className="mt-auto" /> */}
         <NavFavorites />
         {/* <NavWorkspaces workspaces={data.workspaces} /> */}
       </SidebarContent>

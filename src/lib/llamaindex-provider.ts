@@ -261,11 +261,11 @@ const createVectorIndex = async (
   return { documentId, fileName, chunkCount: nodesWithEmbeddings.length };
 };
 
-// Retrieve segments for a specific chat with document metadata
+// Retrieve segments — omit chatId to query the global knowledge base
 async function retrieveSegments(
-  chatId: string,
   query: string,
-  topK = 3
+  topK = 3,
+  chatId?: string
 ): Promise<
   Array<{
     node: NodeWithScore<Metadata>;
@@ -273,8 +273,6 @@ async function retrieveSegments(
     documentId: string;
   }>
 > {
-  // console.log(`\n--- Retrieving for query: "${query}" in chat ${chatId} ---`);
-
   const { vectorStore, embedModel } = await initializeVectorDB();
 
   // Get query embedding
@@ -285,24 +283,31 @@ async function retrieveSegments(
     return [];
   }
 
-  // Query with chat filter - get raw results with fileName
   const vectorStr = `[${queryEmbedding.join(",")}]`;
-  const result = await vectorStore.client.query(
-    `SELECT id, text, metadata, fileName, documentId, 1 - (embedding <=> $1) as score
-     FROM embeddings
-     WHERE chatId = $3
-     ORDER BY embedding <=> $1
-     LIMIT $2`,
-    [vectorStr, topK, chatId]
-  );
 
-  // Display Results
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const results = result.rows.map((row: any, i: number) => {
-    // console.log(`\nResult #${i + 1} (Score: ${row.score?.toFixed(4)})`);
-    // console.log(`Text: "${row.text}"`);
-    // console.log(`Document: ${row.filename}`);
+  let result: any;
+  if (chatId) {
+    result = await vectorStore.client.query(
+      `SELECT id, text, metadata, fileName, documentId, 1 - (embedding <=> $1) as score
+       FROM embeddings
+       WHERE chatId = $3
+       ORDER BY embedding <=> $1
+       LIMIT $2`,
+      [vectorStr, topK, chatId]
+    );
+  } else {
+    result = await vectorStore.client.query(
+      `SELECT id, text, metadata, fileName, documentId, 1 - (embedding <=> $1) as score
+       FROM embeddings
+       ORDER BY embedding <=> $1
+       LIMIT $2`,
+      [vectorStr, topK]
+    );
+  }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const results = result.rows.map((row: any) => {
     // PGlite returns JSONB as object, not string
     const metadata =
       typeof row.metadata === "string"
@@ -341,15 +346,69 @@ async function getDocumentList(chatId: string): Promise<DocumentInfo[]> {
   return await vectorStore.getDocumentsByChatId(chatId);
 }
 
-// Check if chat has any documents
-async function hasDocuments(chatId: string): Promise<boolean> {
-  const docs = await getDocumentList(chatId);
-  return docs.length > 0;
+// Check if any documents exist — omit chatId to check the global knowledge base
+async function hasDocuments(chatId?: string): Promise<boolean> {
+  try {
+    const { vectorStore } = await initializeVectorDB();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let result: any;
+    if (chatId) {
+      result = await vectorStore.client.query(
+        "SELECT COUNT(*) as count FROM embeddings WHERE chatId = $1",
+        [chatId]
+      );
+    } else {
+      result = await vectorStore.client.query(
+        "SELECT COUNT(*) as count FROM embeddings"
+      );
+    }
+    return parseInt(result.rows[0].count) > 0;
+  } catch {
+    return false;
+  }
 }
+
+// Create vector index in batches to avoid memory pressure from large documents
+const createVectorIndexBatched = async (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  nodes: any[],
+  chatId: string,
+  documentId: string,
+  fileName: string,
+  onBatch?: (processed: number, total: number) => void,
+  batchSize = 50
+): Promise<{ documentId: string; fileName: string; chunkCount: number }> => {
+  const { vectorStore, embedModel } = await initializeVectorDB();
+  const total = nodes.length;
+  let processed = 0;
+
+  for (let i = 0; i < nodes.length; i += batchSize) {
+    const batch = nodes.slice(i, i + batchSize);
+    const batchNodes: TextNode[] = [];
+
+    for (const node of batch) {
+      const embedding = await embedModel.getTextEmbedding(node.text);
+      const textNode = new TextNode({
+        text: node.text,
+        metadata: node.metadata || {},
+        id_: node.id_ || `${documentId}_chunk_${processed + batchNodes.length}`,
+      });
+      textNode.embedding = embedding;
+      batchNodes.push(textNode);
+    }
+
+    await vectorStore.addWithChatContext(batchNodes, chatId, documentId, fileName);
+    processed += batchNodes.length;
+    onBatch?.(processed, total);
+  }
+
+  return { documentId, fileName, chunkCount: total };
+};
 
 export {
   chunkText,
   createVectorIndex,
+  createVectorIndexBatched,
   retrieveSegments,
   initializeVectorDB,
   deleteDocumentEmbeddings,

@@ -7,7 +7,7 @@ import {
 /**
  * Extract text from a PDF file
  */
-async function extractTextFromPDF(file: File): Promise<string> {
+export async function extractTextFromPDF(file: File): Promise<string> {
   try {
     // Load pdfjs-dist directly from CDN, bypassing Webpack bundling.
     // pdfjs-dist v5 ESM uses Object.defineProperty patterns that break
