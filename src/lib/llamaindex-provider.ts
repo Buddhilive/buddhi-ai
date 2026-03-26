@@ -11,54 +11,102 @@ import {
   storageContextFromDefaults,
   TextNode,
 } from "llamaindex";
-import { FilesetResolver, TextEmbedder } from "@mediapipe/tasks-text";
+import * as LiteRT from "@litertjs/core";
+import { AutoTokenizer } from "@huggingface/transformers";
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import { PGliteVectorStore, DocumentInfo } from "./pglite-vectore-store";
 
-let modelPath =
-  "https://storage.googleapis.com/mediapipe-models/text_embedder/universal_sentence_encoder/float32/1/universal_sentence_encoder.tflite";
+// ─── Cache helpers ────────────────────────────────────────────────────────────
+// Must mirror the constants in model-manager.ts / model-download-worker.ts
 
-if (process.env.NODE_ENV === "development") {
-  modelPath = "http://localhost:3000/models/universal_sentence_encoder.tflite";
+const BUDDHI_CACHE_NAME = "buddhi-ai-models-cache-v1";
+const EMBEDDING_MODEL_ID = "litert-community/embeddinggemma-300m";
+
+async function getEmbeddingModelURL(): Promise<string> {
+  const key = `https://cache.buddhi-ai.local/models/${EMBEDDING_MODEL_ID.replace(/\//g, "_")}`;
+  const cache = await caches.open(BUDDHI_CACHE_NAME);
+  const response = await cache.match(new Request(key));
+  if (!response) {
+    throw new Error(
+      'Embedding model not installed. Install "Embedding Gemma 300M" from the Models page.'
+    );
+  }
+  return URL.createObjectURL(await response.blob());
 }
 
-class MediaPipeEmbedding extends BaseEmbedding {
-  private embedder: TextEmbedder | null = null;
+// ─── LiteRT embedding class ───────────────────────────────────────────────────
+
+const LITERTJS_WASM_PATH = "https://cdn.jsdelivr.net/npm/@litertjs/core/wasm/";
+const SEQ_LEN = 2048;
+const DOC_PREFIX = "title: none | text: ";
+
+class LiteRTEmbedding extends BaseEmbedding {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private model: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private tokenizer: any = null;
 
   constructor() {
     super();
   }
 
   async init() {
-    const textFileset = await FilesetResolver.forTextTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-text@0.10.0/wasm"
+    // Load LiteRT WASM runtime — auto-detects WebGPU when available.
+    await LiteRT.loadLiteRt(LITERTJS_WASM_PATH);
+
+    // Load tokenizer from HuggingFace (transformers.js caches it)
+    this.tokenizer = await AutoTokenizer.from_pretrained(
+      "onnx-community/embeddinggemma-300m-ONNX"
     );
-    this.embedder = await TextEmbedder.createFromOptions(textFileset, {
-      baseOptions: {
-        modelAssetPath: modelPath,
-      },
-    });
+
+    // Load model blob from Cache API
+    const objectUrl = await getEmbeddingModelURL();
+    try {
+      this.model = await LiteRT.loadAndCompile(objectUrl);
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
   }
 
   async getTextEmbedding(text: string): Promise<number[]> {
-    if (!this.embedder) throw new Error("Embedder not initialized");
-    const result = this.embedder.embed(text);
-    return result.embeddings[0].floatEmbedding!;
+    if (!this.model || !this.tokenizer) throw new Error("Embedder not initialized");
+    const prefixed = DOC_PREFIX + text;
+    const tokens = await this.tokenizer(prefixed, {
+      padding: "max_length",
+      max_length: SEQ_LEN,
+      truncation: true,
+      return_tensors: "np",
+    });
+    // transformers.js v3 returns token IDs as BigInt64Array.
+    // Explicit conversion to Int32Array is required before creating a LiteRT tensor.
+    const rawIds = tokens.input_ids.data as BigInt64Array | Int32Array;
+    const int32Ids = new Int32Array(rawIds.length);
+    for (let i = 0; i < rawIds.length; i++) {
+      int32Ids[i] = Number(rawIds[i]);
+    }
+    // Use LiteRT native API — bypasses TF.js interop entirely.
+    // Tensor.fromTypedArray creates a HOST_MEMORY (CPU) input tensor.
+    // LiteRT auto-copies it to WebGPU (via ensureInputsOnAccelerator) if needed.
+    // Output .data() auto-copies from WebGPU back to CPU before returning.
+    const env = LiteRT.getDefaultEnvironment();
+    const inputTensor = LiteRT.Tensor.fromTypedArray(int32Ids, [1, SEQ_LEN], env);
+    const outputs = await this.model.run([inputTensor]);
+    const embedding = Array.from(await outputs[0].data() as Float32Array);
+    inputTensor.delete();
+    outputs[0].delete();
+    return embedding;
   }
 
   async getQueryEmbedding(
     query: MessageContentDetail
   ): Promise<number[] | null> {
-    // Extract text from MessageContentDetail
-    let text: string = "";
-
+    let text = "";
     if (typeof query === "string") {
       text = query;
     } else if ("text" in query && typeof query.text === "string") {
       text = query.text;
     }
-
     if (!text) return null;
     return this.getTextEmbedding(text);
   }
@@ -67,18 +115,18 @@ class MediaPipeEmbedding extends BaseEmbedding {
 // Singleton instances
 let dbInstance: PGlite | null = null;
 let vectorStoreInstance: PGliteVectorStore | null = null;
-let embedModelInstance: MediaPipeEmbedding | null = null;
+let embedModelInstance: LiteRTEmbedding | null = null;
 let initializationPromise: Promise<{
   db: PGlite;
   vectorStore: PGliteVectorStore;
-  embedModel: MediaPipeEmbedding;
+  embedModel: LiteRTEmbedding;
 }> | null = null;
 
 // Initialize the vector database (singleton pattern with race condition protection)
 const initializeVectorDB = async (): Promise<{
   db: PGlite;
   vectorStore: PGliteVectorStore;
-  embedModel: MediaPipeEmbedding;
+  embedModel: LiteRTEmbedding;
 }> => {
   // If already initialized, return immediately
   if (dbInstance && vectorStoreInstance && embedModelInstance) {
@@ -99,17 +147,18 @@ const initializeVectorDB = async (): Promise<{
     // console.log("Initializing vector database...");
 
     // Initialize PGlite with persistence
-    dbInstance = new PGlite("idb://buddhi-ai-embeddings", {
+    // v2: schema bumped to 768-dim vectors (EmbeddingGemma)
+    dbInstance = new PGlite("idb://buddhi-ai-embeddings-v2", {
       extensions: { vector },
     });
     await dbInstance.waitReady;
 
     // Initialize embedder FIRST (before vector store)
-    embedModelInstance = new MediaPipeEmbedding();
+    embedModelInstance = new LiteRTEmbedding();
     await embedModelInstance.init();
 
     // Set global settings BEFORE creating vector store
-    Settings.embedModel = embedModelInstance;
+    Settings.embedModel = embedModelInstance!;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Settings.llm = undefined as any;
 
@@ -122,11 +171,11 @@ const initializeVectorDB = async (): Promise<{
     return {
       db: dbInstance,
       vectorStore: vectorStoreInstance,
-      embedModel: embedModelInstance,
+      embedModel: embedModelInstance!,
     };
   })();
 
-  return initializationPromise;
+  return initializationPromise!;
 };
 
 // Breaks raw text into manageable nodes (chunks) with overlap
