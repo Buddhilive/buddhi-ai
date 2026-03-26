@@ -552,18 +552,17 @@ export function DocumentsView() {
                 </Alert>
             )}
 
-            <Tabs defaultValue="upload" className="w-full">
+            <Tabs defaultValue="knowledge-base" className="w-full">
                 <TabsList className="grid w-full max-w-sm grid-cols-2">
-                    <TabsTrigger value="upload">Upload</TabsTrigger>
                     <TabsTrigger value="knowledge-base">Knowledge Base</TabsTrigger>
+                    <TabsTrigger value="upload">Upload</TabsTrigger>
                 </TabsList>
+                <TabsContent value="knowledge-base" className="mt-6">
+                    <KnowledgeBaseTab />
+                </TabsContent>
 
                 <TabsContent value="upload" className="mt-6">
                     <UploadTab onDocumentReady={handleDocumentReady} />
-                </TabsContent>
-
-                <TabsContent value="knowledge-base" className="mt-6">
-                    <KnowledgeBaseTab />
                 </TabsContent>
             </Tabs>
         </div>
