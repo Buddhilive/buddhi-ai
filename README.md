@@ -25,7 +25,7 @@ graph TD
     
     subgraph Browser_Environment [Browser Environment - Client Side]
         direction TB
-        RAG -->|Generate Embedding| EMB[Gemma 300M - LiteRT]
+        RAG -->|Generate Embedding| EMB[Embedding Gemma 300M - LiteRT.js]
         EMB -->|Vector Search| PGL[PGlite Vector Store]
         PGL -->|Retrieved Context| CF[Confidence Filter]
         
@@ -36,16 +36,15 @@ graph TD
         NO_AUG -->|System Prompt| INF
         
         INF -->|Local AI Models| LLM{LLM Engine}
-        LLM -->|Gemini Nano| CHR[Chrome Built-in AI]
-        LLM -->|Llama/Phi-3| WLLM[WebLLM / WASM]
+        LLM -->|Gemma 3n E2B| MP[MediaPipe LLM Inference]
     end
     
     INF -->|Stream Response| UI
 ```
 
 #### Local Inference Models
-- **LLMs:** Supports **Chrome Built-in AI (Gemini Nano)** and **WebLLM** (e.g., Llama 3, Phi-3) for browser-based text generation.
-- **Embeddings:** Uses a custom **Gemma 300M** model via **LiteRT (TensorFlow.js)** to generate high-quality text embeddings directly in the browser.
+- **LLMs:** Supports **MediaPipe LLM Inference library (Gemma 3n E2B)** and **Chrome Built-in AI (Gemini Nano)** for browser-based text generation.
+- **Embeddings:** Uses **Embedding Gemma 300M** via **LiteRT.js** to generate high-quality text embeddings directly in the browser.
 
 #### Local Naive RAG Pipeline
 1.  **Ingestion:** Documents are parsed and chunked client-side.
@@ -66,7 +65,7 @@ graph TD
 - **RAG Orchestration:** LlamaIndex.ts
 - **State Management:** Zustand
 - **Styling:** Tailwind CSS 4 & Shadcn UI
-- **Local AI:** WebLLM, Mediapipe, LiteRT (TensorFlow.js)
+- **Local AI:** MediaPipe LLM Inference library, LiteRT.js (TensorFlow.js)
 
 #### Getting Started
 1. **Clone the repository:**
