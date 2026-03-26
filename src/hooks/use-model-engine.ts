@@ -30,6 +30,7 @@ export function useModelEngine() {
         if (!completedModel) return;
 
         initializingRef.current = true;
+        console.log("[use-model-engine] Initializing engine for model:", completedModel);
 
         (async () => {
             try {

@@ -199,7 +199,7 @@ export default function BuddhiAIChat() {
         }
         const titleSummary = msg
           ? msg.toString().substring(0, 20) +
-            (msg.toString().length > 20 ? "..." : "")
+          (msg.toString().length > 20 ? "..." : "")
           : null;
 
         const title = titleSummary || `Chat ${newChatId}`;
@@ -251,6 +251,7 @@ export default function BuddhiAIChat() {
         if (docsExist) {
           // console.log("Documents found, performing RAG retrieval...");
           const retrievedSegments = await retrieveSegments(chatId, prompt, 3);
+          ragContext = "Answer the question based on the context below.";
 
           if (retrievedSegments.length > 0) {
             // Check confidence scores
@@ -260,15 +261,13 @@ export default function BuddhiAIChat() {
 
             if (maxScore < 0.3) {
               // Very low confidence - respond with "don't know"
-              ragContext =
-                "\n\nIMPORTANT: The retrieved information has very low relevance (confidence < 0.3). You should respond: 'I don't know based on the provided documents.'";
+              ragContext = "";
             } else if (maxScore < 0.5) {
               // Low confidence - add warning
-              ragContext = "\n\nContext from documents:\n";
+              ragContext += "\n\nContext from documents:\n";
               retrievedSegments.forEach((seg, idx) => {
-                ragContext += `\n[Document: ${
-                  seg.fileName
-                }]\n${seg.node.node.getContent(MetadataMode.NONE)}\n`;
+                ragContext += `\n[Document: ${seg.fileName
+                  }]\n${seg.node.node.getContent(MetadataMode.NONE)}\n`;
                 sources.push({
                   type: "text",
                   source: seg.fileName,
@@ -279,13 +278,13 @@ export default function BuddhiAIChat() {
               });
               ragContext +=
                 "\n\nIMPORTANT: The retrieved information has low confidence (0.3-0.5). Mention in your response: 'I have low confidence in this answer based on the available documents.'";
+              useRAG = true;
             } else {
               // Good confidence - normal RAG
-              ragContext = "\n\nContext from documents:\n";
+              ragContext += "\n\nContext from documents:\n";
               retrievedSegments.forEach((seg, idx) => {
-                ragContext += `\n[Document: ${
-                  seg.fileName
-                }]\n${seg.node.node.getContent(MetadataMode.NONE)}\n`;
+                ragContext += `\n[Document: ${seg.fileName
+                  }]\n${seg.node.node.getContent(MetadataMode.NONE)}\n`;
                 sources.push({
                   type: "text",
                   source: seg.fileName,
@@ -294,11 +293,8 @@ export default function BuddhiAIChat() {
                   score: seg.node.score,
                 });
               });
-              ragContext +=
-                "\n\nInstructions: Answer the user's question based on the context above from the documents. Be specific and cite information from the context.";
+              useRAG = true;
             }
-
-            useRAG = true;
           }
         }
       } catch (error) {
@@ -316,16 +312,22 @@ export default function BuddhiAIChat() {
       ],
     };
 
-    // Create augmented prompt for LLM (with RAG context if available)
-    const augmentedUserPrompt: BuddhiAIMessage = {
-      role: "user",
-      content: [
-        ...(files && files.length > 0 ? files : []),
-        { type: "text", text: prompt + ragContext },
-      ],
-    };
+    let augmentedUserPrompt: BuddhiAIMessage = userPrompt;
 
-    // // console.log("User prompt:", userPrompt, files);
+    if (useRAG) {
+      // Create augmented prompt for LLM (with RAG context if available)
+      const ragPrompt = `${ragContext}\n\nQuestion: ${prompt}\n\nAnswer:`;
+
+      augmentedUserPrompt = {
+        role: "user",
+        content: [
+          ...(files && files.length > 0 ? files : []),
+          { type: "text", text: ragPrompt },
+        ],
+      };
+    }
+
+    console.log("[User prompt]", augmentedUserPrompt, files);
 
     // Use augmented prompt for LLM, but display original prompt in chat
     const promptMessages = [systemPrompt, ...messages, augmentedUserPrompt];
@@ -472,7 +474,7 @@ export default function BuddhiAIChat() {
     }
   };
 
-  const handleSourceFiles = async () => {};
+  const handleSourceFiles = async () => { };
 
   if (!webLLMInstance) {
     if (!hasCompletedLanguageModel) {
