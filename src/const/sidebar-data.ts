@@ -1,7 +1,8 @@
 import {
   Brain,
-  Calendar,
+  BrainCircuit,
   Command,
+  Database,
   Sparkles,
 } from "lucide-react";
 
@@ -25,13 +26,23 @@ export const SIDEBAR_DATA = {
       title: "New Chat",
       url: "/chat",
       icon: Sparkles,
-    }
+    },
+    {
+      title: "Knowledge Base",
+      url: "/knowledge",
+      icon: Database,
+    },
+    {
+      title: "Models",
+      url: "/models",
+      icon: BrainCircuit,
+    },
   ],
   navSecondary: [
     {
-      title: "Calendar",
-      url: "#",
-      icon: Calendar,
+      title: "Models",
+      url: "/models",
+      icon: BrainCircuit,
     },
   ],
   favorites: [

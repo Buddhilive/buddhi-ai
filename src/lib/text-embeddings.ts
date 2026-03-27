@@ -1,20 +1,28 @@
-import {
-  WorkerMessage,
-  WorkerRequest,
-  DocumentItem,
-} from "@/types/document-types";
+import { WorkerMessage } from "@/types/document-types";
 
 /**
  * Extract text from a PDF file
  */
-async function extractTextFromPDF(file: File): Promise<string> {
+export async function extractTextFromPDF(file: File): Promise<string> {
   try {
-    // Dynamically import pdfjs-dist
-    const pdfjsLib = await import("pdfjs-dist");
+    // Load pdfjs-dist directly from CDN, bypassing Webpack bundling.
+    // pdfjs-dist v5 ESM uses Object.defineProperty patterns that break
+    // when bundled by Webpack — the webpackIgnore comment skips bundling.
+    // @ts-expect-error — TypeScript doesn't resolve URL imports; the browser handles this at runtime
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pdfjsLib: any = await import(/* webpackIgnore: true */ "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.449/build/pdf.min.mjs");
 
-    // Use unpkg CDN for the worker (more reliable than cdnjs)
-    // This avoids bundler issues with worker files
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+    // Fetch the worker bundle and serve it as a same-origin blob.
+    // Using an `import` proxy statement fails for classic workers (SyntaxError),
+    // causing getTextContent() to silently return empty items.
+    // Fetching the full bundle content works for both classic and module workers.
+    const workerResponse = await fetch(
+      "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.449/build/pdf.worker.min.mjs"
+    );
+    const workerText = await workerResponse.text();
+    const workerBlob = new Blob([workerText], { type: "text/javascript" });
+    const workerBlobUrl = URL.createObjectURL(workerBlob);
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerBlobUrl;
 
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -27,8 +35,12 @@ async function extractTextFromPDF(file: File): Promise<string> {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pageText = textContent.items.map((item: any) => item.str).join(" ");
       fullText += pageText + "\n";
+      // Yield to the event loop after each page so the UI stays responsive
+      // during extraction of large, multi-page PDFs.
+      await new Promise((r) => setTimeout(r, 0));
     }
 
+    URL.revokeObjectURL(workerBlobUrl);
     return fullText.trim();
   } catch (error) {
     console.error("Error extracting text from PDF:", error);
@@ -43,7 +55,7 @@ async function extractTextFromPDF(file: File): Promise<string> {
 /**
  * Extract text from a TXT file
  */
-async function extractTextFromTXT(file: File): Promise<string> {
+export async function extractTextFromTXT(file: File): Promise<string> {
   try {
     return await file.text();
   } catch (error) {
@@ -95,7 +107,9 @@ export async function processDocument(
     }
 
     if (!text || text.trim().length === 0) {
-      throw new Error("File contains no extractable text");
+      throw new Error(
+        "File contains no extractable text. If this is a scanned document, text extraction is not supported — please use a text-based PDF."
+      );
     }
 
     sendProgress("reading", 100, 100);

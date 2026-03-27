@@ -20,7 +20,7 @@ import {
   PromptInputAttachment,
   PromptInputAttachments,
   PromptInputBody,
-  PromptInputButton,
+  /* PromptInputButton, */
   PromptInputHeader,
   /* PromptInputSelect,
   PromptInputSelectContent,
@@ -38,7 +38,7 @@ import {
   MessageAction,
   MessageResponse,
 } from "@/components/ai-elements/message";
-import { CopyIcon, FilePlus2, RefreshCcwIcon } from "lucide-react";
+import { BrainCircuitIcon, CopyIcon, DatabaseIcon, RefreshCcwIcon } from "lucide-react";
 import {
   Source,
   Sources,
@@ -52,6 +52,7 @@ import {
 } from "@/components/ai-elements/reasoning"; */
 import { Loader } from "@/components/ai-elements/loader";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   BuddhiAISavedChat,
   initChatManager,
@@ -62,6 +63,8 @@ import { toast } from "sonner";
 import { SYSTEM_PROMPT } from "@/const/system-prompt";
 import { useChatStore } from "@/stores/chatStore";
 import { useWebLLMStore } from "@/stores/mediaPipeStore";
+import { useModelStore } from "@/stores/model-store";
+import { MODELS } from "@/const/models";
 import {
   BuddhiAIChatTemplate,
   BuddhiAIMessage,
@@ -69,13 +72,8 @@ import {
 } from "@/lib/chat-template-generator";
 import { FileUIPart } from "ai";
 import { MetadataMode } from "llamaindex";
-import {
-  chunkText,
-  createVectorIndex,
-  retrieveSegments,
-  hasDocuments,
-} from "@/lib/llamaindex-provider";
-import DocumentManager from "@/components/custom/document-manager";
+import { retrieveSegments, hasDocuments } from "@/lib/llamaindex-provider";
+import { Shimmer } from "@/components/ai-elements/shimmer";
 
 /* const models = [
   {
@@ -92,7 +90,11 @@ export default function BuddhiAIChat() {
   const [input, setInput] = useState("");
   /* const [model, setModel] = useState<string>(models[0].value); */
   const [sourceFiles, setSourceFiles] = useState([]);
-  const { webLLMInstance } = useWebLLMStore();
+  const { webLLMInstance, webLLMStatus } = useWebLLMStore();
+  const storeModels = useModelStore((s) => s.models);
+  const hasCompletedLanguageModel = MODELS.some(
+    (m) => m.type === "language" && storeModels[m.id]?.status === "completed"
+  );
   const [messages, setMessages] = useState<Array<BuddhiAIMessage>>([]);
   const [status, setStatus] = useState<
     "submitted" | "streaming" | "ready" | "error"
@@ -104,6 +106,8 @@ export default function BuddhiAIChat() {
     setChatHistory,
     setChatDB: setChatDBInStore,
     setCurrentChat,
+    setCurrentChatId,
+    refreshChats,
     currentChat,
   } = useChatStore();
   const router = useRouter();
@@ -140,8 +144,10 @@ export default function BuddhiAIChat() {
         /* // console.log("Loaded old chat messages:", oldChatMessages); */
         setCurrentChat(oldChatMessages);
         setMessages(oldChatMessages.messages);
+        setCurrentChatId(params.chatId[0]);
       } else {
         setMessages([]);
+        setCurrentChatId(null);
       }
       setInput("");
       setStatus("ready");
@@ -149,27 +155,6 @@ export default function BuddhiAIChat() {
       console.error("Error initializing chat:", error);
       toast.error("Error initializing chat.");
       router.push("/chat");
-    }
-  };
-
-  const handleChatCreated = async (newChatId: string) => {
-    try {
-      // Set the new chatId
-      setChatId(newChatId);
-
-      // Create and save the new chat session
-      const title = `Document Chat ${newChatId}`;
-      if (chatDB) {
-        await saveOrUpdateChatMessages(chatDB, newChatId, [], title, true);
-      }
-
-      // Navigate to the new chat URL
-      router.push(`/chat/${newChatId}`);
-
-      toast.success("Chat session created!");
-    } catch (error) {
-      console.error("Error creating chat session:", error);
-      toast.error("Error creating chat session.");
     }
   };
 
@@ -192,11 +177,12 @@ export default function BuddhiAIChat() {
         }
         const titleSummary = msg
           ? msg.toString().substring(0, 20) +
-            (msg.toString().length > 20 ? "..." : "")
+          (msg.toString().length > 20 ? "..." : "")
           : null;
 
         const title = titleSummary || `Chat ${newChatId}`;
-        saveOrUpdateChatMessages(chatDB!, newChatId, messages, title, true);
+        await saveOrUpdateChatMessages(chatDB!, newChatId, messages, title, true);
+        await refreshChats();
         router.push(`/chat/${newChatId}`);
       }
       if (chatDB && chatId) {
@@ -233,73 +219,6 @@ export default function BuddhiAIChat() {
     }
     const systemPrompt: BuddhiAIMessage = SYSTEM_PROMPT;
 
-    // RAG: Check if documents exist for this chat
-    let ragContext = "";
-    const sources: BuddhiAIChatTemplate[] = [];
-    let useRAG = false;
-
-    if (chatId) {
-      try {
-        const docsExist = await hasDocuments(chatId);
-        if (docsExist) {
-          // console.log("Documents found, performing RAG retrieval...");
-          const retrievedSegments = await retrieveSegments(chatId, prompt, 3);
-
-          if (retrievedSegments.length > 0) {
-            // Check confidence scores
-            const maxScore = Math.max(
-              ...retrievedSegments.map((seg) => seg.node.score || 0)
-            );
-
-            if (maxScore < 0.3) {
-              // Very low confidence - respond with "don't know"
-              ragContext =
-                "\n\nIMPORTANT: The retrieved information has very low relevance (confidence < 0.3). You should respond: 'I don't know based on the provided documents.'";
-            } else if (maxScore < 0.5) {
-              // Low confidence - add warning
-              ragContext = "\n\nContext from documents:\n";
-              retrievedSegments.forEach((seg, idx) => {
-                ragContext += `\n[Document: ${
-                  seg.fileName
-                }]\n${seg.node.node.getContent(MetadataMode.NONE)}\n`;
-                sources.push({
-                  type: "text",
-                  source: seg.fileName,
-                  documentId: seg.documentId,
-                  chunkId: seg.node.node.id_,
-                  score: seg.node.score,
-                });
-              });
-              ragContext +=
-                "\n\nIMPORTANT: The retrieved information has low confidence (0.3-0.5). Mention in your response: 'I have low confidence in this answer based on the available documents.'";
-            } else {
-              // Good confidence - normal RAG
-              ragContext = "\n\nContext from documents:\n";
-              retrievedSegments.forEach((seg, idx) => {
-                ragContext += `\n[Document: ${
-                  seg.fileName
-                }]\n${seg.node.node.getContent(MetadataMode.NONE)}\n`;
-                sources.push({
-                  type: "text",
-                  source: seg.fileName,
-                  documentId: seg.documentId,
-                  chunkId: seg.node.node.id_,
-                  score: seg.node.score,
-                });
-              });
-              ragContext +=
-                "\n\nInstructions: Answer the user's question based on the context above from the documents. Be specific and cite information from the context.";
-            }
-
-            useRAG = true;
-          }
-        }
-      } catch (error) {
-        console.error("Error during RAG retrieval:", error);
-        // Continue with normal chat if RAG fails
-      }
-    }
-
     // Create user message for display (without RAG context)
     const userPrompt: BuddhiAIMessage = {
       role: "user",
@@ -309,21 +228,84 @@ export default function BuddhiAIChat() {
       ],
     };
 
-    // Create augmented prompt for LLM (with RAG context if available)
-    const augmentedUserPrompt: BuddhiAIMessage = {
-      role: "user",
-      content: [
-        ...(files && files.length > 0 ? files : []),
-        { type: "text", text: prompt + ragContext },
-      ],
-    };
+    setMessages((prevMessages) => [...prevMessages, userPrompt]);
 
-    // // console.log("User prompt:", userPrompt, files);
+    // RAG: Check global knowledge base and augment prompt if relevant docs exist
+    let ragContext = "";
+    const sources: BuddhiAIChatTemplate[] = [];
+    let useRAG = false;
+
+    try {
+      const docsExist = await hasDocuments();
+      if (docsExist) {
+        const retrievedSegments = await retrieveSegments(prompt, 3);
+        ragContext = "Answer the question based on the context below.";
+
+        if (retrievedSegments.length > 0) {
+          const maxScore = Math.max(
+            ...retrievedSegments.map((seg) => seg.node.score || 0)
+          );
+
+          if (maxScore < 0.3) {
+            // Very low confidence — skip RAG
+            ragContext = "";
+          } else if (maxScore < 0.5) {
+            // Low confidence — use with warning
+            ragContext += "\n\nContext from documents:\n";
+            retrievedSegments.forEach((seg) => {
+              ragContext += `\n[Document: ${seg.fileName}]\n${seg.node.node.getContent(MetadataMode.NONE)}\n`;
+              sources.push({
+                type: "text",
+                source: seg.fileName,
+                documentId: seg.documentId,
+                chunkId: seg.node.node.id_,
+                score: seg.node.score,
+              });
+            });
+            ragContext +=
+              "\n\nIMPORTANT: The retrieved information has low confidence (0.3-0.5). Mention in your response: 'I have low confidence in this answer based on the available documents.'";
+            useRAG = true;
+          } else {
+            // Good confidence — normal RAG
+            ragContext += "\n\nContext from documents:\n";
+            retrievedSegments.forEach((seg) => {
+              ragContext += `\n[Document: ${seg.fileName}]\n${seg.node.node.getContent(MetadataMode.NONE)}\n`;
+              sources.push({
+                type: "text",
+                source: seg.fileName,
+                documentId: seg.documentId,
+                chunkId: seg.node.node.id_,
+                score: seg.node.score,
+              });
+            });
+            useRAG = true;
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error during RAG retrieval:", error);
+      // Continue with normal chat if RAG fails
+    }
+
+    let augmentedUserPrompt: BuddhiAIMessage = userPrompt;
+
+    if (useRAG) {
+      // Create augmented prompt for LLM (with RAG context if available)
+      const ragPrompt = `${ragContext}\n\nQuestion: ${prompt}\n\nAnswer:`;
+
+      augmentedUserPrompt = {
+        role: "user",
+        content: [
+          ...(files && files.length > 0 ? files : []),
+          { type: "text", text: ragPrompt },
+        ],
+      };
+    }
+
+    //console.log("[User prompt]", augmentedUserPrompt, files);
 
     // Use augmented prompt for LLM, but display original prompt in chat
     const promptMessages = [systemPrompt, ...messages, augmentedUserPrompt];
-
-    setMessages((prevMessages) => [...prevMessages, userPrompt]);
 
     const parts = await generateChatTemplate(promptMessages);
 
@@ -465,7 +447,45 @@ export default function BuddhiAIChat() {
     }
   };
 
-  const handleSourceFiles = async () => {};
+  // handle sources
+  const handleSourceFiles = (part: BuddhiAIChatTemplate): string | null => {
+    if (part.source) {
+      const file = JSON.stringify(part);
+      console.log("[Source]: ", file);
+      return file;
+    }
+    return null;
+  };
+
+  if (!webLLMInstance) {
+    if (!hasCompletedLanguageModel) {
+      // No model downloaded — prompt user to install one
+      return (
+        <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] gap-4 text-center px-6">
+          <BrainCircuitIcon className="h-12 w-12 text-muted-foreground" />
+          {webLLMStatus === "error" && <><h2 className="text-xl font-semibold">No AI model installed</h2>
+            <p className="text-muted-foreground max-w-sm">
+              You need to install a language model before you can start chatting.
+              Visit the Models page to download one.
+            </p>
+            <Link
+              href="/models"
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              Go to Models
+            </Link></>}
+          {webLLMStatus !== "error" && <Shimmer duration={1000} >Initializing LLM...</Shimmer>}
+        </div>
+      );
+    }
+    // Model is downloaded — engine is initializing
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] gap-4 text-center px-6">
+        <Loader />
+        <p className="text-muted-foreground">Loading model into memory…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-4xl px-6 pb-6 relative size-full h-[calc(100vh-4rem)] no-scrollbar">
@@ -595,10 +615,14 @@ export default function BuddhiAIChat() {
                   <PromptInputActionAddAttachments />
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
-              <DocumentManager
-                chatId={chatId || undefined}
-                onChatCreated={handleChatCreated}
-              />
+              <Link
+                href="/knowledge"
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                title="Manage Knowledge Base"
+              >
+                <DatabaseIcon className="h-4 w-4" />
+                Knowledge Base
+              </Link>
               {/*<PromptInputSelect
                 onValueChange={(value) => {
                   setModel(value);

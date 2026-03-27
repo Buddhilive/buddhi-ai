@@ -36,7 +36,7 @@ export class PGliteVectorStore extends BaseVectorStore {
         fileName TEXT NOT NULL,
         text TEXT,
         metadata JSONB,
-        embedding vector(100)
+        embedding vector(768)
       )
     `);
 

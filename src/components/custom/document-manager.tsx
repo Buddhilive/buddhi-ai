@@ -20,8 +20,8 @@ import {
   CheckCircle2,
   XCircle,
 } from "lucide-react";
-import { DocumentItem, WorkerMessage } from "@/types/document-types";
-import { processDocument } from "@/lib/text-embeddings";
+import { DocumentItem, WorkerMessage, WorkerRequest } from "@/types/document-types";
+import { extractTextFromPDF, extractTextFromTXT } from "@/lib/text-embeddings";
 import {
   deleteDocumentEmbeddings,
   getDocumentList,
@@ -45,6 +45,18 @@ export default function DocumentManager({
   const [documentToDelete, setDocumentToDelete] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const workerRef = useRef<Worker | null>(null);
+
+  // Spin up the embedding worker once on mount; terminate on unmount
+  useEffect(() => {
+    workerRef.current = new Worker(
+      new URL("../../workers/embedding-worker.ts", import.meta.url)
+    );
+    return () => {
+      workerRef.current?.terminate();
+      workerRef.current = null;
+    };
+  }, []);
 
   // Check if any document is processing
   const isProcessing = documents.some(
@@ -78,6 +90,33 @@ export default function DocumentManager({
       toast.error("Failed to load documents");
     }
   };
+
+  // Wraps worker postMessage in a Promise, forwarding progress messages via onProgress.
+  // Filters by documentId so sequential file processing stays isolated.
+  const processWithWorker = (
+    request: WorkerRequest,
+    onProgress: (msg: WorkerMessage) => void
+  ): Promise<void> =>
+    new Promise((resolve, reject) => {
+      const worker = workerRef.current!;
+
+      const onMessage = (e: MessageEvent<WorkerMessage>) => {
+        const msg = e.data;
+        if (msg.documentId !== request.documentId) return;
+        onProgress(msg);
+        if (msg.type === "complete") { cleanup(); resolve(); }
+        else if (msg.type === "error") { cleanup(); reject(new Error(msg.error ?? "Worker error")); }
+      };
+      const onError = (e: ErrorEvent) => { cleanup(); reject(new Error(e.message)); };
+      const cleanup = () => {
+        worker.removeEventListener("message", onMessage);
+        worker.removeEventListener("error", onError);
+      };
+
+      worker.addEventListener("message", onMessage);
+      worker.addEventListener("error", onError);
+      worker.postMessage(request);
+    });
 
   const handleFileSelect = async (
     event: React.ChangeEvent<HTMLInputElement>
@@ -146,13 +185,36 @@ export default function DocumentManager({
       setDocuments((prev) => [...prev, newDoc]);
 
       try {
-        await processDocument(
-          file,
-          activeChatId,
+        // Text extraction must run on the main thread — pdfjs-dist is loaded
+        // from CDN via a webpackIgnore dynamic import and cannot resolve inside a worker.
+        handleWorkerMessage(documentId, {
+          type: "progress",
           documentId,
-          (message: WorkerMessage) => {
-            handleWorkerMessage(documentId, message);
-          }
+          progress: { stage: "reading", progress: 0, total: 100, documentId },
+        });
+
+        const ext = file.name.split(".").pop()?.toLowerCase();
+        const text =
+          ext === "pdf"
+            ? await extractTextFromPDF(file)
+            : await extractTextFromTXT(file);
+
+        if (!text?.trim()) {
+          throw new Error(
+            "File contains no extractable text. If this is a scanned document, text extraction is not supported — please use a text-based PDF."
+          );
+        }
+
+        handleWorkerMessage(documentId, {
+          type: "progress",
+          documentId,
+          progress: { stage: "reading", progress: 100, total: 100, documentId },
+        });
+
+        // Chunking + embedding offloaded to the worker thread to keep the UI responsive.
+        await processWithWorker(
+          { type: "process", documentId, fileName: file.name, text, chatId: activeChatId },
+          (msg) => handleWorkerMessage(documentId, msg)
         );
 
         // Mark as ready
