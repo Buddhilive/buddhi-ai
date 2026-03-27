@@ -1,7 +1,7 @@
 # Buddhi AI: The Future of Private, Client-Side Intelligence
-![GitHub Release](https://img.shields.io/github/v/release/BerkeliumLabs/Buddhi-AI)
-![GitHub License](https://img.shields.io/github/license/BerkeliumLabs/Buddhi-AI)
-![GitHub Stars](https://img.shields.io/github/stars/BerkeliumLabs/Buddhi-AI)
+![GitHub Release](https://img.shields.io/github/v/release/Buddhilive/buddhi-ai)
+![GitHub License](https://img.shields.io/github/license/Buddhilive/buddhi-ai)
+![GitHub Stars](https://img.shields.io/github/stars/Buddhilive/buddhi-ai)
 ![GitHub deployments](https://img.shields.io/github/deployments/buddhilive/buddhi-ai/Production)
 
 
