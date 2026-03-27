@@ -20,7 +20,7 @@ import {
   PromptInputAttachment,
   PromptInputAttachments,
   PromptInputBody,
-  PromptInputButton,
+  /* PromptInputButton, */
   PromptInputHeader,
   /* PromptInputSelect,
   PromptInputSelectContent,
@@ -73,6 +73,7 @@ import {
 import { FileUIPart } from "ai";
 import { MetadataMode } from "llamaindex";
 import { retrieveSegments, hasDocuments } from "@/lib/llamaindex-provider";
+import { Shimmer } from "@/components/ai-elements/shimmer";
 
 /* const models = [
   {
@@ -89,7 +90,7 @@ export default function BuddhiAIChat() {
   const [input, setInput] = useState("");
   /* const [model, setModel] = useState<string>(models[0].value); */
   const [sourceFiles, setSourceFiles] = useState([]);
-  const { webLLMInstance } = useWebLLMStore();
+  const { webLLMInstance, webLLMStatus } = useWebLLMStore();
   const storeModels = useModelStore((s) => s.models);
   const hasCompletedLanguageModel = MODELS.some(
     (m) => m.type === "language" && storeModels[m.id]?.status === "completed"
@@ -301,7 +302,7 @@ export default function BuddhiAIChat() {
       };
     }
 
-    console.log("[User prompt]", augmentedUserPrompt, files);
+    //console.log("[User prompt]", augmentedUserPrompt, files);
 
     // Use augmented prompt for LLM, but display original prompt in chat
     const promptMessages = [systemPrompt, ...messages, augmentedUserPrompt];
@@ -462,17 +463,18 @@ export default function BuddhiAIChat() {
       return (
         <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] gap-4 text-center px-6">
           <BrainCircuitIcon className="h-12 w-12 text-muted-foreground" />
-          <h2 className="text-xl font-semibold">No AI model installed</h2>
-          <p className="text-muted-foreground max-w-sm">
-            You need to install a language model before you can start chatting.
-            Visit the Models page to download one.
-          </p>
-          <Link
-            href="/models"
-            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            Go to Models
-          </Link>
+          {webLLMStatus === "error" && <><h2 className="text-xl font-semibold">No AI model installed</h2>
+            <p className="text-muted-foreground max-w-sm">
+              You need to install a language model before you can start chatting.
+              Visit the Models page to download one.
+            </p>
+            <Link
+              href="/models"
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              Go to Models
+            </Link></>}
+          {webLLMStatus !== "error" && <Shimmer duration={1000} >Initializing LLM...</Shimmer>}
         </div>
       );
     }

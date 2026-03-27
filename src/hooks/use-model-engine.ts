@@ -13,7 +13,7 @@ import { getModelObjectURL } from "@/lib/model-manager";
  * Call this once from the app layout so the engine is available app-wide.
  */
 export function useModelEngine() {
-    const { webLLMInstance, setWebLLMInstance } = useWebLLMStore();
+    const { webLLMInstance, setWebLLMInstance, setWebLLMStatus } = useWebLLMStore();
     const models = useModelStore((s) => s.models);
     const hydrated = useModelStore((s) => s.hydrated);
     const initializingRef = useRef(false);
@@ -27,8 +27,12 @@ export function useModelEngine() {
         const completedModel = MODELS.find(
             (m) => m.type === "language" && models[m.id]?.status === "completed"
         );
-        if (!completedModel) return;
+        if (!completedModel) {
+            setWebLLMStatus("error");
+            return
+        };
 
+        setWebLLMStatus("loading");
         initializingRef.current = true;
         console.log("[use-model-engine] Initializing engine for model:", completedModel);
 
@@ -50,9 +54,11 @@ export function useModelEngine() {
                     maxNumImages: 10,
                 });
                 setWebLLMInstance(llmInference);
+                setWebLLMStatus("ready");
             } catch (err) {
                 console.error("[use-model-engine] Failed to initialize engine:", err);
                 initializingRef.current = false;
+                setWebLLMStatus("error");
             } finally {
                 // MediaPipe has copied the model into WASM memory — safe to revoke
                 if (objectUrlRef.current) {
@@ -61,5 +67,5 @@ export function useModelEngine() {
                 }
             }
         })();
-    }, [hydrated, webLLMInstance, models, setWebLLMInstance]);
+    }, [hydrated, webLLMInstance, models, setWebLLMInstance, setWebLLMStatus]);
 }

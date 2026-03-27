@@ -1,10 +1,17 @@
-## Introducing Buddhi AI: The Future of Private, Client-Side Intelligence
+# Buddhi AI: The Future of Private, Client-Side Intelligence
+![GitHub Release](https://img.shields.io/github/v/release/BerkeliumLabs/Buddhi-AI)
+![GitHub License](https://img.shields.io/github/license/BerkeliumLabs/Buddhi-AI)
+![GitHub Stars](https://img.shields.io/github/stars/BerkeliumLabs/Buddhi-AI)
+![GitHub deployments](https://img.shields.io/github/deployments/buddhilive/buddhi-ai/Production)
+
+
+![Buddhi AI](public/icons/android/android-launchericon-144-144.png)
 
 **Buddhi AI** is a cutting-edge web application designed to harness the power of artificial intelligence directly within the user's browser, fundamentally changing the paradigm of AI-powered tools. Built with a clear focus on **privacy and efficiency**, Buddhi AI is aligned with and leverages the evolving capabilities of modern web browsers, notably through the integration of **Chrome’s Built-in AI** features.
 
 ***
 
-### 🔒 Core Philosophy: Privacy-First & Cost-Efficient AI
+### Core Philosophy: Privacy-First & Cost-Efficient AI
 
 The guiding principle of Buddhi AI is to deliver robust AI utility while upholding the highest standards of user security and privacy.
 
@@ -13,7 +20,7 @@ The guiding principle of Buddhi AI is to deliver robust AI utility while upholdi
 
 ***
 
-### 🧠 Models & RAG Architecture
+### Models & RAG Architecture
 
 Buddhi AI utilizes a sophisticated **Local-First RAG (Retrieval-Augmented Generation)** architecture to provide context-aware responses without compromising privacy.
 
@@ -57,7 +64,7 @@ graph TD
 
 ***
 
-### 💻 Developer Documentation
+### Developer Documentation
 
 #### Tech Stack
 - **Framework:** Next.js 15 (App Router)
@@ -93,7 +100,7 @@ graph TD
 
 ***
 
-### 🚀 Vision & Alignment
+### Vision & Alignment
 
 The development of Buddhi AI is strategically aligned with the pioneering work on client-side AI models, as championed by modern browser technologies. Our vision is an **ever-expanding collection of useful tools** that continuously adopts new, powerful on-device models as they become available.
 
