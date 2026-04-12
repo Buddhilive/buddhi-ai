@@ -1,5 +1,5 @@
 import { BuddhiAISavedChat, ChatInfo, chatsApi } from '@/lib/chat-manager';
-import { BuddhiAIMessage } from '@/lib/chat-template-generator';
+import { BuddhiAIMessage } from '@/types/messages';
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 

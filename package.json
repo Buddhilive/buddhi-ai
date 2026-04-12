@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.160",
+    "@mediapipe/tasks-genai": "^0.10.27",
     "@radix-ui/react-use-controllable-state": "^1.2.2",
     "@rive-app/react-webgl2": "^4.27.3",
     "@streamdown/cjk": "^1.0.3",
