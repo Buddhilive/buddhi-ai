@@ -15,10 +15,6 @@ import {
     Message,
     MessageBranch,
     MessageBranchContent,
-    MessageBranchNext,
-    MessageBranchPage,
-    MessageBranchPrevious,
-    MessageBranchSelector,
     MessageContent,
     MessageResponse,
 } from "@/components/ai-elements/message";
@@ -51,46 +47,25 @@ import {
     PromptInputTools,
     usePromptInputAttachments,
 } from "@/components/ai-elements/prompt-input";
-import {
-    Reasoning,
-    ReasoningContent,
-    ReasoningTrigger,
-} from "@/components/ai-elements/reasoning";
-import {
-    Source,
-    Sources,
-    SourcesContent,
-    SourcesTrigger,
-} from "@/components/ai-elements/sources";
 import { SpeechInput } from "@/components/ai-elements/speech-input";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
-import type { FileUIPart, ToolUIPart } from "ai";
+import { createStaticChatTransport } from "@/lib/buddhi-ai-core/chat-api";
+import { useChat } from "@ai-sdk/react";
+import type { FileUIPart } from "ai";
 import { CheckIcon, GlobeIcon } from "lucide-react";
-import { nanoid } from "nanoid";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-interface MessageType {
-    key: string;
-    from: "user" | "assistant";
-    sources?: { href: string; title: string }[];
-    versions: {
-        id: string;
-        content: string;
-    }[];
-    reasoning?: {
-        content: string;
-        duration: number;
-    };
-    tools?: {
-        name: string;
-        description: string;
-        status: ToolUIPart["state"];
-        parameters: Record<string, unknown>;
-        result: string | undefined;
-        error: string | undefined;
-    }[];
-}
+// ---------------------------------------------------------------------------
+// Transport — created once at module level so it's stable across renders.
+// Swap this out for a different ChatTransport when you're ready to use a
+// real backend (e.g. new DefaultChatTransport({ api: '/api/chat' })).
+// ---------------------------------------------------------------------------
+const transport = createStaticChatTransport();
+
+// ---------------------------------------------------------------------------
+// Static data
+// ---------------------------------------------------------------------------
 
 const models = [
     {
@@ -141,21 +116,11 @@ const suggestions = [
     "Explain cloud computing basics",
 ];
 
-const mockResponses = [
-    "That's a great question! Let me help you understand this concept better. The key thing to remember is that proper implementation requires careful consideration of the underlying principles and best practices in the field.",
-    "I'd be happy to explain this topic in detail. From my understanding, there are several important factors to consider when approaching this problem. Let me break it down step by step for you.",
-    "This is an interesting topic that comes up frequently. The solution typically involves understanding the core concepts and applying them in the right context. Here's what I recommend...",
-    "Great choice of topic! This is something that many developers encounter. The approach I'd suggest is to start with the fundamentals and then build up to more complex scenarios.",
-    "That's definitely worth exploring. From what I can see, the best way to handle this is to consider both the theoretical aspects and practical implementation details.",
-];
-
-const delay = (ms: number): Promise<void> =>
-    // eslint-disable-next-line promise/avoid-new -- setTimeout requires a new Promise
-    new Promise((resolve) => {
-        setTimeout(resolve, ms);
-    });
-
 const chefs = ["OpenAI", "Anthropic", "Google"];
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
 
 const AttachmentItem = ({
     attachment,
@@ -248,109 +213,38 @@ const ModelItem = ({
     );
 };
 
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
 export default function ChatPage() {
     const [model, setModel] = useState<string>(models[0].id);
     const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
     const [text, setText] = useState<string>("");
     const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
-    const [status, setStatus] = useState<
-        "submitted" | "streaming" | "ready" | "error"
-    >("ready");
-    const [messages, setMessages] = useState<MessageType[]>([]);
-    const [, setStreamingMessageId] = useState<string | null>(null);
+
+    // ── useChat ───────────────────────────────────────────────────────────────
+    // `messages`    – UIMessage[] managed by the SDK; updates reactively as
+    //                 chunks arrive from the transport stream.
+    // `sendMessage` – appends a user message and triggers the transport.
+    // `stop`        – aborts the in-flight stream (fires the AbortSignal).
+    // `status`      – 'ready' | 'submitted' | 'streaming' | 'error'
+    const { messages, sendMessage, stop, status } = useChat({ transport });
 
     const selectedModelData = useMemo(
         () => models.find((m) => m.id === model),
         [model]
     );
 
-    const updateMessageContent = useCallback(
-        (messageId: string, newContent: string) => {
-            setMessages((prev) =>
-                prev.map((msg) => {
-                    if (msg.versions.some((v) => v.id === messageId)) {
-                        return {
-                            ...msg,
-                            versions: msg.versions.map((v) =>
-                                v.id === messageId ? { ...v, content: newContent } : v
-                            ),
-                        };
-                    }
-                    return msg;
-                })
-            );
-        },
-        []
-    );
+    // Disable submit while a response is in flight, or when input is empty.
+    const isSubmitDisabled =
+        !text.trim() || status === "streaming" || status === "submitted";
 
-    const streamResponse = useCallback(
-        async (messageId: string, content: string) => {
-            setStatus("streaming");
-            setStreamingMessageId(messageId);
-
-            const words = content.split(" ");
-            let currentContent = "";
-
-            for (const [i, word] of words.entries()) {
-                currentContent += (i > 0 ? " " : "") + word;
-                updateMessageContent(messageId, currentContent);
-                await delay(Math.random() * 100 + 50);
-            }
-
-            setStatus("ready");
-            setStreamingMessageId(null);
-        },
-        [updateMessageContent]
-    );
-
-    const addUserMessage = useCallback(
-        (content: string) => {
-            const userMessage: MessageType = {
-                from: "user",
-                key: `user-${Date.now()}`,
-                versions: [
-                    {
-                        content,
-                        id: `user-${Date.now()}`,
-                    },
-                ],
-            };
-
-            setMessages((prev) => [...prev, userMessage]);
-
-            setTimeout(() => {
-                const assistantMessageId = `assistant-${Date.now()}`;
-                const randomResponse =
-                    mockResponses[Math.floor(Math.random() * mockResponses.length)];
-
-                const assistantMessage: MessageType = {
-                    from: "assistant",
-                    key: `assistant-${Date.now()}`,
-                    versions: [
-                        {
-                            content: "",
-                            id: assistantMessageId,
-                        },
-                    ],
-                };
-
-                setMessages((prev) => [...prev, assistantMessage]);
-                streamResponse(assistantMessageId, randomResponse);
-            }, 500);
-        },
-        [streamResponse]
-    );
+    // ── Handlers ──────────────────────────────────────────────────────────────
 
     const handleSubmit = useCallback(
         (message: PromptInputMessage) => {
-            const hasText = Boolean(message.text);
-            const hasAttachments = Boolean(message.files?.length);
-
-            if (!(hasText || hasAttachments)) {
-                return;
-            }
-
-            setStatus("submitted");
+            if (!message.text && !message.files?.length) return;
 
             if (message.files?.length) {
                 toast.success("Files attached", {
@@ -358,18 +252,23 @@ export default function ChatPage() {
                 });
             }
 
-            addUserMessage(message.text || "Sent with attachments");
+            // sendMessage({ text, files }) appends the user turn and calls
+            // transport.sendMessages() under the hood.
+            sendMessage({
+                text: message.text || "",
+                files: message.files,
+            });
+
             setText("");
         },
-        [addUserMessage]
+        [sendMessage]
     );
 
     const handleSuggestionClick = useCallback(
         (suggestion: string) => {
-            setStatus("submitted");
-            addUserMessage(suggestion);
+            sendMessage({ text: suggestion });
         },
-        [addUserMessage]
+        [sendMessage]
     );
 
     const handleTranscriptionChange = useCallback((transcript: string) => {
@@ -392,75 +291,62 @@ export default function ChatPage() {
         setModelSelectorOpen(false);
     }, []);
 
-    const isSubmitDisabled = useMemo(
-        () => !(text.trim() || status) || status === "streaming",
-        [text, status]
-    );
+    // ── Render ────────────────────────────────────────────────────────────────
 
     return (
         <div className="relative flex h-[calc(100vh-80px)] flex-col divide-y overflow-hidden">
             <Conversation>
                 <ConversationContent>
-                    {messages.map(({ versions, ...message }) => (
-                        <MessageBranch defaultBranch={0} key={message.key}>
+                    {messages.map((message) => (
+                        // MessageBranch manages multi-version messages (e.g. regenerations).
+                        // With a single version per message the branch selector is hidden
+                        // automatically by the component.
+                        <MessageBranch defaultBranch={0} key={message.id}>
                             <MessageBranchContent>
-                                {versions.map((version) => (
-                                    <Message
-                                        from={message.from}
-                                        key={`${message.key}-${version.id}`}
-                                    >
-                                        <div>
-                                            {message.sources?.length && (
-                                                <Sources>
-                                                    <SourcesTrigger count={message.sources.length} />
-                                                    <SourcesContent>
-                                                        {message.sources.map((source) => (
-                                                            <Source
-                                                                href={source.href}
-                                                                key={source.href}
-                                                                title={source.title}
-                                                            />
-                                                        ))}
-                                                    </SourcesContent>
-                                                </Sources>
-                                            )}
-                                            {message.reasoning && (
-                                                <Reasoning duration={message.reasoning.duration}>
-                                                    <ReasoningTrigger />
-                                                    <ReasoningContent>
-                                                        {message.reasoning.content}
-                                                    </ReasoningContent>
-                                                </Reasoning>
-                                            )}
-                                            <MessageContent>
-                                                <MessageResponse>{version.content}</MessageResponse>
-                                            </MessageContent>
-                                        </div>
-                                    </Message>
-                                ))}
+                                <Message from={message.role}>
+                                    <MessageContent>
+                                        {/*
+                                         * UIMessage.parts is an array of content blocks.
+                                         * Each block has a `type` discriminant.
+                                         * We render text blocks here; other block types
+                                         * (tool-call, reasoning, file …) can be added
+                                         * as the transport evolves.
+                                         */}
+                                        {message.parts.map((part, index) => {
+                                            if (part.type === "text") {
+                                                return (
+                                                    <MessageResponse key={index}>
+                                                        {part.text}
+                                                    </MessageResponse>
+                                                );
+                                            }
+                                            // Non-text parts (tool-call, file, etc.) are
+                                            // intentionally not rendered yet.
+                                            return null;
+                                        })}
+                                    </MessageContent>
+                                </Message>
                             </MessageBranchContent>
-                            {versions.length > 1 && (
-                                <MessageBranchSelector>
-                                    <MessageBranchPrevious />
-                                    <MessageBranchPage />
-                                    <MessageBranchNext />
-                                </MessageBranchSelector>
-                            )}
                         </MessageBranch>
                     ))}
                 </ConversationContent>
                 <ConversationScrollButton />
             </Conversation>
+
             <div className="grid shrink-0 gap-4 pt-4">
-                <Suggestions className="px-4">
-                    {suggestions.map((suggestion) => (
-                        <SuggestionItem
-                            key={suggestion}
-                            onClick={handleSuggestionClick}
-                            suggestion={suggestion}
-                        />
-                    ))}
-                </Suggestions>
+                {/* Hide suggestions once the conversation has started */}
+                {messages.length === 0 && (
+                    <Suggestions className="px-4">
+                        {suggestions.map((suggestion) => (
+                            <SuggestionItem
+                                key={suggestion}
+                                onClick={handleSuggestionClick}
+                                suggestion={suggestion}
+                            />
+                        ))}
+                    </Suggestions>
+                )}
+
                 <div className="w-full px-4 pb-4">
                     <PromptInput globalDrop multiple onSubmit={handleSubmit}>
                         <PromptInputHeader>
@@ -530,12 +416,24 @@ export default function ChatPage() {
                                     </ModelSelectorContent>
                                 </ModelSelector>
                             </PromptInputTools>
-                            <PromptInputSubmit disabled={isSubmitDisabled} status={status} />
+
+                            {/*
+                             * status – passed straight from useChat; PromptInputSubmit
+                             *          uses it to show a spinner during 'submitted' and
+                             *          a stop icon during 'streaming'.
+                             * onStop  – calls useChat's stop(), which fires the AbortSignal
+                             *           passed to transport.sendMessages(), triggering the
+                             *           abort chunk in StaticChatTransport.
+                             */}
+                            <PromptInputSubmit
+                                disabled={isSubmitDisabled}
+                                onStop={stop}
+                                status={status}
+                            />
                         </PromptInputFooter>
                     </PromptInput>
                 </div>
             </div>
         </div>
     );
-};
-
+}
