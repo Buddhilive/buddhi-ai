@@ -1,5 +1,6 @@
-import { BuddhiAISavedChat, ChatInfo, chatsApi } from '@/lib/chat-manager';
+import { chatsApi } from '@/lib/chat-manager';
 import { BuddhiAIMessage } from '@/types/messages';
+import { ChatInfo, BuddhiAISavedChat } from '@/types/chat';
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 
