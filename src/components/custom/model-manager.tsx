@@ -235,9 +235,6 @@ function ModelCard({ model }: ModelCardProps) {
                     <p className="text-sm text-muted-foreground">{model.description}</p>
 
                     <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs font-mono">
-                            {typeof model.dtype === "string" ? model.dtype : "auto"}
-                        </Badge>
                         <Badge variant="outline" className="text-xs capitalize">
                             {model.type}
                         </Badge>

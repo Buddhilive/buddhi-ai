@@ -43,6 +43,62 @@ import { nanoid } from "nanoid";
 // ---------------------------------------------------------------------------
 
 /**
+ * Returns true when `line` (the first line of a response) is a code-fence
+ * opening that signals the model is wrapping plain prose in backticks rather
+ * than actual code.
+ *
+ * We treat a fence as "plain-text" when it has no language tag at all, or
+ * when the tag is one of the well-known prose pseudo-languages:
+ *   text | plaintext | plain | markdown | md
+ *
+ * Language-tagged fences like ```python or ```ts are left untouched so that
+ * real code blocks continue to render with syntax highlighting.
+ */
+function isPlainTextCodeFence(line: string): boolean {
+    const match = line.match(/^```(\w*)$/);
+    if (!match) return false;
+    const lang = match[1].toLowerCase();
+    return (
+        lang === "" ||
+        lang === "text" ||
+        lang === "plaintext" ||
+        lang === "plain" ||
+        lang === "markdown" ||
+        lang === "md"
+    );
+}
+
+/**
+ * Removes the outer triple-backtick fence from a fully-buffered response,
+ * returning only the inner content.
+ *
+ * Handles both forms:
+ *   ```\ncontent\n```          (no language tag)
+ *   ```plaintext\ncontent\n``` (plain-text language tag)
+ *
+ * Always safe to call — if the pattern doesn't match the input is returned
+ * unchanged.
+ */
+function stripOuterCodeFence(text: string): string {
+    return text
+        .replace(/^```[\w]*\n/, "") // strip opening fence + optional language tag
+        .replace(/\n```\s*$/, "");  // strip closing fence + optional trailing whitespace
+}
+
+/**
+ * Strips Gemma model template tokens that may appear verbatim at the end of
+ * a generated response.  Gemma 4 uses `<turn|>` and Gemma 3n uses
+ * `<end_of_turn>` as turn-closing markers; if the runtime doesn't intercept
+ * them as stop tokens they bleed into the user-visible text.
+ */
+function stripTrailingTemplateTokens(text: string): string {
+    return text
+        .replace(/<turn\|>\s*$/, "")
+        .replace(/<end_of_turn>\s*$/, "")
+        .trimEnd();
+}
+
+/**
  * Converts the Vercel AI SDK's `UIMessage[]` into the internal
  * `BuddhiAIMessage[]` format expected by `generateChatTemplate`.
  *
@@ -176,30 +232,51 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
 
                 // ── Stream tokens from the LLM ────────────────────────────────
                 // LlmInference.generateResponse(prompt, progressListener)
-                //   • Returns Promise<string> — the full final response.
-                //   • progressListener is called with incremental (delta) text
-                //     and a `done` flag on each new token batch.
+                //   • progressListener receives incremental (delta) text and a
+                //     `done` flag on each new token batch.
                 //
-                // MediaPipe's `partialResult` is incremental — each callback
-                // receives only the newly generated tokens, not the full
-                // response so far. We forward it directly as the text-delta.
-                let settled = false; // guards against writing after abort/done
+                // POST-PROCESSING PIPELINE
+                // ------------------------
+                // Two issues are corrected before text reaches the UI:
+                //
+                // 1. Plain-text code-fence wrapping
+                //    Gemma occasionally wraps an entire prose answer in a fence
+                //    like ```\n…\n``` or ```plaintext\n…\n```. Streamdown renders
+                //    that as a code block, making plain text look like source code.
+                //    Detection strategy (two triggers so streaming isn't delayed):
+                //      a) If ≥3 chars arrive and the text does NOT start with "```"
+                //         → switch to streaming immediately (it's plain text).
+                //      b) If the text DOES start with "```", wait for the first "\n"
+                //         so we can read the full first line and its language tag.
+                //         Plain-text tags (empty / text / plaintext / plain / md)
+                //         → buffer silently; strip fence on done and emit clean prose.
+                //         Real language tags (python, ts, …)
+                //         → switch to streaming (it's a legitimate code block).
+                //
+                // 2. Trailing Gemma template tokens
+                //    Gemma 4 emits <turn|> and Gemma 3n emits <end_of_turn> as
+                //    turn-closing markers. If the LiteRT runtime doesn't intercept
+                //    them as stop tokens they bleed into the user-visible text.
+                //    We hold back a TAIL_SIZE-character tail buffer during streaming
+                //    and strip these tokens from it before emitting the final chunk.
+
+                /** Chars held back to intercept trailing template tokens. */
+                const TAIL_SIZE = 20; // longer than "<end_of_turn>" (13 chars)
+
+                let settled = false;  // guards against writing after abort/done
+                let accumulated = ""; // all text received from the model so far
+                let emitted = 0;      // chars of `accumulated` already sent to writer
+
+                type StreamMode = "detecting" | "streaming" | "buffering";
+                let streamMode: StreamMode = "detecting";
 
                 try {
                     await this.llm.generateResponse(
                         prompt,
                         (partialResult: string, done: boolean) => {
-                            // Ignore callbacks that fire after we've already
-                            // resolved (can happen if MediaPipe keeps calling
-                            // after `done === true`).
                             if (settled) return;
 
                             // ── Abort mid-stream ──────────────────────────────
-                            // We cannot cancel MediaPipe generation once it has
-                            // started — the WASM runtime has no cancel API.
-                            // What we can do is stop forwarding tokens to the
-                            // UI stream. The user sees generation stop immediately
-                            // and the underlying computation finishes silently.
                             if (abortSignal?.aborted) {
                                 writer.write({
                                     type: "abort",
@@ -209,24 +286,78 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                                 return;
                             }
 
-                            // ── Forward the delta ─────────────────────────────
-                            // `partialResult` is the incremental text for this
-                            // callback only — forward it directly as a text-delta.
-                            if (partialResult) {
-                                writer.write({
-                                    type: "text-delta",
-                                    id: textPartId,
-                                    delta: partialResult,
-                                });
+                            accumulated += partialResult;
+
+                            // ── Mode detection ────────────────────────────────
+                            if (streamMode === "detecting") {
+                                if (accumulated.length >= 3 && !accumulated.startsWith("```")) {
+                                    // Definitely not a code fence — start streaming.
+                                    streamMode = "streaming";
+                                } else if (accumulated.startsWith("```")) {
+                                    // Might be a code fence. Wait for the full
+                                    // first line (the language tag) before deciding.
+                                    const nl = accumulated.indexOf("\n");
+                                    if (nl !== -1 || done) {
+                                        const firstLine = nl !== -1
+                                            ? accumulated.slice(0, nl)
+                                            : accumulated;
+                                        streamMode = isPlainTextCodeFence(firstLine)
+                                            ? "buffering"
+                                            : "streaming";
+                                    }
+                                } else if (done) {
+                                    // Response ended before we had 3 chars.
+                                    streamMode = "streaming";
+                                }
+                                // Still "detecting" — fall through; the streaming
+                                // block below will emit once mode is resolved.
+                            }
+
+                            // ── Streaming: emit, holding back a tail buffer ────
+                            if (streamMode === "streaming" && !done) {
+                                const safeEnd = accumulated.length - TAIL_SIZE;
+                                if (safeEnd > emitted) {
+                                    writer.write({
+                                        type: "text-delta",
+                                        id: textPartId,
+                                        delta: accumulated.slice(emitted, safeEnd),
+                                    });
+                                    emitted = safeEnd;
+                                }
                             }
 
                             // ── Generation complete ───────────────────────────
                             if (done) {
+                                // Determine the cleaned final text.
+                                let finalText = accumulated;
+
+                                if (streamMode === "buffering") {
+                                    const nl = finalText.indexOf("\n");
+                                    const firstLine = nl !== -1
+                                        ? finalText.slice(0, nl)
+                                        : finalText;
+                                    if (isPlainTextCodeFence(firstLine)) {
+                                        finalText = stripOuterCodeFence(finalText);
+                                    }
+                                    // Real code block — emit as-is.
+                                }
+
+                                // Strip any leaked template tokens from the tail.
+                                finalText = stripTrailingTemplateTokens(finalText);
+
+                                // Emit everything that hasn't been streamed yet
+                                // (the tail buffer, minus any stripped tokens).
+                                const remaining = finalText.slice(emitted);
+                                if (remaining) {
+                                    writer.write({
+                                        type: "text-delta",
+                                        id: textPartId,
+                                        delta: remaining,
+                                    });
+                                }
+
                                 writer.write({ type: "text-end", id: textPartId });
-                                writer.write({
-                                    type: "finish",
-                                    finishReason: "stop",
-                                });
+                                writer.write({ type: "finish", finishReason: "stop" });
                                 settled = true;
                             }
                         }

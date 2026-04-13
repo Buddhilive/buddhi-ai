@@ -398,7 +398,8 @@ export default function Home() {
                 whileTap={{ scale: 0.95 }}
                 className="flex items-center justify-center gap-3 h-16 px-12 rounded-full bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 font-bold text-xl hover:bg-zinc-800 dark:hover:bg-zinc-100 transition-colors shadow-2xl"
               >
-                Get Started For Free
+                Try BuddhiAI
+                <ArrowRight className="w-6 h-6" />
               </motion.button>
             </Link>
           </motion.div>

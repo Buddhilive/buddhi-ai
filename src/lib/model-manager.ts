@@ -22,7 +22,6 @@ export interface ModelDownloadRequest {
 export interface ModelInfo {
     id: string;
     name: string;
-    quantization: string;
     type: "language" | "embedding";
     status: "not_installed" | "downloading" | "completed" | "failed" | "unavailable";
     progress: number;
@@ -117,7 +116,6 @@ function toModelInfo(id: string, state: ModelState, config: ModelConfig): ModelI
     return {
         id,
         name: config.name,
-        quantization: config.dtype ?? "auto",
         type: config.type,
         status: state.status,
         progress: state.progress,
