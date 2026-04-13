@@ -49,7 +49,7 @@ export const metadata: Metadata = {
     locale: "en_US",
     images: [
       {
-        url: "/buddhi-ai-screenshot.png",
+        url: "images/buddhi-ai-screenshot.png",
         width: 1200,
         height: 630,
         alt: "Buddhi AI - Private Client-Side AI Tools",
@@ -60,7 +60,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Buddhi AI - Private Client-Side AI Tools",
     description: "Powerful AI tools that run directly in your browser with complete privacy.",
-    images: ["/buddhi-ai-screenshot.png"],
+    images: ["images/buddhi-ai-screenshot.png"],
     creator: "@buddhilive",
   },
   robots: {
