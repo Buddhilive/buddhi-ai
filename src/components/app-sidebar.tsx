@@ -6,6 +6,7 @@ import { NavMain } from "@/components/nav-main";
 /* import { NavProjects } from "@/components/nav-projects"; */
 /* import { NavUser } from "@/components/nav-user"; */
 import { TeamSwitcher } from "@/components/team-switcher";
+import { NavChatHistory } from "@/components/nav-chat-history";
 import {
   Sidebar,
   SidebarContent,
@@ -27,6 +28,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navItems} />
+        <NavChatHistory />
         {/* <NavProjects projects={data.projects} /> */}
       </SidebarContent>
       <SidebarFooter>

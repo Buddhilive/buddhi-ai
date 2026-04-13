@@ -1,4 +1,4 @@
-import { BuddhiAIMessage } from "@/types/messages";
+import type { UIMessage } from "ai";
 
 export interface ChatInfo {
     id: string;
@@ -10,6 +10,6 @@ export interface ChatInfo {
 export interface BuddhiAISavedChat {
     id: string;
     title?: string;
-    messages: BuddhiAIMessage[];
+    messages: UIMessage[];
     updated_at?: string;
 }

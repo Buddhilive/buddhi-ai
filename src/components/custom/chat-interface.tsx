@@ -72,13 +72,21 @@ import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { MediaPipeChatTransport } from "@/lib/buddhi-ai-core/chat-api";
+import {
+    createNewChat,
+    generateChatTitle,
+    loadChat,
+    updateExistingChat,
+} from "@/lib/chat-manager";
 import { useLiteRTModelStore } from "@/stores/litert-store";
+import { useChatStore } from "@/stores/chat-store";
 import { useChat } from "@ai-sdk/react";
 import type { LlmInference } from "@mediapipe/tasks-genai";
 import type { FileUIPart } from "ai";
 import { BrainCircuitIcon, CheckIcon, GlobeIcon } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useModelEngine } from "@/hooks/use-ai-model";
 
@@ -284,12 +292,33 @@ const ModelItem = ({
 /**
  * Mounts only when a valid `LlmInference` instance is available.
  * Creates the transport once (via useMemo) and owns the useChat state.
+ * Re-mounts when `chatId` changes (enforced by `key` in ChatInterface).
  */
-function ChatSession({ instance }: { instance: LlmInference }) {
+function ChatSession({
+    instance,
+    chatId,
+}: {
+    instance: LlmInference;
+    chatId: string | null;
+}) {
     const [model, setModel] = useState<string>(models[0].id);
     const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
     const [text, setText] = useState<string>("");
     const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
+
+    // true while we're fetching an existing chat from IndexedDB.
+    // Starts true when a chatId is present so the spinner shows immediately
+    // (before the async load resolves) and prevents a flash of empty messages.
+    const [isLoadingChat, setIsLoadingChat] = useState(!!chatId);
+
+    // Tracks the active chat ID across renders without triggering re-renders.
+    const currentChatIdRef = useRef<string | null>(chatId);
+
+    // Tracks the previous streaming status to detect the streaming→ready transition.
+    const prevStatusRef = useRef<string>("ready");
+
+    const setCurrentChatId = useChatStore((s) => s.setCurrentChatId);
+    const refreshChats = useChatStore((s) => s.refreshChats);
 
     // The transport is stable: `instance` is set once in useLiteRTModelStore
     // and never replaced, so this memo only runs on initial mount.
@@ -304,7 +333,38 @@ function ChatSession({ instance }: { instance: LlmInference }) {
     // `sendMessage` – appends a user message and calls transport.sendMessages.
     // `stop`        – fires the AbortSignal passed to transport.sendMessages.
     // `status`      – 'ready' | 'submitted' | 'streaming' | 'error'
-    const { messages, sendMessage, stop, status } = useChat({ transport });
+    // `setMessages` – imperatively set the message list (used for chat restore).
+    const { messages, setMessages, sendMessage, stop, status } = useChat({
+        transport,
+    });
+
+    // ── Load existing chat ─────────────────────────────────────────────────────
+    // Runs once on mount. `chatId` is stable for this component instance
+    // because the parent applies key={chatId ?? "new"}, forcing a full
+    // remount whenever the route changes.
+    //
+    // We call setMessages() rather than passing initialMessages to useChat
+    // because useChat only reads initialMessages on first render — it ignores
+    // changes to the option on re-renders. setMessages() works at any time.
+    useEffect(() => {
+        setCurrentChatId(chatId);
+
+        if (!chatId) return;
+
+        loadChat(chatId)
+            .then((chat) => {
+                if (chat?.messages?.length) {
+                    setMessages(chat.messages);
+                }
+            })
+            .catch(() => {
+                console.error("[ChatSession] Failed to load chat:", chatId);
+                toast.error("Could not load chat history.");
+            })
+            .finally(() => setIsLoadingChat(false));
+
+        return () => setCurrentChatId(null);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const selectedModelData = useMemo(
         () => models.find((m) => m.id === model),
@@ -364,6 +424,47 @@ function ChatSession({ instance }: { instance: LlmInference }) {
         setModel(modelId);
         setModelSelectorOpen(false);
     }, []);
+
+    // ── Persist chat on streaming→ready transition ─────────────────────────────
+    // Detects when a streaming response finishes and saves the full conversation
+    // to IndexedDB. For new chats, also updates the URL without a re-render.
+    useEffect(() => {
+        const wasStreaming = prevStatusRef.current === "streaming";
+        prevStatusRef.current = status;
+
+        if (!wasStreaming || status !== "ready" || messages.length === 0) return;
+
+        (async () => {
+            try {
+                if (currentChatIdRef.current) {
+                    await updateExistingChat(currentChatIdRef.current, messages);
+                } else {
+                    const title = generateChatTitle(messages);
+                    const newId = await createNewChat(messages, title);
+                    currentChatIdRef.current = newId;
+                    // Update the browser URL silently — no Next.js navigation,
+                    // no component re-render, no flicker.
+                    window.history.replaceState(null, "", `/chat/${newId}`);
+                    setCurrentChatId(newId);
+                }
+                await refreshChats();
+            } catch (error) {
+                console.error("[ChatSession] Failed to save chat:", error);
+                toast.error("Chat could not be saved.");
+            }
+        })();
+    }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ── Loading guard ─────────────────────────────────────────────────────────
+    // Show a spinner while we fetch an existing chat from IndexedDB.
+    // Prevents a flash of empty messages before the restored conversation appears.
+    if (isLoadingChat) {
+        return (
+            <div className="flex h-[calc(100vh-80px)] items-center justify-center">
+                <Spinner className="size-8" />
+            </div>
+        );
+    }
 
     // ── Render ────────────────────────────────────────────────────────────────
 
@@ -536,6 +637,10 @@ export function ChatInterface() {
     const instance = useLiteRTModelStore((s) => s.liteRTModelInstance);
     const modelStatus = useLiteRTModelStore((s) => s.liteRTModelStatus);
 
+    // Read the optional [[...chatId]] route segment.
+    const params = useParams<{ chatId?: string[] }>();
+    const chatId = params.chatId?.[0] ?? null;
+
     // Still initialising (store not yet hydrated, or loading from WASM)
     if (!modelStatus || modelStatus === "idle" || modelStatus === "loading") {
         return <ModelLoadingState />;
@@ -551,6 +656,7 @@ export function ChatInterface() {
         return <ModelUnavailableState isError={false} />;
     }
 
-    // All good — hand the instance to ChatSession
-    return <ChatSession instance={instance} />;
+    // key={chatId ?? "new"} forces a full remount when navigating between chats,
+    // ensuring each ChatSession starts with a clean state and loads its own data.
+    return <ChatSession instance={instance} chatId={chatId} key={chatId ?? "new"} />;
 }

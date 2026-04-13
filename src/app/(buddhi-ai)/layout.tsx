@@ -1,11 +1,11 @@
+"use client"
+
 import { AppSidebar } from "@/components/app-sidebar"
 import {
   Breadcrumb,
   BreadcrumbItem,
-  BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbPage,
-  BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -13,8 +13,14 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
+import { useNavigation } from "@/hooks/use-navigation";
+import { useModelEngine } from "@/hooks/use-ai-model";
 
 export default function BuddhiAILayout({ children }: { children: React.ReactNode }) {
+
+  const { breadcrumbTitle } = useNavigation();
+  useModelEngine();
+
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -28,14 +34,10 @@ export default function BuddhiAILayout({ children }: { children: React.ReactNode
             />
             <Breadcrumb>
               <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="#">
-                    Build Your Application
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem>
-                  <BreadcrumbPage>Data Fetching</BreadcrumbPage>
+                  <BreadcrumbPage className="line-clamp-1">
+                    {breadcrumbTitle}
+                  </BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
