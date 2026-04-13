@@ -315,9 +315,9 @@ function UploadTab({ onDocumentReady }: UploadTabProps) {
     );
 }
 
-// ─── Knowledge base tab ───────────────────────────────────────────────────────
+// ─── Document Collection tab ───────────────────────────────────────────────────────
 
-function KnowledgeBaseTab() {
+function DocumentCollectionTab() {
     const [docs, setDocs] = useState<DocumentInfo[]>([]);
     const [loading, setLoading] = useState(true);
     const [backendError, setBackendError] = useState<string | null>(null);
@@ -355,7 +355,7 @@ function KnowledgeBaseTab() {
             await documentsApi.deleteDocument(deleteTarget.id);
             setDocs((prev) => prev.filter((d) => d.id !== deleteTarget.id));
             toast.success(
-                `"${deleteTarget.original_name}" removed from knowledge base`
+                `"${deleteTarget.original_name}" removed from Document Collection`
             );
             setDeleteTarget(null);
         } catch (err: unknown) {
@@ -376,7 +376,7 @@ function KnowledgeBaseTab() {
         <div className="space-y-4">
             <div className="flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">
-                    {docs.length} document{docs.length !== 1 ? "s" : ""} in knowledge base
+                    {docs.length} document{docs.length !== 1 ? "s" : ""} in Document Collection
                 </p>
                 <Button
                     variant="outline"
@@ -394,7 +394,7 @@ function KnowledgeBaseTab() {
             {backendError && (
                 <div className="flex items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                     <AlertCircleIcon className="h-4 w-4 shrink-0" />
-                    <span>Failed to load knowledge base: {backendError}</span>
+                    <span>Failed to load Document Collection: {backendError}</span>
                 </div>
             )}
 
@@ -412,7 +412,7 @@ function KnowledgeBaseTab() {
                             No documents yet
                         </p>
                         <p className="text-xs text-muted-foreground">
-                            Upload files in the Upload tab to populate the knowledge base.
+                            Upload files in the Upload tab to populate the Document Collection.
                         </p>
                     </div>
                 </div>
@@ -476,7 +476,7 @@ function KnowledgeBaseTab() {
                         <DialogDescription>
                             This will permanently remove{" "}
                             <span className="font-medium">{deleteTarget?.original_name}</span>{" "}
-                            and all its indexed chunks from the knowledge base. The original
+                            and all its indexed chunks from the Document Collection. The original
                             file on disk is kept for audit purposes.
                         </DialogDescription>
                     </DialogHeader>
@@ -534,9 +534,9 @@ export function DocumentsView() {
     return (
         <div className="flex flex-col gap-6 p-6">
             <div>
-                <h1 className="text-3xl font-bold tracking-tight">Knowledge Base</h1>
+                <h1 className="text-3xl font-bold tracking-tight">Document Collection</h1>
                 <p className="text-muted-foreground">
-                    Upload documents for RAG retrieval and manage the knowledge base.
+                    Upload documents for RAG retrieval and manage the Document Collection.
                 </p>
             </div>
 
@@ -555,11 +555,11 @@ export function DocumentsView() {
 
             <Tabs defaultValue="knowledge-base" className="w-full">
                 <TabsList className="grid w-full max-w-sm grid-cols-2">
-                    <TabsTrigger value="knowledge-base">Knowledge Base</TabsTrigger>
+                    <TabsTrigger value="knowledge-base">Document Collection</TabsTrigger>
                     <TabsTrigger value="upload">Upload</TabsTrigger>
                 </TabsList>
                 <TabsContent value="knowledge-base" className="mt-6">
-                    <KnowledgeBaseTab />
+                    <DocumentCollectionTab />
                 </TabsContent>
 
                 <TabsContent value="upload" className="mt-6">

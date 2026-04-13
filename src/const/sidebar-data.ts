@@ -2,7 +2,7 @@ import {
     Brain,
     BrainCircuit,
     Command,
-    Database,
+    FileText,
     Sparkles,
 } from "lucide-react";
 
@@ -28,9 +28,9 @@ export const SIDEBAR_DATA = {
             icon: Sparkles,
         },
         {
-            title: "Knowledge Base",
-            url: "/knowledge",
-            icon: Database,
+            title: "Documents",
+            url: "/documents",
+            icon: FileText,
         },
         {
             title: "Models",

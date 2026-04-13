@@ -39,6 +39,8 @@ export function useNavigation(): NavigationState {
         // Map pathnames to breadcrumb titles
         const pathTitleMap: Record<string, string> = {
             "/chat": "Ask Buddhi AI",
+            "/documents": "Documents",
+            "/models": "Models",
         };
 
         // Handle dynamic routes and specific cases

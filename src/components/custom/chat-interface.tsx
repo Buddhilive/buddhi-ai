@@ -418,7 +418,7 @@ function ChatSession({
                 <ConversationScrollButton />
             </Conversation>
 
-            <div className="grid shrink-0 gap-4 pt-4">
+            <div className="grid shrink-0 gap-3 pt-4">
                 {/* Suggestions disappear once the conversation has started */}
                 {/* {messages.length === 0 && (
                     <Suggestions className="px-4">
