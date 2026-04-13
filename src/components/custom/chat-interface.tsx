@@ -1,5 +1,25 @@
 "use client";
 
+/**
+ * chat-interface.tsx
+ *
+ * Top-level chat UI with a model-readiness gate.
+ *
+ * COMPONENT TREE
+ * --------------
+ *  ChatInterface          ← default export; guards against missing model
+ *    ├─ ModelLoadingState ← spinner while LlmInference initialises
+ *    ├─ ModelUnavailableState ← CTA when no model is downloaded
+ *    └─ ChatSession       ← full chat UI, only mounted when model is ready
+ *
+ * WHY THE SPLIT?
+ * --------------
+ * `useChat` and the `MediaPipeChatTransport` are only instantiated inside
+ * `ChatSession`. Because `ChatSession` is not rendered until the
+ * `LlmInference` instance exists, the transport is guaranteed to always
+ * receive a valid instance — no null-checks needed at call sites.
+ */
+
 import {
     Attachment,
     AttachmentPreview,
@@ -49,19 +69,18 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { SpeechInput } from "@/components/ai-elements/speech-input";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
-import { createStaticChatTransport } from "@/lib/buddhi-ai-core/chat-api";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { MediaPipeChatTransport } from "@/lib/buddhi-ai-core/chat-api";
+import { useLiteRTModelStore } from "@/stores/litert-store";
 import { useChat } from "@ai-sdk/react";
+import type { LlmInference } from "@mediapipe/tasks-genai";
 import type { FileUIPart } from "ai";
-import { CheckIcon, GlobeIcon } from "lucide-react";
+import { BrainCircuitIcon, CheckIcon, GlobeIcon } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-
-// ---------------------------------------------------------------------------
-// Transport — created once at module level so it's stable across renders.
-// Swap this out for a different ChatTransport when you're ready to use a
-// real backend (e.g. new DefaultChatTransport({ api: '/api/chat' })).
-// ---------------------------------------------------------------------------
-const transport = createStaticChatTransport();
+import { useModelEngine } from "@/hooks/use-ai-model";
 
 // ---------------------------------------------------------------------------
 // Static data
@@ -119,7 +138,54 @@ const suggestions = [
 const chefs = ["OpenAI", "Anthropic", "Google"];
 
 // ---------------------------------------------------------------------------
-// Sub-components
+// Gate states
+// ---------------------------------------------------------------------------
+
+/**
+ * Shown while `useModelEngine` is initialising the LlmInference instance
+ * (i.e. `liteRTModelStatus` is `'idle'` or `'loading'`).
+ */
+function ModelLoadingState() {
+    return (
+        <div className="flex h-[calc(100vh-80px)] flex-col items-center justify-center gap-4 text-center">
+            <Spinner className="size-8" />
+            <p className="text-muted-foreground text-sm">Loading AI model…</p>
+        </div>
+    );
+}
+
+/**
+ * Shown when the store is hydrated but no completed language model was found,
+ * OR when LlmInference initialisation failed.
+ *
+ * Gives the user a clear path to the Model Manager so they can download one.
+ */
+function ModelUnavailableState({ isError }: { isError: boolean }) {
+    return (
+        <div className="flex h-[calc(100vh-80px)] flex-col items-center justify-center gap-6 px-6 text-center">
+            <div className="flex flex-col items-center gap-3">
+                <BrainCircuitIcon className="text-muted-foreground size-12" />
+                <h2 className="text-lg font-semibold">
+                    {isError ? "Model failed to load" : "No AI model available"}
+                </h2>
+                <p className="text-muted-foreground max-w-sm text-sm">
+                    {isError
+                        ? "The language model could not be initialised. Try reloading the page. If the problem persists, re-download the model."
+                        : "Download a language model to start chatting. All inference runs locally — your data never leaves your device."}
+                </p>
+            </div>
+            <Button asChild>
+                <Link href="/models">
+                    <BrainCircuitIcon className="mr-2 size-4" />
+                    {isError ? "Manage Models" : "Download a Model"}
+                </Link>
+            </Button>
+        </div>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components (shared between ChatInterface and ChatSession)
 // ---------------------------------------------------------------------------
 
 const AttachmentItem = ({
@@ -151,9 +217,7 @@ const PromptInputAttachmentsDisplay = () => {
         [attachments]
     );
 
-    if (attachments.files.length === 0) {
-        return null;
-    }
+    if (attachments.files.length === 0) return null;
 
     return (
         <Attachments variant="inline">
@@ -214,20 +278,31 @@ const ModelItem = ({
 };
 
 // ---------------------------------------------------------------------------
-// Chat Interface
+// ChatSession — the actual chat UI
 // ---------------------------------------------------------------------------
 
-export function ChatInterface() {
+/**
+ * Mounts only when a valid `LlmInference` instance is available.
+ * Creates the transport once (via useMemo) and owns the useChat state.
+ */
+function ChatSession({ instance }: { instance: LlmInference }) {
     const [model, setModel] = useState<string>(models[0].id);
     const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
     const [text, setText] = useState<string>("");
     const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
 
+    // The transport is stable: `instance` is set once in useLiteRTModelStore
+    // and never replaced, so this memo only runs on initial mount.
+    const transport = useMemo(
+        () => new MediaPipeChatTransport(instance),
+        [instance]
+    );
+
     // ── useChat ───────────────────────────────────────────────────────────────
     // `messages`    – UIMessage[] managed by the SDK; updates reactively as
-    //                 chunks arrive from the transport stream.
-    // `sendMessage` – appends a user message and triggers the transport.
-    // `stop`        – aborts the in-flight stream (fires the AbortSignal).
+    //                 token chunks arrive from the transport stream.
+    // `sendMessage` – appends a user message and calls transport.sendMessages.
+    // `stop`        – fires the AbortSignal passed to transport.sendMessages.
     // `status`      – 'ready' | 'submitted' | 'streaming' | 'error'
     const { messages, sendMessage, stop, status } = useChat({ transport });
 
@@ -236,7 +311,7 @@ export function ChatInterface() {
         [model]
     );
 
-    // Disable submit while a response is in flight, or when input is empty.
+    // Disable submit while a response is in flight, or when the input is empty.
     const isSubmitDisabled =
         !text.trim() || status === "streaming" || status === "submitted";
 
@@ -252,8 +327,7 @@ export function ChatInterface() {
                 });
             }
 
-            // sendMessage({ text, files }) appends the user turn and calls
-            // transport.sendMessages() under the hood.
+            // sendMessage appends the user turn and triggers transport.sendMessages.
             sendMessage({
                 text: message.text || "",
                 files: message.files,
@@ -298,19 +372,16 @@ export function ChatInterface() {
             <Conversation>
                 <ConversationContent>
                     {messages.map((message) => (
-                        // MessageBranch manages multi-version messages (e.g. regenerations).
-                        // With a single version per message the branch selector is hidden
-                        // automatically by the component.
+                        // MessageBranch handles multi-version messages (e.g. regenerations).
+                        // With a single version the branch selector is hidden automatically.
                         <MessageBranch defaultBranch={0} key={message.id}>
                             <MessageBranchContent>
                                 <Message from={message.role}>
                                     <MessageContent>
                                         {/*
-                                         * UIMessage.parts is an array of content blocks.
-                                         * Each block has a `type` discriminant.
-                                         * We render text blocks here; other block types
-                                         * (tool-call, reasoning, file …) can be added
-                                         * as the transport evolves.
+                                         * UIMessage.parts is a discriminated union. We render
+                                         * text blocks here; other part types (tool-call, file,
+                                         * reasoning) can be added as the transport evolves.
                                          */}
                                         {message.parts.map((part, index) => {
                                             if (part.type === "text") {
@@ -320,8 +391,6 @@ export function ChatInterface() {
                                                     </MessageResponse>
                                                 );
                                             }
-                                            // Non-text parts (tool-call, file, etc.) are
-                                            // intentionally not rendered yet.
                                             return null;
                                         })}
                                     </MessageContent>
@@ -334,7 +403,7 @@ export function ChatInterface() {
             </Conversation>
 
             <div className="grid shrink-0 gap-4 pt-4">
-                {/* Hide suggestions once the conversation has started */}
+                {/* Suggestions disappear once the conversation has started */}
                 {messages.length === 0 && (
                     <Suggestions className="px-4">
                         {suggestions.map((suggestion) => (
@@ -353,7 +422,10 @@ export function ChatInterface() {
                             <PromptInputAttachmentsDisplay />
                         </PromptInputHeader>
                         <PromptInputBody>
-                            <PromptInputTextarea onChange={handleTextChange} value={text} />
+                            <PromptInputTextarea
+                                onChange={handleTextChange}
+                                value={text}
+                            />
                         </PromptInputBody>
                         <PromptInputFooter>
                             <PromptInputTools>
@@ -395,11 +467,16 @@ export function ChatInterface() {
                                         </PromptInputButton>
                                     </ModelSelectorTrigger>
                                     <ModelSelectorContent>
-                                        <ModelSelectorInput placeholder="Search models..." />
+                                        <ModelSelectorInput placeholder="Search models…" />
                                         <ModelSelectorList>
-                                            <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
+                                            <ModelSelectorEmpty>
+                                                No models found.
+                                            </ModelSelectorEmpty>
                                             {chefs.map((chef) => (
-                                                <ModelSelectorGroup heading={chef} key={chef}>
+                                                <ModelSelectorGroup
+                                                    heading={chef}
+                                                    key={chef}
+                                                >
                                                     {models
                                                         .filter((m) => m.chef === chef)
                                                         .map((m) => (
@@ -419,11 +496,10 @@ export function ChatInterface() {
 
                             {/*
                              * status – passed straight from useChat; PromptInputSubmit
-                             *          uses it to show a spinner during 'submitted' and
-                             *          a stop icon during 'streaming'.
+                             *          shows a spinner during 'submitted' and a stop icon
+                             *          during 'streaming'.
                              * onStop  – calls useChat's stop(), which fires the AbortSignal
-                             *           passed to transport.sendMessages(), triggering the
-                             *           abort chunk in StaticChatTransport.
+                             *           passed to MediaPipeChatTransport.sendMessages().
                              */}
                             <PromptInputSubmit
                                 disabled={isSubmitDisabled}
@@ -436,4 +512,45 @@ export function ChatInterface() {
             </div>
         </div>
     );
+}
+
+// ---------------------------------------------------------------------------
+// ChatInterface — model gate (exported)
+// ---------------------------------------------------------------------------
+
+/**
+ * The top-level chat component. Calls `useModelEngine` to trigger LlmInference
+ * initialisation, then guards rendering based on `liteRTModelStatus`:
+ *
+ *  idle / loading  → spinner
+ *  error           → "model failed to load" + manage button
+ *  ready (no inst) → "no model available" + download button  (should not happen)
+ *  ready           → <ChatSession instance={…} />
+ */
+export function ChatInterface() {
+    // `useModelEngine` watches the model store for a completed language model
+    // and initialises LlmInference. Call it here so the engine spins up
+    // as soon as the chat page is opened.
+    useModelEngine();
+
+    const instance = useLiteRTModelStore((s) => s.liteRTModelInstance);
+    const modelStatus = useLiteRTModelStore((s) => s.liteRTModelStatus);
+
+    // Still initialising (store not yet hydrated, or loading from WASM)
+    if (!modelStatus || modelStatus === "idle" || modelStatus === "loading") {
+        return <ModelLoadingState />;
+    }
+
+    // Initialisation failed — no completed model found, or WASM threw
+    if (modelStatus === "error") {
+        return <ModelUnavailableState isError />;
+    }
+
+    // Edge case: status is 'ready' but instance is missing (should not happen)
+    if (!instance) {
+        return <ModelUnavailableState isError={false} />;
+    }
+
+    // All good — hand the instance to ChatSession
+    return <ChatSession instance={instance} />;
 }
