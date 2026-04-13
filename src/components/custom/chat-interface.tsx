@@ -38,19 +38,6 @@ import {
     MessageContent,
     MessageResponse,
 } from "@/components/ai-elements/message";
-import {
-    ModelSelector,
-    ModelSelectorContent,
-    ModelSelectorEmpty,
-    ModelSelectorGroup,
-    ModelSelectorInput,
-    ModelSelectorItem,
-    ModelSelectorList,
-    ModelSelectorLogo,
-    ModelSelectorLogoGroup,
-    ModelSelectorName,
-    ModelSelectorTrigger,
-} from "@/components/ai-elements/model-selector";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import {
     PromptInput,
@@ -88,49 +75,11 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useModelEngine } from "@/hooks/use-ai-model";
+import { Shimmer } from "../ai-elements/shimmer";
 
 // ---------------------------------------------------------------------------
 // Static data
 // ---------------------------------------------------------------------------
-
-const models = [
-    {
-        chef: "OpenAI",
-        chefSlug: "openai",
-        id: "gpt-4o",
-        name: "GPT-4o",
-        providers: ["openai", "azure"],
-    },
-    {
-        chef: "OpenAI",
-        chefSlug: "openai",
-        id: "gpt-4o-mini",
-        name: "GPT-4o Mini",
-        providers: ["openai", "azure"],
-    },
-    {
-        chef: "Anthropic",
-        chefSlug: "anthropic",
-        id: "claude-opus-4-20250514",
-        name: "Claude 4 Opus",
-        providers: ["anthropic", "azure", "google", "amazon-bedrock"],
-    },
-    {
-        chef: "Anthropic",
-        chefSlug: "anthropic",
-        id: "claude-sonnet-4-20250514",
-        name: "Claude 4 Sonnet",
-        providers: ["anthropic", "azure", "google", "amazon-bedrock"],
-    },
-    {
-        chef: "Google",
-        chefSlug: "google",
-        id: "gemini-2.0-flash-exp",
-        name: "Gemini 2.0 Flash",
-        providers: ["google"],
-    },
-];
 
 const suggestions = [
     "What are the latest trends in AI?",
@@ -254,37 +203,6 @@ const SuggestionItem = ({
     return <Suggestion onClick={handleClick} suggestion={suggestion} />;
 };
 
-const ModelItem = ({
-    m,
-    isSelected,
-    onSelect,
-}: {
-    m: (typeof models)[0];
-    isSelected: boolean;
-    onSelect: (id: string) => void;
-}) => {
-    const handleSelect = useCallback(() => {
-        onSelect(m.id);
-    }, [onSelect, m.id]);
-
-    return (
-        <ModelSelectorItem onSelect={handleSelect} value={m.id}>
-            <ModelSelectorLogo provider={m.chefSlug} />
-            <ModelSelectorName>{m.name}</ModelSelectorName>
-            <ModelSelectorLogoGroup>
-                {m.providers.map((provider) => (
-                    <ModelSelectorLogo key={provider} provider={provider} />
-                ))}
-            </ModelSelectorLogoGroup>
-            {isSelected ? (
-                <CheckIcon className="ml-auto size-4" />
-            ) : (
-                <div className="ml-auto size-4" />
-            )}
-        </ModelSelectorItem>
-    );
-};
-
 // ---------------------------------------------------------------------------
 // ChatSession — the actual chat UI
 // ---------------------------------------------------------------------------
@@ -301,8 +219,6 @@ function ChatSession({
     instance: LlmInference;
     chatId: string | null;
 }) {
-    const [model, setModel] = useState<string>(models[0].id);
-    const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
     const [text, setText] = useState<string>("");
     const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
 
@@ -366,11 +282,6 @@ function ChatSession({
         return () => setCurrentChatId(null);
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const selectedModelData = useMemo(
-        () => models.find((m) => m.id === model),
-        [model]
-    );
-
     // Disable submit while a response is in flight, or when the input is empty.
     const isSubmitDisabled =
         !text.trim() || status === "streaming" || status === "submitted";
@@ -418,11 +329,6 @@ function ChatSession({
 
     const toggleWebSearch = useCallback(() => {
         setUseWebSearch((prev) => !prev);
-    }, []);
-
-    const handleModelSelect = useCallback((modelId: string) => {
-        setModel(modelId);
-        setModelSelectorOpen(false);
     }, []);
 
     // ── Persist chat on streaming→ready transition ─────────────────────────────
@@ -499,13 +405,22 @@ function ChatSession({
                             </MessageBranchContent>
                         </MessageBranch>
                     ))}
+                    {(status === "submitted" || status === "streaming") && (
+                        <Message from="assistant">
+                            <MessageContent>
+                                <Shimmer className="text-sm" duration={1.5}>
+                                    {status === "submitted" ? "Generating response..." : "Thinking..."}
+                                </Shimmer>
+                            </MessageContent>
+                        </Message>
+                    )}
                 </ConversationContent>
                 <ConversationScrollButton />
             </Conversation>
 
             <div className="grid shrink-0 gap-4 pt-4">
                 {/* Suggestions disappear once the conversation has started */}
-                {messages.length === 0 && (
+                {/* {messages.length === 0 && (
                     <Suggestions className="px-4">
                         {suggestions.map((suggestion) => (
                             <SuggestionItem
@@ -515,7 +430,7 @@ function ChatSession({
                             />
                         ))}
                     </Suggestions>
-                )}
+                )} */}
 
                 <div className="w-full px-4 pb-4">
                     <PromptInput globalDrop multiple onSubmit={handleSubmit}>
@@ -542,57 +457,13 @@ function ChatSession({
                                     size="icon-sm"
                                     variant="ghost"
                                 />
-                                <PromptInputButton
+                                {/* <PromptInputButton
                                     onClick={toggleWebSearch}
                                     variant={useWebSearch ? "default" : "ghost"}
                                 >
                                     <GlobeIcon size={16} />
                                     <span>Search</span>
-                                </PromptInputButton>
-                                <ModelSelector
-                                    onOpenChange={setModelSelectorOpen}
-                                    open={modelSelectorOpen}
-                                >
-                                    <ModelSelectorTrigger asChild>
-                                        <PromptInputButton>
-                                            {selectedModelData?.chefSlug && (
-                                                <ModelSelectorLogo
-                                                    provider={selectedModelData.chefSlug}
-                                                />
-                                            )}
-                                            {selectedModelData?.name && (
-                                                <ModelSelectorName>
-                                                    {selectedModelData.name}
-                                                </ModelSelectorName>
-                                            )}
-                                        </PromptInputButton>
-                                    </ModelSelectorTrigger>
-                                    <ModelSelectorContent>
-                                        <ModelSelectorInput placeholder="Search models…" />
-                                        <ModelSelectorList>
-                                            <ModelSelectorEmpty>
-                                                No models found.
-                                            </ModelSelectorEmpty>
-                                            {chefs.map((chef) => (
-                                                <ModelSelectorGroup
-                                                    heading={chef}
-                                                    key={chef}
-                                                >
-                                                    {models
-                                                        .filter((m) => m.chef === chef)
-                                                        .map((m) => (
-                                                            <ModelItem
-                                                                isSelected={model === m.id}
-                                                                key={m.id}
-                                                                m={m}
-                                                                onSelect={handleModelSelect}
-                                                            />
-                                                        ))}
-                                                </ModelSelectorGroup>
-                                            ))}
-                                        </ModelSelectorList>
-                                    </ModelSelectorContent>
-                                </ModelSelector>
+                                </PromptInputButton> */}
                             </PromptInputTools>
 
                             {/*
@@ -610,6 +481,7 @@ function ChatSession({
                         </PromptInputFooter>
                     </PromptInput>
                 </div>
+                <span className="text-xs text-muted-foreground text-center">BuddiAI can make mistakes, so double-check the output.</span>
             </div>
         </div>
     );
@@ -629,11 +501,6 @@ function ChatSession({
  *  ready           → <ChatSession instance={…} />
  */
 export function ChatInterface() {
-    // `useModelEngine` watches the model store for a completed language model
-    // and initialises LlmInference. Call it here so the engine spins up
-    // as soon as the chat page is opened.
-    useModelEngine();
-
     const instance = useLiteRTModelStore((s) => s.liteRTModelInstance);
     const modelStatus = useLiteRTModelStore((s) => s.liteRTModelStatus);
 
