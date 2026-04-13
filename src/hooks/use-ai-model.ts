@@ -13,7 +13,7 @@ import { getModelObjectURL } from "@/lib/model-manager";
  * Call this once from the app layout so the engine is available app-wide.
  */
 export function useModelEngine() {
-    const { liteRTModelInstance, setLiteRTModelInstance, setLiteRTModelStatus } = useLiteRTModelStore();
+    const { liteRTModelInstance, setLiteRTModelInstance, setLiteRTModelModel, setLiteRTModelStatus } = useLiteRTModelStore();
     const models = useModelStore((s) => s.models);
     const hydrated = useModelStore((s) => s.hydrated);
     const initializingRef = useRef(false);
@@ -54,6 +54,7 @@ export function useModelEngine() {
                     maxNumImages: 10,
                 });
                 setLiteRTModelInstance(llmInference);
+                setLiteRTModelModel(completedModel.id);
                 setLiteRTModelStatus("ready");
             } catch (err) {
                 console.error("[use-model-engine] Failed to initialize engine:", err);

@@ -38,6 +38,11 @@ import {
     MessageContent,
     MessageResponse,
 } from "@/components/ai-elements/message";
+import {
+    Reasoning,
+    ReasoningContent,
+    ReasoningTrigger,
+} from "@/components/ai-elements/reasoning";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import {
     PromptInput,
@@ -58,7 +63,9 @@ import { SpeechInput } from "@/components/ai-elements/speech-input";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { MODELS } from "@/const/models";
 import { MediaPipeChatTransport } from "@/lib/buddhi-ai-core/chat-api";
+import type { GemmaTemplateVersion } from "@/types/messages";
 import {
     createNewChat,
     generateChatTitle,
@@ -70,7 +77,7 @@ import { useChatStore } from "@/stores/chat-store";
 import { useChat } from "@ai-sdk/react";
 import type { LlmInference } from "@mediapipe/tasks-genai";
 import type { FileUIPart } from "ai";
-import { BrainCircuitIcon, CheckIcon, GlobeIcon } from "lucide-react";
+import { Brain, BrainCircuitIcon } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -91,8 +98,6 @@ const suggestions = [
     "What is the difference between SQL and NoSQL?",
     "Explain cloud computing basics",
 ];
-
-const chefs = ["OpenAI", "Anthropic", "Google"];
 
 // ---------------------------------------------------------------------------
 // Gate states
@@ -220,7 +225,7 @@ function ChatSession({
     chatId: string | null;
 }) {
     const [text, setText] = useState<string>("");
-    const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
+    const [isReasoningOn, setIsReasoningOn] = useState<boolean>(false);
 
     // true while we're fetching an existing chat from IndexedDB.
     // Starts true when a chatId is present so the spinner shows immediately
@@ -236,12 +241,27 @@ function ChatSession({
     const setCurrentChatId = useChatStore((s) => s.setCurrentChatId);
     const refreshChats = useChatStore((s) => s.refreshChats);
 
-    // The transport is stable: `instance` is set once in useLiteRTModelStore
-    // and never replaced, so this memo only runs on initial mount.
+    // Resolve template version from the active model's config so the transport
+    // uses the correct Gemma prompt format. Falls back to "gemma4" when the
+    // model ID hasn't been stored yet (e.g. on first render).
+    const loadedModelId = useLiteRTModelStore((s) => s.liteRTModelModel);
+    const templateVersion: GemmaTemplateVersion =
+        MODELS.find((m) => m.id === loadedModelId)?.chatTemplateVersion ?? "gemma4";
+
+    // The transport must be stable — useChat stores it once in a useRef and
+    // never re-reads it after mount. Only recreate when the model instance or
+    // template version changes (both are set once after model initialisation).
     const transport = useMemo(
-        () => new MediaPipeChatTransport(instance),
-        [instance]
+        () => new MediaPipeChatTransport(instance, templateVersion),
+        [instance, templateVersion]
     );
+
+    // Keep transport.isReasoningOn in sync with the toggle state.
+    // useEffect runs after every render where isReasoningOn changed, ensuring
+    // the next sendMessage call reads the correct value.
+    useEffect(() => {
+        transport.isReasoningOn = isReasoningOn;
+    }, [transport, isReasoningOn]);
 
     // ── useChat ───────────────────────────────────────────────────────────────
     // `messages`    – UIMessage[] managed by the SDK; updates reactively as
@@ -327,8 +347,8 @@ function ChatSession({
         []
     );
 
-    const toggleWebSearch = useCallback(() => {
-        setUseWebSearch((prev) => !prev);
+    const toggleReasoning = useCallback(() => {
+        setIsReasoningOn((prev) => !prev);
     }, []);
 
     // ── Persist chat on streaming→ready transition ─────────────────────────────
@@ -391,6 +411,17 @@ function ChatSession({
                                          * reasoning) can be added as the transport evolves.
                                          */}
                                         {message.parts.map((part, index) => {
+                                            if (part.type === "reasoning") {
+                                                const isThisMessageStreaming =
+                                                    status === "streaming" &&
+                                                    message.id === messages[messages.length - 1]?.id;
+                                                return (
+                                                    <Reasoning key={index} isStreaming={isThisMessageStreaming}>
+                                                        <ReasoningTrigger />
+                                                        <ReasoningContent>{part.text}</ReasoningContent>
+                                                    </Reasoning>
+                                                );
+                                            }
                                             if (part.type === "text") {
                                                 return (
                                                     <MessageResponse key={index}>
@@ -409,7 +440,7 @@ function ChatSession({
                         <Message from="assistant">
                             <MessageContent>
                                 <Shimmer className="text-sm" duration={1.5}>
-                                    {status === "submitted" ? "Generating response..." : "Thinking..."}
+                                    {status === "submitted" ? "Thinking..." : "Typing..."}
                                 </Shimmer>
                             </MessageContent>
                         </Message>
@@ -457,13 +488,13 @@ function ChatSession({
                                     size="icon-sm"
                                     variant="ghost"
                                 />
-                                {/* <PromptInputButton
-                                    onClick={toggleWebSearch}
-                                    variant={useWebSearch ? "default" : "ghost"}
+                                <PromptInputButton
+                                    onClick={toggleReasoning}
+                                    variant={isReasoningOn ? "default" : "ghost"}
                                 >
-                                    <GlobeIcon size={16} />
-                                    <span>Search</span>
-                                </PromptInputButton> */}
+                                    <Brain size={16} />
+                                    <span>Reasoning</span>
+                                </PromptInputButton>
                             </PromptInputTools>
 
                             {/*

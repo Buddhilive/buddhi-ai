@@ -10,25 +10,28 @@
  *  useChat({ transport })
  *    └─ MediaPipeChatTransport.sendMessages()
  *         ├─ Converts UIMessage[] → BuddhiAIMessage[]
- *         ├─ Prepends the system prompt
+ *         ├─ Prepends system message (native Gemma 4 role or injected into user turn)
  *         ├─ Calls generateChatTemplate() to build the Gemma prompt
  *         └─ Streams tokens from LlmInference.generateResponse()
  *              └─ createUIMessageStream writes UIMessageChunks back to useChat
  *
  * CHUNK LIFECYCLE (what useChat expects)
  * --------------------------------------
- *  { type: 'start',      messageId }       ← opens assistant message
- *  { type: 'text-start', id }              ← opens a text content block
- *  { type: 'text-delta', id, delta }  ×N   ← one token / word at a time
- *  { type: 'text-end',   id }              ← closes the text content block
- *  { type: 'finish',     finishReason }    ← closes the assistant message
+ *  { type: 'start',            messageId }     ← opens assistant message
+ *  { type: 'reasoning-start',  id }            ← opens reasoning block  (thinking mode only)
+ *  { type: 'reasoning-delta',  id, delta } ×N  ← thinking tokens        (thinking mode only)
+ *  { type: 'reasoning-end',    id }            ← closes reasoning block  (thinking mode only)
+ *  { type: 'text-start',       id }            ← opens a text content block
+ *  { type: 'text-delta',       id, delta } ×N  ← one token / word at a time
+ *  { type: 'text-end',         id }            ← closes the text content block
+ *  { type: 'finish',           finishReason }  ← closes the assistant message
  *    — or —
- *  { type: 'abort' }                       ← user pressed Stop
+ *  { type: 'abort' }                           ← user pressed Stop
  */
 
 import { SYSTEM_PROMPT } from "@/const/system-prompt";
 import { generateChatTemplate } from "@/lib/buddhi-ai-core/chat-template-generator";
-import type { BuddhiAIMessage } from "@/types/messages";
+import type { BuddhiAIMessage, GemmaTemplateVersion } from "@/types/messages";
 import type { LlmInference } from "@mediapipe/tasks-genai";
 import {
     createUIMessageStream,
@@ -134,17 +137,45 @@ function uiMessagesToBuddhiMessages(messages: UIMessage[]): BuddhiAIMessage[] {
  * obtained by calling `LlmInference.createFromOptions()` in `useModelEngine`.
  * It is stored in `useLiteRTModelStore` once initialised.
  *
+ * @param llm             - Initialised MediaPipe LlmInference instance.
+ * @param templateVersion - Gemma prompt format to use. Defaults to "gemma4".
+ * @param isReasoningOn   - When true, injects `<|think|>` into the system turn
+ *                          and streams the model's internal reasoning as a
+ *                          `reasoning` content block before the text response.
+ *
  * @example
  * ```tsx
  * const transport = useMemo(
- *   () => new MediaPipeChatTransport(liteRTModelInstance),
- *   [liteRTModelInstance]
+ *   () => new MediaPipeChatTransport(liteRTModelInstance, templateVersion, isReasoningOn),
+ *   [liteRTModelInstance, templateVersion, isReasoningOn]
  * );
  * const { messages, sendMessage, stop, status } = useChat({ transport });
  * ```
  */
 export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
-    constructor(private readonly llm: LlmInference) {}
+    /**
+     * Whether Gemma 4 extended thinking mode is active.
+     *
+     * This is intentionally a public mutable property rather than a constructor
+     * argument. The Vercel AI SDK's `useChat` stores the transport instance once
+     * (in an internal `useRef`) and never re-reads the `transport` option after
+     * the initial mount. Passing `isReasoningOn` as a constructor param and
+     * recreating the transport via `useMemo` would have no effect because `useChat`
+     * keeps using the original instance.
+     *
+     * The correct pattern is to keep the transport stable and update this property
+     * imperatively via a `useEffect` whenever the toggle changes:
+     *
+     * ```tsx
+     * useEffect(() => { transport.isReasoningOn = isReasoningOn; }, [transport, isReasoningOn]);
+     * ```
+     */
+    isReasoningOn: boolean = false;
+
+    constructor(
+        private readonly llm: LlmInference,
+        private readonly templateVersion: GemmaTemplateVersion = "gemma4",
+    ) {}
 
     /**
      * Called by `useChat` whenever the user submits a message or requests a
@@ -164,8 +195,6 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
         const stream = createUIMessageStream({
             execute: async ({ writer }) => {
                 // ── Early abort check ─────────────────────────────────────────
-                // If the user already cancelled before we started (race condition),
-                // bail out immediately without calling the LLM.
                 if (abortSignal?.aborted) {
                     writer.write({
                         type: "abort",
@@ -175,19 +204,28 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                 }
 
                 // ── Build the prompt ──────────────────────────────────────────
-                // Gemma instruction-tuned models only understand `user` and
-                // `model` roles — there is no `system` turn in their training
-                // format. The canonical way to inject a system prompt is to
-                // prepend it to the first `<start_of_turn>user` turn.
+                // Gemma 4 supports a native "system" role in its chat template,
+                // so we prepend a dedicated system message with the SYSTEM_PROMPT.
+                // Setting enableThinking: true on that message causes
+                // generateChatTemplate to inject the `<|think|>` activation token,
+                // which tells Gemma 4 to produce an internal reasoning block before
+                // the visible response.
                 //
-                // We therefore embed SYSTEM_PROMPT directly into the content of
-                // the first user message rather than prepending a separate
-                // { role: "system" } entry. Passing a system role would produce
-                // `<start_of_turn>system` in the Gemma template, which the model
-                // has never seen and responds to with incoherent output.
+                // Gemma 3n has no system role — inject the prompt into the first
+                // user turn instead (legacy behavior).
                 const converted = uiMessagesToBuddhiMessages(messages);
+
                 const buddhiMessages: BuddhiAIMessage[] =
-                    converted.length > 0 && converted[0].role === "user"
+                    this.templateVersion === "gemma4"
+                        ? [
+                              {
+                                  role: "system",
+                                  content: SYSTEM_PROMPT,
+                                  enableThinking: this.isReasoningOn,
+                              },
+                              ...converted,
+                          ]
+                        : converted.length > 0 && converted[0].role === "user"
                         ? [
                               {
                                   ...converted[0],
@@ -199,11 +237,10 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
 
                 let prompt: Awaited<ReturnType<typeof generateChatTemplate>>;
                 try {
-                    prompt = await generateChatTemplate(buddhiMessages);
+                    prompt = await generateChatTemplate(buddhiMessages, {
+                        templateVersion: this.templateVersion,
+                    });
                 } catch (err) {
-                    // Template generation itself can throw for malformed input
-                    // (e.g. assistant message as first turn). Surface the error
-                    // as a readable string rather than a raw exception.
                     const msg =
                         err instanceof Error ? err.message : String(err);
                     throw new Error(
@@ -212,8 +249,6 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                     );
                 }
 
-                // Post-template abort check (template generation is async and
-                // can take a few ms, so the user may have cancelled by now).
                 if (abortSignal?.aborted) {
                     writer.write({
                         type: "abort",
@@ -222,53 +257,61 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                     return;
                 }
 
-                // ── Open the assistant message & text block ───────────────────
-                // The 'start' chunk tells useChat to create a new assistant
-                // message entry; 'text-start' opens a text content block inside it.
-                const messageId = nanoid();
-                const textPartId = nanoid();
+                // ── Open the assistant message ────────────────────────────────
+                const messageId       = nanoid();
+                const reasoningPartId = nanoid();
+                const textPartId      = nanoid();
+
                 writer.write({ type: "start", messageId });
-                writer.write({ type: "text-start", id: textPartId });
 
-                // ── Stream tokens from the LLM ────────────────────────────────
-                // LlmInference.generateResponse(prompt, progressListener)
-                //   • progressListener receives incremental (delta) text and a
-                //     `done` flag on each new token batch.
+                // For non-reasoning mode, open the text block immediately.
+                // For reasoning mode, defer text-start until after the thinking
+                // block is detected (or skipped if the model outputs no thinking).
+                if (!this.isReasoningOn) {
+                    writer.write({ type: "text-start", id: textPartId });
+                }
+
+                // ── Streaming constants ───────────────────────────────────────
+                // Gemma 4 thinking output format:
+                //   <|channel>thought\n[reasoning]<channel|>\n[visible text]
                 //
-                // POST-PROCESSING PIPELINE
-                // ------------------------
-                // Two issues are corrected before text reaches the UI:
-                //
-                // 1. Plain-text code-fence wrapping
-                //    Gemma occasionally wraps an entire prose answer in a fence
-                //    like ```\n…\n``` or ```plaintext\n…\n```. Streamdown renders
-                //    that as a code block, making plain text look like source code.
-                //    Detection strategy (two triggers so streaming isn't delayed):
-                //      a) If ≥3 chars arrive and the text does NOT start with "```"
-                //         → switch to streaming immediately (it's plain text).
-                //      b) If the text DOES start with "```", wait for the first "\n"
-                //         so we can read the full first line and its language tag.
-                //         Plain-text tags (empty / text / plaintext / plain / md)
-                //         → buffer silently; strip fence on done and emit clean prose.
-                //         Real language tags (python, ts, …)
-                //         → switch to streaming (it's a legitimate code block).
-                //
-                // 2. Trailing Gemma template tokens
-                //    Gemma 4 emits <turn|> and Gemma 3n emits <end_of_turn> as
-                //    turn-closing markers. If the LiteRT runtime doesn't intercept
-                //    them as stop tokens they bleed into the user-visible text.
-                //    We hold back a TAIL_SIZE-character tail buffer during streaming
-                //    and strip these tokens from it before emitting the final chunk.
+                // THINKING_HEADER  — opening marker (18 chars): "<|channel>thought\n"
+                // THINKING_END     — closing marker (10 chars): "<channel|>"
+                // THINKING_TAIL    — chars held back during reasoning streaming so
+                //                    the end marker is always intact in the buffer.
+                // TEXT_TAIL        — chars held back during text streaming so leaked
+                //                    template tokens (<turn|>, <end_of_turn>) can be
+                //                    stripped before the final chunk is emitted.
 
-                /** Chars held back to intercept trailing template tokens. */
-                const TAIL_SIZE = 20; // longer than "<end_of_turn>" (13 chars)
+                const THINKING_HEADER     = "<|channel>thought\n";
+                const THINKING_HEADER_LEN = THINKING_HEADER.length;   // 18
+                const THINKING_END        = "<channel|>";
+                const THINKING_END_LEN    = THINKING_END.length;       // 10
+                const THINKING_TAIL       = 12;
+                const TEXT_TAIL           = 20;
 
-                let settled = false;  // guards against writing after abort/done
-                let accumulated = ""; // all text received from the model so far
-                let emitted = 0;      // chars of `accumulated` already sent to writer
+                // ── Streaming state ───────────────────────────────────────────
+                // "think-pre"  — initial state (reasoning mode only): buffering
+                //                until we can confirm whether the response starts
+                //                with a thinking block.
+                // "thinking"   — inside <|channel>thought\n…<channel|> block;
+                //                streaming reasoning-delta chunks.
+                // "detecting"  — deciding between "streaming" and "buffering"
+                //                based on the first line of the text response.
+                // "streaming"  — normal text streaming with tail hold-back.
+                // "buffering"  — entire response buffered (plain-text code-fence);
+                //                emitted in one shot at done.
 
-                type StreamMode = "detecting" | "streaming" | "buffering";
-                let streamMode: StreamMode = "detecting";
+                type StreamMode = "think-pre" | "thinking" | "detecting" | "streaming" | "buffering";
+
+                let settled = false;
+                let accumulated = "";
+                let mode: StreamMode = this.isReasoningOn ? "think-pre" : "detecting";
+
+                // Absolute positions in `accumulated`:
+                let reasoningWrittenUpTo = THINKING_HEADER_LEN; // right after the header
+                let textOffset  = 0; // where the visible text begins
+                let textEmitted = 0; // how far into accumulated text has been streamed
 
                 try {
                     await this.llm.generateResponse(
@@ -276,7 +319,6 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                         (partialResult: string, done: boolean) => {
                             if (settled) return;
 
-                            // ── Abort mid-stream ──────────────────────────────
                             if (abortSignal?.aborted) {
                                 writer.write({
                                     type: "abort",
@@ -288,50 +330,137 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
 
                             accumulated += partialResult;
 
-                            // ── Mode detection ────────────────────────────────
-                            if (streamMode === "detecting") {
-                                if (accumulated.length >= 3 && !accumulated.startsWith("```")) {
-                                    // Definitely not a code fence — start streaming.
-                                    streamMode = "streaming";
-                                } else if (accumulated.startsWith("```")) {
-                                    // Might be a code fence. Wait for the full
-                                    // first line (the language tag) before deciding.
-                                    const nl = accumulated.indexOf("\n");
+                            // ── "think-pre": detect thinking block ───────────
+                            // Buffer until we have enough chars to check whether
+                            // the response opens with <|channel>thought\n.
+                            if (mode === "think-pre") {
+                                if (accumulated.length >= THINKING_HEADER_LEN || done) {
+                                    if (accumulated.startsWith(THINKING_HEADER)) {
+                                        mode = "thinking";
+                                        writer.write({ type: "reasoning-start", id: reasoningPartId });
+                                        // reasoningWrittenUpTo already = THINKING_HEADER_LEN
+                                    } else {
+                                        // No thinking block — fall through to text detection.
+                                        textOffset  = 0;
+                                        textEmitted = 0;
+                                        mode = "detecting";
+                                        writer.write({ type: "text-start", id: textPartId });
+                                        // ↓ fall through
+                                    }
+                                } else {
+                                    return; // not enough chars yet
+                                }
+                            }
+
+                            // ── "thinking": stream reasoning, watch for end marker
+                            if (mode === "thinking") {
+                                const endIdx = accumulated.indexOf(THINKING_END, THINKING_HEADER_LEN);
+
+                                if (endIdx !== -1) {
+                                    // Emit remaining reasoning (strip trailing \n before marker)
+                                    const rawThinking    = accumulated.slice(THINKING_HEADER_LEN, endIdx);
+                                    const cleanThinking  = rawThinking.endsWith("\n")
+                                        ? rawThinking.slice(0, -1)
+                                        : rawThinking;
+                                    const thinkingRemain = cleanThinking.slice(
+                                        reasoningWrittenUpTo - THINKING_HEADER_LEN
+                                    );
+                                    if (thinkingRemain) {
+                                        writer.write({
+                                            type: "reasoning-delta",
+                                            id: reasoningPartId,
+                                            delta: thinkingRemain,
+                                        });
+                                    }
+                                    writer.write({ type: "reasoning-end", id: reasoningPartId });
+
+                                    // Text starts after <channel|> + any leading newlines
+                                    textOffset = endIdx + THINKING_END_LEN;
+                                    while (
+                                        textOffset < accumulated.length &&
+                                        accumulated[textOffset] === "\n"
+                                    ) textOffset++;
+                                    textEmitted = textOffset;
+
+                                    mode = "detecting";
+                                    writer.write({ type: "text-start", id: textPartId });
+                                    // ↓ fall through
+
+                                } else if (done) {
+                                    // Response ended inside the thinking block — no visible text.
+                                    const rawThinking    = accumulated.slice(THINKING_HEADER_LEN).trimEnd();
+                                    const thinkingRemain = rawThinking.slice(
+                                        reasoningWrittenUpTo - THINKING_HEADER_LEN
+                                    );
+                                    if (thinkingRemain) {
+                                        writer.write({
+                                            type: "reasoning-delta",
+                                            id: reasoningPartId,
+                                            delta: thinkingRemain,
+                                        });
+                                    }
+                                    writer.write({ type: "reasoning-end", id: reasoningPartId });
+                                    writer.write({ type: "text-start", id: textPartId });
+                                    writer.write({ type: "text-end",   id: textPartId });
+                                    writer.write({ type: "finish", finishReason: "stop" });
+                                    settled = true;
+                                    return;
+
+                                } else {
+                                    // Still in thinking — stream safe portion with tail hold-back
+                                    const safeEnd = accumulated.length - THINKING_TAIL;
+                                    if (safeEnd > reasoningWrittenUpTo) {
+                                        writer.write({
+                                            type: "reasoning-delta",
+                                            id: reasoningPartId,
+                                            delta: accumulated.slice(reasoningWrittenUpTo, safeEnd),
+                                        });
+                                        reasoningWrittenUpTo = safeEnd;
+                                    }
+                                    return; // wait for more tokens
+                                }
+                            }
+
+                            // ── "detecting": code-fence detection for text ────
+                            // Operates on accumulated.slice(textOffset) so the
+                            // thinking header is excluded from the analysis.
+                            if (mode === "detecting") {
+                                const textContent = accumulated.slice(textOffset);
+                                if (textContent.length >= 3 && !textContent.startsWith("```")) {
+                                    mode = "streaming";
+                                } else if (textContent.startsWith("```")) {
+                                    const nl = textContent.indexOf("\n");
                                     if (nl !== -1 || done) {
                                         const firstLine = nl !== -1
-                                            ? accumulated.slice(0, nl)
-                                            : accumulated;
-                                        streamMode = isPlainTextCodeFence(firstLine)
+                                            ? textContent.slice(0, nl)
+                                            : textContent;
+                                        mode = isPlainTextCodeFence(firstLine)
                                             ? "buffering"
                                             : "streaming";
                                     }
                                 } else if (done) {
-                                    // Response ended before we had 3 chars.
-                                    streamMode = "streaming";
+                                    mode = "streaming";
                                 }
-                                // Still "detecting" — fall through; the streaming
-                                // block below will emit once mode is resolved.
                             }
 
-                            // ── Streaming: emit, holding back a tail buffer ────
-                            if (streamMode === "streaming" && !done) {
-                                const safeEnd = accumulated.length - TAIL_SIZE;
-                                if (safeEnd > emitted) {
+                            // ── "streaming": emit text with tail hold-back ────
+                            if (mode === "streaming" && !done) {
+                                const safeEnd = accumulated.length - TEXT_TAIL;
+                                if (safeEnd > textEmitted) {
                                     writer.write({
                                         type: "text-delta",
                                         id: textPartId,
-                                        delta: accumulated.slice(emitted, safeEnd),
+                                        delta: accumulated.slice(textEmitted, safeEnd),
                                     });
-                                    emitted = safeEnd;
+                                    textEmitted = safeEnd;
                                 }
                             }
 
                             // ── Generation complete ───────────────────────────
                             if (done) {
-                                // Determine the cleaned final text.
-                                let finalText = accumulated;
+                                let finalText = accumulated.slice(textOffset);
 
-                                if (streamMode === "buffering") {
+                                if (mode === "buffering") {
                                     const nl = finalText.indexOf("\n");
                                     const firstLine = nl !== -1
                                         ? finalText.slice(0, nl)
@@ -339,15 +468,15 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                                     if (isPlainTextCodeFence(firstLine)) {
                                         finalText = stripOuterCodeFence(finalText);
                                     }
-                                    // Real code block — emit as-is.
                                 }
 
                                 // Strip any leaked template tokens from the tail.
                                 finalText = stripTrailingTemplateTokens(finalText);
 
-                                // Emit everything that hasn't been streamed yet
-                                // (the tail buffer, minus any stripped tokens).
-                                const remaining = finalText.slice(emitted);
+                                // textEmitted is an absolute position; convert to
+                                // an offset within finalText (which starts at textOffset).
+                                const alreadyEmitted = textEmitted - textOffset;
+                                const remaining = finalText.slice(alreadyEmitted);
                                 if (remaining) {
                                     writer.write({
                                         type: "text-delta",
@@ -356,16 +485,13 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                                     });
                                 }
 
-                                writer.write({ type: "text-end", id: textPartId });
+                                writer.write({ type: "text-end",  id: textPartId });
                                 writer.write({ type: "finish", finishReason: "stop" });
                                 settled = true;
                             }
                         }
                     );
                 } catch (err) {
-                    // LlmInference.generateResponse threw (e.g. WASM crash,
-                    // out-of-memory, malformed prompt). Re-throw so that the
-                    // `onError` handler below converts it to a readable message.
                     const msg = err instanceof Error ? err.message : String(err);
                     throw new Error(
                         `MediaPipe LLM inference failed: ${msg}. ` +
@@ -374,15 +500,12 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                 }
 
                 // ── Safety net ────────────────────────────────────────────────
-                // In the unlikely event that generateResponse resolved without
-                // the progress listener ever firing `done === true`, close the
-                // stream cleanly so useChat doesn't hang.
                 if (!settled) {
                     console.warn(
                         "[MediaPipeChatTransport] generateResponse resolved " +
                             "without a `done` callback. Closing stream manually."
                     );
-                    writer.write({ type: "text-end", id: textPartId });
+                    writer.write({ type: "text-end",  id: textPartId });
                     writer.write({ type: "finish", finishReason: "stop" });
                 }
             },
@@ -400,16 +523,13 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
             },
         });
 
-        // createUIMessageStream returns a ReadableStream synchronously.
-        // Wrap it in a resolved Promise to satisfy the ChatTransport interface.
         return Promise.resolve(stream);
     }
 
     /**
      * Called by `useChat` to resume an interrupted stream (e.g. after a page
      * reload mid-generation). Client-only transports have no server-side
-     * stream to reconnect to, so we return `null`. The SDK handles this
-     * gracefully — it simply won't attempt to replay any pending chunks.
+     * stream to reconnect to, so we return `null`.
      */
     reconnectToStream(
         _options: Parameters<ChatTransport<UIMessage>["reconnectToStream"]>[0]
