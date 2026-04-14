@@ -77,6 +77,18 @@ import { useChatStore } from "@/stores/chat-store";
 import { useChat } from "@ai-sdk/react";
 import type { LlmInference } from "@mediapipe/tasks-genai";
 import type { FileUIPart } from "ai";
+import {
+    buildRagContextBlock,
+    retrieveRagContext,
+    toSourceItems,
+    type RagSourceItem,
+} from "@/lib/rag";
+import {
+    Source,
+    Sources,
+    SourcesContent,
+    SourcesTrigger,
+} from "@/components/ai-elements/sources";
 import { Brain, BrainCircuitIcon } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -232,6 +244,12 @@ function ChatSession({
     // (before the async load resolves) and prevents a flash of empty messages.
     const [isLoadingChat, setIsLoadingChat] = useState(!!chatId);
 
+    // RAG: sources retrieved for the most recent user turn.
+    // Ephemeral — not persisted with chat history (sources vanish on reload).
+    const [sources, setSources] = useState<RagSourceItem[]>([]);
+    // true while vector retrieval is in flight; disables the submit button.
+    const [isRetrieving, setIsRetrieving] = useState(false);
+
     // Tracks the active chat ID across renders without triggering re-renders.
     const currentChatIdRef = useRef<string | null>(chatId);
 
@@ -302,20 +320,46 @@ function ChatSession({
         return () => setCurrentChatId(null);
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Disable submit while a response is in flight, or when the input is empty.
+    // Disable submit while a response is in flight, during RAG retrieval,
+    // or when the input is empty.
     const isSubmitDisabled =
-        !text.trim() || status === "streaming" || status === "submitted";
+        !text.trim() || status === "streaming" || status === "submitted" || isRetrieving;
 
     // ── Handlers ──────────────────────────────────────────────────────────────
 
     const handleSubmit = useCallback(
-        (message: PromptInputMessage) => {
+        async (message: PromptInputMessage) => {
             if (!message.text && !message.files?.length) return;
 
             if (message.files?.length) {
                 toast.success("Files attached", {
                     description: `${message.files.length} file(s) attached to message`,
                 });
+            }
+
+            // Clear stale sources from the previous turn immediately so they
+            // don't linger while retrieval runs for this new turn.
+            setSources([]);
+
+            // ── RAG retrieval ─────────────────────────────────────────────
+            // Only attempt retrieval when there is text to embed. File-only
+            // messages are sent as-is with no RAG augmentation.
+            if (message.text?.trim()) {
+                setIsRetrieving(true);
+                try {
+                    const segments = await retrieveRagContext(message.text);
+                    // Set the context on the transport BEFORE calling sendMessage.
+                    // sendMessages() reads transport.ragContext at the very start
+                    // of its execute callback and resets it to null after use.
+                    transport.ragContext = buildRagContextBlock(segments);
+                    setSources(toSourceItems(segments));
+                } catch {
+                    // retrieveRagContext never throws, but belt-and-suspenders:
+                    // if something slips through, clear context and continue.
+                    transport.ragContext = null;
+                } finally {
+                    setIsRetrieving(false);
+                }
             }
 
             // sendMessage appends the user turn and triggers transport.sendMessages.
@@ -326,7 +370,7 @@ function ChatSession({
 
             setText("");
         },
-        [sendMessage]
+        [sendMessage, transport]
     );
 
     const handleSuggestionClick = useCallback(
@@ -398,7 +442,7 @@ function ChatSession({
         <div className="relative flex h-[calc(100vh-80px)] flex-col divide-y overflow-hidden">
             <Conversation>
                 <ConversationContent>
-                    {messages.map((message) => (
+                    {messages.map((message, msgIndex) => (
                         // MessageBranch handles multi-version messages (e.g. regenerations).
                         // With a single version the branch selector is hidden automatically.
                         <MessageBranch defaultBranch={0} key={message.id}>
@@ -410,13 +454,13 @@ function ChatSession({
                                          * text blocks here; other part types (tool-call, file,
                                          * reasoning) can be added as the transport evolves.
                                          */}
-                                        {message.parts.map((part, index) => {
+                                        {message.parts.map((part, partIndex) => {
                                             if (part.type === "reasoning") {
                                                 const isThisMessageStreaming =
                                                     status === "streaming" &&
                                                     message.id === messages[messages.length - 1]?.id;
                                                 return (
-                                                    <Reasoning key={index} isStreaming={isThisMessageStreaming}>
+                                                    <Reasoning key={partIndex} isStreaming={isThisMessageStreaming}>
                                                         <ReasoningTrigger />
                                                         <ReasoningContent>{part.text}</ReasoningContent>
                                                     </Reasoning>
@@ -424,7 +468,7 @@ function ChatSession({
                                             }
                                             if (part.type === "text") {
                                                 return (
-                                                    <MessageResponse key={index}>
+                                                    <MessageResponse key={partIndex}>
                                                         {part.text}
                                                     </MessageResponse>
                                                 );
@@ -432,6 +476,30 @@ function ChatSession({
                                             return null;
                                         })}
                                     </MessageContent>
+
+                                    {/*
+                                     * Show sources below the last assistant message only.
+                                     * Sources are ephemeral — retrieved before each turn
+                                     * and cleared on the next submission. They are not
+                                     * persisted with chat history.
+                                     */}
+                                    {message.role === "assistant" &&
+                                        msgIndex === messages.length - 1 &&
+                                        sources.length > 0 && (
+                                            <Sources>
+                                                <SourcesTrigger count={sources.length} />
+                                                <SourcesContent>
+                                                    {sources.map((source) => (
+                                                        // Local files have no URL — Source renders
+                                                        // as a non-navigating item (BookIcon + name).
+                                                        <Source
+                                                            key={source.documentId}
+                                                            title={source.fileName}
+                                                        />
+                                                    ))}
+                                                </SourcesContent>
+                                            </Sources>
+                                        )}
                                 </Message>
                             </MessageBranchContent>
                         </MessageBranch>

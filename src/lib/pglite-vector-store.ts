@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
-    BaseVectorStore,
     VectorStoreQuery,
     VectorStoreQueryResult,
 } from "llamaindex/vector-store";
@@ -13,12 +12,11 @@ export interface DocumentInfo {
     chunkCount: number;
 }
 
-export class PGliteVectorStore extends BaseVectorStore {
+export class PGliteVectorStore {
     storesText: boolean = true;
     client: any; // The PGlite instance
 
     constructor(dbInstance: any) {
-        super();
         this.client = dbInstance;
     }
 

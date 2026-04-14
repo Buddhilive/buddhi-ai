@@ -109,23 +109,62 @@ class LiteRTEmbedding extends BaseEmbedding {
     }
 }
 
-// Singleton instances
+// ─── Singleton instances ──────────────────────────────────────────────────────
+
 let dbInstance: PGlite | null = null;
 let vectorStoreInstance: PGliteVectorStore | null = null;
 let embedModelInstance: LiteRTEmbedding | null = null;
-let initializationPromise: Promise<{
+
+// Phase 1 promise: PGlite + schema only (no embedding model, cheap)
+let dbInitPromise: Promise<{
+    db: PGlite;
+    vectorStore: PGliteVectorStore;
+}> | null = null;
+
+// Phase 2 promise: full init including LiteRT embedding model (expensive)
+let fullInitPromise: Promise<{
     db: PGlite;
     vectorStore: PGliteVectorStore;
     embedModel: LiteRTEmbedding;
 }> | null = null;
 
-// Initialize the vector database (singleton pattern with race condition protection)
+// ─── Phase 1: DB-only initialization ─────────────────────────────────────────
+// Opens PGlite and creates the schema. Does NOT load the LiteRT WASM model.
+// Used by hasDocuments() so that a simple row-count check never triggers the
+// expensive embedding model cold-start (~2–5 s).
+const initializeDB = async (): Promise<{
+    db: PGlite;
+    vectorStore: PGliteVectorStore;
+}> => {
+    if (dbInstance && vectorStoreInstance) {
+        return { db: dbInstance, vectorStore: vectorStoreInstance };
+    }
+    if (dbInitPromise) return dbInitPromise;
+
+    dbInitPromise = (async () => {
+        dbInstance = new PGlite("idb://buddhi-ai-embeddings-v2", {
+            extensions: { vector },
+        });
+        await dbInstance.waitReady;
+
+        vectorStoreInstance = new PGliteVectorStore(dbInstance);
+        await vectorStoreInstance.initializeSchema();
+
+        return { db: dbInstance, vectorStore: vectorStoreInstance };
+    })();
+
+    return dbInitPromise;
+};
+
+// ─── Phase 2: Full initialization (DB + embedding model) ─────────────────────
+// Reuses the PGlite connection from Phase 1 (or starts Phase 1 if not yet
+// done). Only loads the LiteRT WASM model when actually needed for embedding
+// or retrieval, not for simple existence checks.
 const initializeVectorDB = async (): Promise<{
     db: PGlite;
     vectorStore: PGliteVectorStore;
     embedModel: LiteRTEmbedding;
 }> => {
-    // If already initialized, return immediately
     if (dbInstance && vectorStoreInstance && embedModelInstance) {
         return {
             db: dbInstance,
@@ -133,46 +172,30 @@ const initializeVectorDB = async (): Promise<{
             embedModel: embedModelInstance,
         };
     }
+    if (fullInitPromise) return fullInitPromise;
 
-    // If initialization is in progress, wait for it
-    if (initializationPromise) {
-        return initializationPromise;
-    }
+    fullInitPromise = (async () => {
+        // Ensure the DB is ready first (fast no-op if Phase 1 already ran).
+        await initializeDB();
 
-    // Start initialization and store the promise
-    initializationPromise = (async () => {
-        // console.log("Initializing vector database...");
-
-        // Initialize PGlite with persistence
-        // v2: schema bumped to 768-dim vectors (EmbeddingGemma)
-        dbInstance = new PGlite("idb://buddhi-ai-embeddings-v2", {
-            extensions: { vector },
-        });
-        await dbInstance.waitReady;
-
-        // Initialize embedder FIRST (before vector store)
+        // Initialize the LiteRT embedding model (expensive — loads WASM +
+        // tokenizer + model blob from Cache API).
         embedModelInstance = new LiteRTEmbedding();
         await embedModelInstance.init();
 
-        // Set global settings BEFORE creating vector store
+        // Set global LlamaIndex settings before any index operations.
         Settings.embedModel = embedModelInstance!;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Settings.llm = undefined as any;
 
-        // Now initialize vector store (it will use Settings.embedModel)
-        vectorStoreInstance = new PGliteVectorStore(dbInstance);
-        await vectorStoreInstance.initializeSchema();
-
-        // console.log("Vector database initialized successfully");
-
         return {
-            db: dbInstance,
-            vectorStore: vectorStoreInstance,
+            db: dbInstance!,
+            vectorStore: vectorStoreInstance!,
             embedModel: embedModelInstance!,
         };
     })();
 
-    return initializationPromise!;
+    return fullInitPromise;
 };
 
 // Breaks raw text into manageable nodes (chunks) with overlap
@@ -266,6 +289,7 @@ async function retrieveSegments(
 ): Promise<
     Array<{
         node: NodeWithScore<Metadata>;
+        text: string;
         fileName: string;
         documentId: string;
     }>
@@ -322,6 +346,7 @@ async function retrieveSegments(
                 node: textNode,
                 score: row.score,
             },
+            text: row.text as string,
             fileName: row.filename,
             documentId: row.documentid,
         };
@@ -343,10 +368,13 @@ async function getDocumentList(chatId: string): Promise<DocumentInfo[]> {
     return await vectorStore.getDocumentsByChatId(chatId);
 }
 
-// Check if any documents exist — omit chatId to check the global knowledge base
+// Check if any documents exist — omit chatId to check the global knowledge base.
+// Uses initializeDB() (Phase 1 only) so this never triggers the expensive
+// LiteRT embedding model cold-start. Safe to call before any documents are
+// indexed or when the embedding model has not been downloaded.
 async function hasDocuments(chatId?: string): Promise<boolean> {
     try {
-        const { vectorStore } = await initializeVectorDB();
+        const { vectorStore } = await initializeDB();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let result: any;
         if (chatId) {

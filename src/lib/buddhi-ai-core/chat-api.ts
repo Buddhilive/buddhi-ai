@@ -172,6 +172,18 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
      */
     isReasoningOn: boolean = false;
 
+    /**
+     * Plain-text RAG context block to inject into the last user message.
+     *
+     * Set imperatively by ChatSession.handleSubmit immediately before calling
+     * sendMessage(), using the same mutable-property pattern as isReasoningOn.
+     * The value is reset to null after first use inside sendMessages() so stale
+     * context never bleeds into regenerations or follow-up turns.
+     *
+     * null means no RAG augmentation for this turn.
+     */
+    ragContext: string | null = null;
+
     constructor(
         private readonly llm: LlmInference,
         private readonly templateVersion: GemmaTemplateVersion = "gemma4",
@@ -214,6 +226,41 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                 // Gemma 3n has no system role — inject the prompt into the first
                 // user turn instead (legacy behavior).
                 const converted = uiMessagesToBuddhiMessages(messages);
+
+                // ── RAG context injection ─────────────────────────────────
+                // Augment the last user message with the retrieved context
+                // block set by ChatSession.handleSubmit. The context is
+                // appended as plain text so generateChatTemplate receives it
+                // inside the correct <|turn>user … <turn|> block without any
+                // structural changes to the template generator.
+                //
+                // ragContext is reset to null immediately after use so it
+                // never bleeds into regenerations or follow-up turns.
+                if (this.ragContext && converted.length > 0) {
+                    const lastIdx = converted.length - 1;
+                    if (converted[lastIdx].role === "user") {
+                        const lastMsg = converted[lastIdx];
+                        if (typeof lastMsg.content === "string") {
+                            converted[lastIdx] = {
+                                ...lastMsg,
+                                content: lastMsg.content + this.ragContext,
+                            };
+                        } else if (Array.isArray(lastMsg.content)) {
+                            // Multimodal message — append context as an extra text element.
+                            // uiMessagesToBuddhiMessages already extracts text parts, so
+                            // this element will be picked up by extractTextFromContent().
+                            converted[lastIdx] = {
+                                ...lastMsg,
+                                content: [
+                                    ...lastMsg.content,
+                                    { type: "text" as const, text: this.ragContext },
+                                ],
+                            };
+                        }
+                    }
+                    // Reset after use regardless of whether augmentation succeeded.
+                    this.ragContext = null;
+                }
 
                 const buddhiMessages: BuddhiAIMessage[] =
                     this.templateVersion === "gemma4"
