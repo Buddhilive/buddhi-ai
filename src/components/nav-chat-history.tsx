@@ -1,10 +1,10 @@
 "use client"
 
-import * as React from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { Trash2Icon, HistoryIcon, MessageCircle } from "lucide-react"
-import { toast } from "sonner"
+import * as React from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Trash2Icon, HistoryIcon, MessageCircle } from "lucide-react";
+import { toast } from "sonner";
 
 import {
     SidebarGroup,
@@ -13,8 +13,8 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
     SidebarMenuAction,
-} from "@/components/ui/sidebar"
-import { Button } from "@/components/ui/button"
+} from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
 import {
     Dialog,
     DialogContent,
@@ -22,10 +22,11 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 
-import { chatsApi, type ChatInfo } from "@/lib/chat-manager"
-import { useChatStore } from "@/stores/chatStore"
+import { chatsApi } from "@/lib/chat-manager";
+import { useChatStore } from "@/stores/chat-store";
+import type { ChatInfo } from "@/types/chat";
 
 export function NavChatHistory() {
     const router = useRouter()
@@ -34,10 +35,10 @@ export function NavChatHistory() {
         total,
         currentChatId,
         isLoading,
-        removeChat,
         setChats,
         setTotal,
         setIsLoading,
+        refreshChats,
     } = useChatStore()
 
     // Which chat id is pending deletion confirmation
@@ -66,22 +67,28 @@ export function NavChatHistory() {
 
     const handleDeleteConfirm = async () => {
         if (pendingDeleteId === null) return
+        const deletedId = pendingDeleteId
         setIsDeleting(true)
+        setPendingDeleteId(null)
         try {
-            await chatsApi.delete(pendingDeleteId)
-            removeChat(pendingDeleteId)
+            await chatsApi.delete(deletedId)
             toast.success("Chat deleted")
-            // If we just deleted the current chat, navigate to new chat
-            if (currentChatId === pendingDeleteId) {
+            // Re-fetch the first page so the next most-recent chat fills the slot.
+            // Using refreshChats() instead of just filtering locally ensures the list
+            // always shows up to 10 items and the total count stays accurate.
+            await refreshChats()
+            // If we just deleted the currently-open chat, go back to new chat
+            if (currentChatId === deletedId) {
                 router.push("/chat")
             }
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : "Please try again."
             console.error("[NavChatHistory] delete error:", err)
             toast.error("Failed to delete chat", { description: message })
+            // Restore accurate state in case of partial failure
+            await refreshChats()
         } finally {
             setIsDeleting(false)
-            setPendingDeleteId(null)
         }
     }
 

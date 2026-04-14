@@ -1,25 +1,5 @@
 import { create } from "zustand";
-
-export type DocPhase = "reading" | "chunking" | "embedding" | null;
-export type DocProcessingStatus = "pending" | "processing" | "completed" | "failed";
-
-export interface DocProcessingState {
-    status: DocProcessingStatus;
-    phase: DocPhase;
-    overallPct: number; // 0–100
-    chunkCount: number | null;
-    errorMsg: string | null;
-}
-
-interface DocumentStore {
-    docs: Record<number, DocProcessingState>;
-    activeCount: number;
-    initDoc(id: number): void;
-    updateProgress(id: number, phase: DocPhase, overallPct: number): void;
-    completeDoc(id: number, chunkCount: number): void;
-    failDoc(id: number, errorMsg: string): void;
-    removeDoc(id: number): void;
-}
+import type { DocumentStore } from "@/types/documents";
 
 export const useDocumentStore = create<DocumentStore>()((set) => ({
     docs: {},

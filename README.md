@@ -5,7 +5,7 @@
 ![GitHub deployments](https://img.shields.io/github/deployments/buddhilive/buddhi-ai/Production)
 
 
-![Buddhi AI](public/icons/android/android-launchericon-144-144.png)
+![Buddhi AI](public/icons/icon-144x144.png)
 
 **Buddhi AI** is a cutting-edge web application designed to harness the power of artificial intelligence directly within the user's browser, fundamentally changing the paradigm of AI-powered tools. Built with a clear focus on **privacy and efficiency**, Buddhi AI is aligned with and leverages the evolving capabilities of modern web browsers, notably through the integration of **Chrome’s Built-in AI** features.
 
@@ -88,15 +88,6 @@ graph TD
    ```bash
    pnpm dev
    ```
-4. **Environment Variables:**
-   Create a `.env.local` file (optional, as most features are local-first).
-
-#### Project Structure
-- `src/app/`: Next.js application routes and main logic.
-- `src/lib/`: Core providers (PGlite, LlamaIndex, Embeddings).
-- `src/workers/`: Dedicated workers for heavy AI tasks (model downloading, embedding generation).
-- `src/stores/`: Global state management using Zustand.
-- `src/tools/`: Definitions for agentic tools (e.g., web search).
 
 ***
 

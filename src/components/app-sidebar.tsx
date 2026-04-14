@@ -1,14 +1,16 @@
 "use client"
 
-import * as React from "react";
-import { NavChatHistory } from "@/components/nav-chat-history";
+import * as React from "react"
+
 import { NavMain } from "@/components/nav-main";
-/* import { NavSecondary } from "@/components/nav-secondary"; */
-/* import { NavWorkspaces } from "@/components/nav-workspaces" */
+/* import { NavProjects } from "@/components/nav-projects"; */
+/* import { NavUser } from "@/components/nav-user"; */
 import { TeamSwitcher } from "@/components/team-switcher";
+import { NavChatHistory } from "@/components/nav-chat-history";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar";
@@ -23,13 +25,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
         <TeamSwitcher teams={data.teams} />
-        <NavMain items={navItems} />
       </SidebarHeader>
       <SidebarContent>
-        {/* <NavSecondary items={data.navSecondary} className="mt-auto" /> */}
+        <NavMain items={navItems} />
         <NavChatHistory />
-        {/* <NavWorkspaces workspaces={data.workspaces} /> */}
+        {/* <NavProjects projects={data.projects} /> */}
       </SidebarContent>
+      <SidebarFooter>
+        {/* <NavUser user={data.user} /> */}
+      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   )

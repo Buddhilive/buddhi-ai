@@ -4,17 +4,17 @@ import { usePathname } from "next/navigation";
 import { useMemo } from "react";
 import { type LucideIcon } from "lucide-react";
 import { SIDEBAR_DATA } from "@/const/sidebar-data";
-import { useChatStore } from "@/stores/chatStore";
+import { useChatStore } from "@/stores/chat-store";
 
 export interface NavigationState {
-  currentPage: string;
-  breadcrumbTitle: string;
-  navItems: Array<{
-    title: string;
-    url: string;
-    icon: LucideIcon;
-    isActive: boolean;
-  }>;
+    currentPage: string;
+    breadcrumbTitle: string;
+    navItems: Array<{
+        title: string;
+        url: string;
+        icon: LucideIcon;
+        isActive: boolean;
+    }>;
 }
 
 /**
@@ -28,45 +28,47 @@ export interface NavigationState {
  * @returns NavigationState object containing current page info, breadcrumb title, and nav items
  */
 export function useNavigation(): NavigationState {
-  const pathname = usePathname();
-  const { currentChat } = useChatStore();
+    const pathname = usePathname();
+    const { currentChat } = useChatStore();
 
-  const navigationState = useMemo(() => {
-    // Determine current page and breadcrumb title based on pathname
-    const currentPage = pathname;
-    let breadcrumbTitle = "Ask Buddhi AI"; // Default for app layout
+    const navigationState = useMemo(() => {
+        // Determine current page and breadcrumb title based on pathname
+        const currentPage = pathname;
+        let breadcrumbTitle = "Ask Buddhi AI"; // Default for app layout
 
-    // Map pathnames to breadcrumb titles
-    const pathTitleMap: Record<string, string> = { 
-      "/chat": "Ask Buddhi AI",
-    };
+        // Map pathnames to breadcrumb titles
+        const pathTitleMap: Record<string, string> = {
+            "/chat": "Ask Buddhi AI",
+            "/documents": "Documents",
+            "/models": "Models",
+        };
 
-    // Handle dynamic routes and specific cases
-    if (pathname.startsWith("/chat/")) {
-      breadcrumbTitle = "Chat";
+        // Handle dynamic routes and specific cases
+        if (pathname.startsWith("/chat/")) {
+            breadcrumbTitle = "Chat";
 
-      const segments = pathname.split('/').filter(Boolean);
-      if (currentChat?.title) {
-        breadcrumbTitle = currentChat.title;
-      } else if (segments.length > 1 && segments[1]) {
-        breadcrumbTitle = `Chat - ${segments[1]}`;
-      }
-    } else {
-      breadcrumbTitle = pathTitleMap[pathname] || "Ask Buddhi AI";
-    }
+            const segments = pathname.split('/').filter(Boolean);
+            if (currentChat?.title) {
+                breadcrumbTitle = currentChat.title;
+            } else if (segments.length > 1 && segments[1]) {
+                breadcrumbTitle = `Chat - ${segments[1]}`;
+            }
+        } else {
+            breadcrumbTitle = pathTitleMap[pathname] || "Ask Buddhi AI";
+        }
 
-    // Create navigation items with active state
-    const navItems = SIDEBAR_DATA.navMain.map(item => ({
-      ...item,
-      isActive: item.url === currentPage
-    }));
+        // Create navigation items with active state
+        const navItems = SIDEBAR_DATA.navMain.map(item => ({
+            ...item,
+            isActive: item.url === currentPage
+        }));
 
-    return {
-      currentPage,
-      breadcrumbTitle,
-      navItems
-    };
-  }, [pathname, currentChat]);
+        return {
+            currentPage,
+            breadcrumbTitle,
+            navItems
+        };
+    }, [pathname, currentChat]);
 
-  return navigationState;
+    return navigationState;
 }
