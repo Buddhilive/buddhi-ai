@@ -35,10 +35,13 @@ import {
 } from "@/components/ai-elements/conversation";
 import {
     Message,
+    MessageAction,
+    MessageActions,
     MessageBranch,
     MessageBranchContent,
     MessageContent,
     MessageResponse,
+    MessageToolbar,
 } from "@/components/ai-elements/message";
 import {
     Reasoning,
@@ -48,10 +51,10 @@ import {
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import {
     PromptInput,
-    PromptInputActionAddAttachments,
+    /* PromptInputActionAddAttachments,
     PromptInputActionMenu,
     PromptInputActionMenuContent,
-    PromptInputActionMenuTrigger,
+    PromptInputActionMenuTrigger, */
     PromptInputBody,
     PromptInputButton,
     PromptInputFooter,
@@ -92,7 +95,17 @@ import {
     SourcesContent,
     SourcesTrigger,
 } from "@/components/ai-elements/sources";
-import { Brain, BrainCircuitIcon } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+    Brain,
+    BrainCircuitIcon,
+    CheckIcon,
+    CopyIcon,
+    PencilIcon,
+    RefreshCcwIcon,
+    TriangleAlert,
+    XIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -241,6 +254,15 @@ function ChatSession({
 }) {
     const [text, setText] = useState<string>("");
     const [isReasoningOn, setIsReasoningOn] = useState<boolean>(false);
+
+    // ── MessageActions state ──────────────────────────────────────────────────
+    // `editingMessageId` — ID of the user message currently in edit mode (null = none).
+    // `editText`          — Draft text while editing.
+    // `copiedMessageId`   — ID of the last message whose text was just copied;
+    //                       used to show a transient check-mark icon for 2 s.
+    const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+    const [editText, setEditText] = useState<string>("");
+    const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
     // true while we're fetching an existing chat from IndexedDB.
     // Starts true when a chatId is present so the spinner shows immediately
@@ -443,6 +465,145 @@ function ChatSession({
         setIsReasoningOn((prev) => !prev);
     }, []);
 
+    // ── MessageActions handlers ───────────────────────────────────────────────
+
+    /**
+     * Copies the given text to the clipboard and briefly shows a check-mark
+     * on the copy button for the given message id.
+     */
+    const handleCopy = useCallback((messageId: string, textToCopy: string) => {
+        if (!navigator.clipboard) {
+            toast.error("Clipboard is not available in this browser.");
+            return;
+        }
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            setCopiedMessageId(messageId);
+            // Reset the icon after 2 seconds.
+            setTimeout(() => setCopiedMessageId(null), 2000);
+        }).catch((err) => {
+            console.error("[handleCopy] Clipboard write failed:", err);
+            toast.error("Could not copy text to clipboard.");
+        });
+    }, []);
+
+    /**
+     * Regenerates the last assistant response.
+     *
+     * Strategy (transport variant has no built-in `reload()`):
+     *  1. Find the last user message and its index in the array.
+     *  2. Trim the messages array to everything BEFORE that user message.
+     *  3. Call sendMessage() with the user text — it will re-append the user
+     *     message and then invoke the transport to produce a fresh response.
+     *
+     * IMPORTANT: sendMessage() always prepends a brand-new user UIMessage to
+     * the state before invoking the transport. The previous implementation only
+     * stripped the last assistant message (keeping the existing user message),
+     * so sendMessage added a second copy, duplicating the user turn. By slicing
+     * to just before the last user message we give sendMessage a clean slate so
+     * exactly one user message is present when the transport runs.
+     */
+    const handleRegenerate = useCallback(() => {
+        if (messages.length === 0) {
+            toast.error("No messages to regenerate from.");
+            return;
+        }
+
+        // Locate the last user message index (search from the end).
+        let lastUserMsgIndex = -1;
+        for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].role === "user") {
+                lastUserMsgIndex = i;
+                break;
+            }
+        }
+
+        if (lastUserMsgIndex === -1) {
+            toast.error("No user message found to regenerate from.");
+            return;
+        }
+
+        const lastUserMsg = messages[lastUserMsgIndex];
+        const textPart = lastUserMsg.parts.find((p) => p.type === "text");
+        const userText = textPart?.type === "text" ? textPart.text : "";
+
+        // Slice to everything BEFORE the last user message so that sendMessage()
+        // can re-add it exactly once (it always appends a new user UIMessage).
+        const trimmedMessages = messages.slice(0, lastUserMsgIndex);
+        setMessages(trimmedMessages);
+
+        // Ensure no stale RAG context bleeds into the regeneration.
+        transport.ragContextPromise = Promise.resolve(null);
+        sendMessage({ text: userText });
+    }, [messages, setMessages, sendMessage, transport]);
+
+    /** Enters edit mode for the given user message. */
+    const handleEditStart = useCallback((messageId: string, currentText: string) => {
+        setEditingMessageId(messageId);
+        setEditText(currentText);
+    }, []);
+
+    /** Cancels edit mode without applying any changes. */
+    const handleEditCancel = useCallback(() => {
+        setEditingMessageId(null);
+        setEditText("");
+    }, []);
+
+    /**
+     * Commits the edited user message:
+     *  1. Updates the message's text part in the local state.
+     *  2. Drops any messages that followed the edited one (they are now stale).
+     *  3. Persists the updated thread to IndexedDB.
+     *  4. Re-submits the edited text so the LLM generates a fresh response.
+     */
+    const handleEditDone = useCallback(async (messageId: string) => {
+        const trimmedEdit = editText.trim();
+        if (!trimmedEdit) {
+            toast.error("Message text cannot be empty.");
+            return;
+        }
+
+        // Build updated messages: patch the target message, drop anything after it.
+        const editedIdx = messages.findIndex((m) => m.id === messageId);
+        if (editedIdx === -1) {
+            console.error("[handleEditDone] Could not find message with id:", messageId);
+            toast.error("Could not locate the message to edit.");
+            return;
+        }
+
+        const updatedMessages = messages
+            .slice(0, editedIdx + 1)
+            .map((m) =>
+                m.id !== messageId
+                    ? m
+                    : {
+                        ...m,
+                        parts: m.parts.map((p) =>
+                            p.type === "text" ? { ...p, text: trimmedEdit } : p
+                        ),
+                    }
+            );
+
+        setMessages(updatedMessages);
+        setEditingMessageId(null);
+        setEditText("");
+
+        // Persist the updated thread so the edit survives a page reload.
+        if (currentChatIdRef.current) {
+            try {
+                const persistable = await serializeMessagesForStorage(updatedMessages);
+                await updateExistingChat(currentChatIdRef.current, persistable);
+            } catch (err) {
+                console.error("[handleEditDone] Failed to persist edited message:", err);
+                toast.error("The edit could not be saved to history.");
+                // Non-fatal — continue to generate a response.
+            }
+        }
+
+        // Generate a fresh assistant response for the edited user message.
+        transport.ragContextPromise = Promise.resolve(null);
+        sendMessage({ text: trimmedEdit });
+    }, [editText, messages, setMessages, sendMessage, transport, currentChatIdRef]);
+
     // ── Persist chat on streaming→ready transition ─────────────────────────────
     // Detects when a streaming response finishes and saves the full conversation
     // to IndexedDB. For new chats, also updates the URL without a re-render.
@@ -495,87 +656,204 @@ function ChatSession({
         <div className="relative flex h-[calc(100vh-80px)] flex-col divide-y overflow-hidden">
             <Conversation>
                 <ConversationContent>
-                    {messages.map((message, msgIndex) => (
-                        // MessageBranch handles multi-version messages (e.g. regenerations).
-                        // With a single version the branch selector is hidden automatically.
-                        <MessageBranch defaultBranch={0} key={message.id}>
-                            <MessageBranchContent>
-                                <Message from={message.role}>
-                                    <MessageContent>
-                                        {/*
+                    {messages.map((message, msgIndex) => {
+                        const isLastMessage = msgIndex === messages.length - 1;
+                        const isStreaming = status === "streaming" || status === "submitted";
+
+                        // Extract the final text of this message (used by copy and edit).
+                        const messageText = message.parts
+                            .filter((p) => p.type === "text")
+                            .map((p) => (p as { type: "text"; text: string }).text)
+                            .join("\n");
+
+                        // True when this specific message is being edited.
+                        const isEditing = editingMessageId === message.id;
+
+                        return (
+                            // MessageBranch handles multi-version messages (e.g. regenerations).
+                            // With a single version the branch selector is hidden automatically.
+                            <MessageBranch defaultBranch={0} key={message.id}>
+                                <MessageBranchContent>
+                                    {/*
+                                 * EDIT MODE: Replace the user message bubble with an editable
+                                 * textarea.  Only the last user message can be in edit mode and
+                                 * only when streaming is not in progress.
+                                 */}
+                                    {isEditing ? (
+                                        <div className="ml-auto flex w-full max-w-[95%] flex-col gap-1">
+                                            <textarea
+                                                aria-label="Edit message"
+                                                autoFocus
+                                                className="w-full resize-none rounded-lg bg-secondary px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                                onChange={(e) => setEditText(e.target.value)}
+                                                rows={Math.max(2, editText.split("\n").length)}
+                                                value={editText}
+                                            />
+                                            <div className="flex justify-end gap-1">
+                                                <MessageActions>
+                                                    <MessageAction
+                                                        label="Cancel edit"
+                                                        onClick={handleEditCancel}
+                                                        tooltip="Cancel"
+                                                    >
+                                                        <XIcon size={12} />
+                                                    </MessageAction>
+                                                    <MessageAction
+                                                        disabled={!editText.trim()}
+                                                        label="Send edited message"
+                                                        onClick={() => handleEditDone(message.id)}
+                                                        tooltip="Done"
+                                                        variant="default"
+                                                    >
+                                                        <CheckIcon size={12} />
+                                                    </MessageAction>
+                                                </MessageActions>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <Message from={message.role}>
+                                            <MessageContent>
+                                                {/*
                                          * UIMessage.parts is a discriminated union. We render
                                          * text blocks here; other part types (tool-call, file,
                                          * reasoning) can be added as the transport evolves.
                                          */}
-                                        {message.parts.map((part, partIndex) => {
-                                            if (part.type === "reasoning") {
-                                                const isThisMessageStreaming =
-                                                    status === "streaming" &&
-                                                    message.id === messages[messages.length - 1]?.id;
-                                                return (
-                                                    <Reasoning key={partIndex} isStreaming={isThisMessageStreaming}>
-                                                        <ReasoningTrigger />
-                                                        <ReasoningContent>{part.text}</ReasoningContent>
-                                                    </Reasoning>
-                                                );
-                                            }
-                                            if (part.type === "text") {
-                                                return (
-                                                    <MessageResponse key={partIndex}>
-                                                        {part.text}
-                                                    </MessageResponse>
-                                                );
-                                            }
-                                            if (part.type === "file") {
-                                                // Render the file attachment inline inside the
-                                                // message bubble.  A synthetic `id` is built from
-                                                // the message id + part index because persisted
-                                                // UIMessage file parts carry no id of their own.
-                                                const filePart = part as FileUIPart;
-                                                const attachmentData: AttachmentData = {
-                                                    ...filePart,
-                                                    id: `${message.id}-${partIndex}`,
-                                                };
-                                                return (
-                                                    <Attachments key={partIndex} variant="inline">
-                                                        <Attachment data={attachmentData}>
-                                                            <AttachmentPreview />
-                                                            <AttachmentInfo />
-                                                        </Attachment>
-                                                    </Attachments>
-                                                );
-                                            }
-                                            return null;
-                                        })}
-                                    </MessageContent>
+                                                {message.parts.map((part, partIndex) => {
+                                                    if (part.type === "reasoning") {
+                                                        const isThisMessageStreaming =
+                                                            status === "streaming" &&
+                                                            message.id === messages[messages.length - 1]?.id;
+                                                        return (
+                                                            <Reasoning key={partIndex} isStreaming={isThisMessageStreaming}>
+                                                                <ReasoningTrigger />
+                                                                <ReasoningContent>{part.text}</ReasoningContent>
+                                                            </Reasoning>
+                                                        );
+                                                    }
+                                                    if (part.type === "text") {
+                                                        return (
+                                                            <MessageResponse key={partIndex}>
+                                                                {part.text}
+                                                            </MessageResponse>
+                                                        );
+                                                    }
+                                                    if (part.type === "file") {
+                                                        // Render the file attachment inline inside the
+                                                        // message bubble.  A synthetic `id` is built from
+                                                        // the message id + part index because persisted
+                                                        // UIMessage file parts carry no id of their own.
+                                                        const filePart = part as FileUIPart;
+                                                        const attachmentData: AttachmentData = {
+                                                            ...filePart,
+                                                            id: `${message.id}-${partIndex}`,
+                                                        };
+                                                        return (
+                                                            <Attachments key={partIndex} variant="inline">
+                                                                <Attachment data={attachmentData}>
+                                                                    <AttachmentPreview />
+                                                                    <AttachmentInfo />
+                                                                </Attachment>
+                                                            </Attachments>
+                                                        );
+                                                    }
+                                                    return null;
+                                                })}
+                                            </MessageContent>
 
-                                    {/*
+                                            {/*
                                      * Show sources below the last assistant message only.
                                      * Sources are ephemeral — retrieved before each turn
                                      * and cleared on the next submission. They are not
                                      * persisted with chat history.
                                      */}
-                                    {message.role === "assistant" &&
-                                        msgIndex === messages.length - 1 &&
-                                        sources.length > 0 && (
-                                            <Sources>
-                                                <SourcesTrigger count={sources.length} />
-                                                <SourcesContent>
-                                                    {sources.map((source) => (
-                                                        // Local files have no URL — Source renders
-                                                        // as a non-navigating item (BookIcon + name).
-                                                        <Source
-                                                            key={source.documentId}
-                                                            title={source.fileName}
-                                                        />
-                                                    ))}
-                                                </SourcesContent>
-                                            </Sources>
-                                        )}
-                                </Message>
-                            </MessageBranchContent>
-                        </MessageBranch>
-                    ))}
+                                            {message.role === "assistant" &&
+                                                isLastMessage &&
+                                                sources.length > 0 && (
+                                                    <Sources>
+                                                        <SourcesTrigger count={sources.length} />
+                                                        <SourcesContent>
+                                                            {sources.map((source) => (
+                                                                // Local files have no URL — Source renders
+                                                                // as a non-navigating item (BookIcon + name).
+                                                                <Source
+                                                                    key={source.documentId}
+                                                                    title={source.fileName}
+                                                                />
+                                                            ))}
+                                                        </SourcesContent>
+                                                    </Sources>
+                                                )}
+                                        </Message>
+                                    )}
+                                </MessageBranchContent>
+
+                                {/*
+                                 * ── MessageActions ────────────────────────────────────────────
+                                 * Placed OUTSIDE MessageBranchContent (sibling, not child) to
+                                 * avoid the duplicate null-key error.  MessageBranchContent keys
+                                 * every direct child by `branch.key`; two siblings with key=null
+                                 * cause React to drop one.  As a sibling of MessageBranchContent
+                                 * inside MessageBranch's grid, the toolbar renders correctly
+                                 * without interfering with branch selection.
+                                 *
+                                 * • Last message is ASSISTANT → Copy + Regenerate
+                                 * • Last message is USER      → Regenerate + Edit
+                                 *   (arises when the LLM failed or the user just sent a message)
+                                 */}
+                                {isLastMessage && !isStreaming && !isEditing && (
+                                    <MessageToolbar>
+                                        <MessageActions>
+                                            {message.role === "assistant" && (
+                                                <>
+                                                    <MessageAction
+                                                        label="Copy response"
+                                                        onClick={() =>
+                                                            handleCopy(message.id, messageText)
+                                                        }
+                                                        tooltip="Copy"
+                                                    >
+                                                        {copiedMessageId === message.id ? (
+                                                            <CheckIcon size={12} />
+                                                        ) : (
+                                                            <CopyIcon size={12} />
+                                                        )}
+                                                    </MessageAction>
+                                                    <MessageAction
+                                                        label="Regenerate response"
+                                                        onClick={handleRegenerate}
+                                                        tooltip="Regenerate"
+                                                    >
+                                                        <RefreshCcwIcon size={12} />
+                                                    </MessageAction>
+                                                </>
+                                            )}
+
+                                            {message.role === "user" && (
+                                                <>
+                                                    <MessageAction
+                                                        label="Regenerate response"
+                                                        onClick={handleRegenerate}
+                                                        tooltip="Regenerate"
+                                                    >
+                                                        <RefreshCcwIcon size={12} />
+                                                    </MessageAction>
+                                                    <MessageAction
+                                                        label="Edit message"
+                                                        onClick={() =>
+                                                            handleEditStart(message.id, messageText)
+                                                        }
+                                                        tooltip="Edit"
+                                                    >
+                                                        <PencilIcon size={12} />
+                                                    </MessageAction>
+                                                </>
+                                            )}
+                                        </MessageActions>
+                                    </MessageToolbar>
+                                )}
+                            </MessageBranch>
+                        );
+                    })}
                     {(status === "submitted" || status === "streaming") && (
                         <Message from="assistant">
                             <MessageContent>
@@ -584,6 +862,46 @@ function ChatSession({
                                 </Shimmer>
                             </MessageContent>
                         </Message>
+                    )}
+
+                    {status === "error" && (
+                        <div className="px-4 py-2">
+                            <Alert variant="destructive" className="flex items-start gap-3">
+                                <TriangleAlert className="mt-0.5 shrink-0" />
+                                <div className="flex-1">
+                                    <AlertTitle>Response failed</AlertTitle>
+                                    <AlertDescription>
+                                        The AI model could not generate a response. This may be a
+                                        temporary issue — please try again.
+                                    </AlertDescription>
+                                </div>
+                                <Button
+                                    className="shrink-0 self-center"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                        // Re-submit the last user message so the user
+                                        // can recover without reloading the page.
+                                        const lastUserMsg = [...messages]
+                                            .reverse()
+                                            .find((m) => m.role === "user");
+                                        if (lastUserMsg) {
+                                            const textPart = lastUserMsg.parts.find(
+                                                (p) => p.type === "text"
+                                            );
+                                            sendMessage({
+                                                text:
+                                                    textPart && textPart.type === "text"
+                                                        ? textPart.text
+                                                        : "",
+                                            });
+                                        }
+                                    }}
+                                >
+                                    Retry
+                                </Button>
+                            </Alert>
+                        </div>
                     )}
                 </ConversationContent>
                 <ConversationScrollButton />
