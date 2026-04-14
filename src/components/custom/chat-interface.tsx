@@ -80,6 +80,21 @@ import {
 } from "@/lib/chat-manager";
 import { useLiteRTModelStore } from "@/stores/litert-store";
 import { useChatStore } from "@/stores/chat-store";
+import { useMemoryStore } from "@/stores/memory-store";
+import {
+    countTokensForMessages,
+    extractBuddhiMessages,
+    MAX_CONTEXT_TOKENS,
+    runSummarization,
+    SUMMARIZATION_THRESHOLD,
+} from "@/lib/memory";
+import {
+    Context,
+    ContextContent,
+    ContextContentHeader,
+    ContextTrigger,
+} from "@/components/ai-elements/context";
+import { SYSTEM_PROMPT } from "@/const/system-prompt";
 import { useChat } from "@ai-sdk/react";
 import type { LlmInference } from "@mediapipe/tasks-genai";
 import type { FileUIPart } from "ai";
@@ -284,6 +299,60 @@ function ChatSession({
     const setCurrentChatId = useChatStore((s) => s.setCurrentChatId);
     const refreshChats = useChatStore((s) => s.refreshChats);
 
+    // ── Memory / token state ──────────────────────────────────────────────────
+    const tokenCount = useMemoryStore((s) => s.tokenCount);
+    const isSummarizing = useMemoryStore((s) => s.isSummarizing);
+    const isSummarized = useMemoryStore((s) => s.isSummarized);
+    const setIsSummarizing = useMemoryStore((s) => s.setIsSummarizing);
+    const setIsSummarized = useMemoryStore((s) => s.setIsSummarized);
+    const resetMemory = useMemoryStore((s) => s.reset);
+
+    /**
+     * Runs the summarization LLM call for the given messages (UIMessage[]).
+     *
+     * Guards against concurrent calls via `isSummarizing` and requires a valid
+     * `chatId`. The summary is stored in sessionStorage by `runSummarization`
+     * and the memory store is updated accordingly.
+     *
+     * Defined as a plain async function (not useCallback) so it can be safely
+     * called from both the chat-load effect and the streaming→ready effect
+     * without stale-closure risk — both effects are inside the same render
+     * cycle and both reference the same `instance`, `templateVersion`, etc.
+     */
+    async function triggerSummarization(uiMessages: typeof messages) {
+        const chatId = currentChatIdRef.current;
+        if (!chatId) {
+            console.debug("[ChatSession] Skipping summarization — no chatId yet.");
+            return;
+        }
+        if (useMemoryStore.getState().isSummarizing) {
+            console.debug("[ChatSession] Summarization already in progress, skipping.");
+            return;
+        }
+
+        setIsSummarizing(true);
+        try {
+            await runSummarization(
+                instance,
+                uiMessages,
+                SYSTEM_PROMPT,
+                chatId,
+                templateVersion
+            );
+            setIsSummarized(true);
+            // Update the transport's chatId in case it was set during load.
+            transport.chatId = chatId;
+        } catch (err) {
+            console.error("[ChatSession] Summarization failed:", err);
+            toast.error(
+                "Memory summarization failed — full history will be used. " +
+                "Check console for details."
+            );
+        } finally {
+            setIsSummarizing(false);
+        }
+    }
+
     // Resolve per-model config flags so the transport is kept in sync.
     // Falls back to safe defaults when the model ID hasn't been stored yet.
     const loadedModelId = useLiteRTModelStore((s) => s.liteRTModelModel);
@@ -310,6 +379,12 @@ function ChatSession({
         transport.supportsVision = supportsVision;
     }, [transport, supportsVision]);
 
+    // Keep the transport's chatId in sync so the memory middleware can look up
+    // the correct sessionStorage key when sendMessages() is called.
+    useEffect(() => {
+        transport.chatId = currentChatIdRef.current;
+    }, [transport, chatId]);
+
     // ── useChat ───────────────────────────────────────────────────────────────
     // `messages`    – UIMessage[] managed by the SDK; updates reactively as
     //                 token chunks arrive from the transport stream.
@@ -332,12 +407,47 @@ function ChatSession({
     useEffect(() => {
         setCurrentChatId(chatId);
 
+        // Reset memory state whenever the chat changes (new chat or different
+        // chat). The memory store is global so stale state from a previous chat
+        // must be cleared before this session begins.
+        resetMemory();
+
         if (!chatId) return;
 
         loadChat(chatId)
-            .then((chat) => {
+            .then(async (chat) => {
                 if (chat?.messages?.length) {
                     setMessages(chat.messages);
+
+                    // Check whether this existing chat already exceeds the token
+                    // threshold. If so, trigger summarization immediately so the
+                    // next turn uses compressed context.
+                    try {
+                        const buddhiMsgs = extractBuddhiMessages(
+                            chat.messages,
+                            SYSTEM_PROMPT,
+                            templateVersion
+                        );
+                        const count = await countTokensForMessages(
+                            instance,
+                            buddhiMsgs,
+                            templateVersion
+                        );
+                        useMemoryStore.getState().setTokenCount(count);
+
+                        if (count > SUMMARIZATION_THRESHOLD) {
+                            console.debug(
+                                `[ChatSession] Loaded chat "${chatId}" exceeds token threshold ` +
+                                `(${count} > ${SUMMARIZATION_THRESHOLD}). Triggering summarization.`
+                            );
+                            await triggerSummarization(chat.messages);
+                        }
+                    } catch (err) {
+                        console.warn(
+                            "[ChatSession] Token count check failed on chat load:",
+                            err
+                        );
+                    }
                 }
             })
             .catch(() => {
@@ -350,9 +460,9 @@ function ChatSession({
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Disable submit while a response is in flight, during RAG retrieval,
-    // or when the input is empty.
+    // during memory summarization, or when the input is empty.
     const isSubmitDisabled =
-        !text.trim() || status === "streaming" || status === "submitted" || isRetrieving;
+        !text.trim() || status === "streaming" || status === "submitted" || isRetrieving || isSummarizing;
 
     // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -607,6 +717,8 @@ function ChatSession({
     // ── Persist chat on streaming→ready transition ─────────────────────────────
     // Detects when a streaming response finishes and saves the full conversation
     // to IndexedDB. For new chats, also updates the URL without a re-render.
+    // After saving, checks whether the token count exceeds the summarization
+    // threshold and triggers summarization if needed.
     useEffect(() => {
         const wasStreaming = prevStatusRef.current === "streaming";
         prevStatusRef.current = status;
@@ -630,11 +742,32 @@ function ChatSession({
                     // no component re-render, no flicker.
                     window.history.replaceState(null, "", `/chat/${newId}`);
                     setCurrentChatId(newId);
+                    // Sync the new chatId to the transport immediately.
+                    transport.chatId = newId;
                 }
                 await refreshChats();
             } catch (error) {
                 console.error("[ChatSession] Failed to save chat:", error);
                 toast.error("Chat could not be saved.");
+            }
+
+            // ── Memory summarization check ────────────────────────────────
+            // tokenCount is updated by the transport's sizeInTokens call
+            // inside sendMessages, so by the time we reach this point it
+            // reflects the prompt that just ran.  If it exceeds the threshold
+            // and summarization hasn't already run, start it now.
+            //
+            // We use the store's current value (not the stale closure) to
+            // avoid race conditions between consecutive turns.
+            const currentTokenCount = useMemoryStore.getState().tokenCount;
+            const alreadySummarized = useMemoryStore.getState().isSummarized;
+
+            if (currentTokenCount > SUMMARIZATION_THRESHOLD && !alreadySummarized) {
+                console.debug(
+                    `[ChatSession] Token count ${currentTokenCount} exceeds threshold ` +
+                    `${SUMMARIZATION_THRESHOLD}. Starting summarization.`
+                );
+                await triggerSummarization(messages);
             }
         })();
     }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -864,6 +997,16 @@ function ChatSession({
                         </Message>
                     )}
 
+                    {isSummarizing && status === "ready" && (
+                        <Message from="assistant">
+                            <MessageContent>
+                                <Shimmer className="text-sm" duration={2}>
+                                    Summarizing conversation memory...
+                                </Shimmer>
+                            </MessageContent>
+                        </Message>
+                    )}
+
                     {status === "error" && (
                         <div className="px-4 py-2">
                             <Alert variant="destructive" className="flex items-start gap-3">
@@ -960,18 +1103,38 @@ function ChatSession({
                                 </PromptInputButton>
                             </PromptInputTools>
 
-                            {/*
-                             * status – passed straight from useChat; PromptInputSubmit
-                             *          shows a spinner during 'submitted' and a stop icon
-                             *          during 'streaming'.
-                             * onStop  – calls useChat's stop(), which fires the AbortSignal
-                             *           passed to MediaPipeChatTransport.sendMessages().
-                             */}
-                            <PromptInputSubmit
-                                disabled={isSubmitDisabled}
-                                onStop={stop}
-                                status={status}
-                            />
+                            <div className="flex items-center gap-1">
+                                {/*
+                                 * Token usage indicator — shows context window utilisation
+                                 * as a circular progress ring.  Only rendered once we have
+                                 * a non-zero token count (i.e. after the first message).
+                                 * Hovering reveals the exact used / max token counts.
+                                 */}
+                                {tokenCount > 0 && (
+                                    <Context
+                                        usedTokens={tokenCount}
+                                        maxTokens={MAX_CONTEXT_TOKENS}
+                                    >
+                                        <ContextTrigger size="sm" />
+                                        <ContextContent>
+                                            <ContextContentHeader />
+                                        </ContextContent>
+                                    </Context>
+                                )}
+
+                                {/*
+                                 * status – passed straight from useChat; PromptInputSubmit
+                                 *          shows a spinner during 'submitted' and a stop icon
+                                 *          during 'streaming'.
+                                 * onStop  – calls useChat's stop(), which fires the AbortSignal
+                                 *           passed to MediaPipeChatTransport.sendMessages().
+                                 */}
+                                <PromptInputSubmit
+                                    disabled={isSubmitDisabled}
+                                    onStop={stop}
+                                    status={status}
+                                />
+                            </div>
                         </PromptInputFooter>
                     </PromptInput>
                 </div>

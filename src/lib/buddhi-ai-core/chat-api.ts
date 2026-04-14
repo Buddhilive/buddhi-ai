@@ -31,6 +31,8 @@
 
 import { SYSTEM_PROMPT } from "@/const/system-prompt";
 import { generateChatTemplate } from "@/lib/buddhi-ai-core/chat-template-generator";
+import { applyMemoryContext } from "@/lib/memory";
+import { useMemoryStore } from "@/stores/memory-store";
 import type { BuddhiAIChatTemplate, BuddhiAIMessage, GemmaTemplateVersion } from "@/types/messages";
 import type { LlmInference, Prompt } from "@mediapipe/tasks-genai";
 import {
@@ -406,6 +408,15 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
      */
     ragContextPromise: Promise<string | null> | null = null;
 
+    /**
+     * The active chat ID. Set imperatively from ChatSession via a useEffect
+     * whenever the route changes. Used by the memory middleware to look up
+     * the session-scoped summary in sessionStorage.
+     *
+     * `null` for new chats that haven't been saved yet.
+     */
+    chatId: string | null = null;
+
     constructor(
         private readonly llm: LlmInference,
         private readonly templateVersion: GemmaTemplateVersion = "gemma4",
@@ -460,7 +471,20 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                 //
                 // supportsVision is checked here so text-only models never receive
                 // { imageSource } entries that crash LlmVisionInferenceCalculator.
-                const converted = await uiMessagesToBuddhiMessages(messages, this.supportsVision);
+                const rawConverted = await uiMessagesToBuddhiMessages(messages, this.supportsVision);
+
+                // ── Memory middleware ─────────────────────────────────────────
+                // If a summarized MemoryContext exists in sessionStorage for this
+                // chat, replace the middle messages with the stored summary.  This
+                // keeps the prompt well within the context window while preserving
+                // the first and last turns for coherent continuation.
+                //
+                // applyMemoryContext is a pure function; it returns the original
+                // array unchanged when no context is found.
+                const converted = applyMemoryContext(
+                    rawConverted,
+                    this.chatId ?? ""
+                );
 
                 // ── Vision-stripped notice ────────────────────────────────────
                 // When the loaded model is text-only, uiMessagesToBuddhiMessages
@@ -559,6 +583,33 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                         `Failed to build chat template: ${msg}. ` +
                             "Check that the conversation history is valid."
                     );
+                }
+
+                // ── Token counting ────────────────────────────────────────────
+                // sizeInTokens() is synchronous and cannot run while generateResponse
+                // is active.  We call it here — after the prompt is fully built but
+                // before generation starts — which is always safe.
+                //
+                // The count is written directly to the Zustand store so the React
+                // component can read it without prop-drilling.
+                //
+                // Guard: skip if a summarization is already in progress (that call
+                // is itself using the LLM, so the model may be busy).
+                if (!useMemoryStore.getState().isSummarizing) {
+                    try {
+                        const tokenCount = this.llm.sizeInTokens(prompt);
+                        if (tokenCount !== undefined) {
+                            useMemoryStore.getState().setTokenCount(tokenCount);
+                        } else {
+                            console.warn(
+                                "[ChatTransport] sizeInTokens returned undefined — " +
+                                "token count display may be stale."
+                            );
+                        }
+                    } catch (err) {
+                        // sizeInTokens failure is non-fatal; log and continue.
+                        console.warn("[ChatTransport] sizeInTokens threw:", err);
+                    }
                 }
 
                 // ── Resolve imageSource strings → ImageBitmap ─────────────────
