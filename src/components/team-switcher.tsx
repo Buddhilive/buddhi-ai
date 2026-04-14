@@ -12,6 +12,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 
 export function TeamSwitcher({
   teams,
@@ -23,10 +24,15 @@ export function TeamSwitcher({
     url: string
   }[]
 }) {
-  const [activeTeam] = React.useState(teams[0])
+  const [activeTeam] = React.useState(teams[0]);
+  const router = useRouter();
 
   if (!activeTeam) {
     return null
+  }
+
+  const handleClick = () => {
+    router.push(activeTeam.url)
   }
 
   return (
@@ -37,6 +43,7 @@ export function TeamSwitcher({
             <SidebarMenuButton
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              onClick={handleClick}
             >
               <div className="text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
                 <Image src="/icons/icon-48x48.png" alt="Buddhi AI Logo" width={32} height={32} />
