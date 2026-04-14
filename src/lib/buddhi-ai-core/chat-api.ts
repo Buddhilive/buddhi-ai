@@ -31,11 +31,12 @@
 
 import { SYSTEM_PROMPT } from "@/const/system-prompt";
 import { generateChatTemplate } from "@/lib/buddhi-ai-core/chat-template-generator";
-import type { BuddhiAIMessage, GemmaTemplateVersion } from "@/types/messages";
-import type { LlmInference } from "@mediapipe/tasks-genai";
+import type { BuddhiAIChatTemplate, BuddhiAIMessage, GemmaTemplateVersion } from "@/types/messages";
+import type { LlmInference, Prompt } from "@mediapipe/tasks-genai";
 import {
     createUIMessageStream,
     type ChatTransport,
+    type FileUIPart,
     type UIMessage,
     type UIMessageChunk,
 } from "ai";
@@ -102,27 +103,224 @@ function stripTrailingTemplateTokens(text: string): string {
 }
 
 /**
+ * Resolves a file's source into a `data:` URL suitable for MediaPipe.
+ *
+ * Handles three cases:
+ *  1. Already a `data:` URL — returned as-is.
+ *  2. A `blob:` URL (ephemeral object URL) — fetched and converted via FileReader.
+ *  3. Raw binary in a `Uint8Array` or base64 `string` — encoded as a data URL.
+ *
+ * Returns `null` when the source cannot be resolved (e.g. a revoked blob URL).
+ */
+async function resolveFileUrl(
+    url: string | undefined,
+    data?: Uint8Array | string,
+    mediaType?: string,
+): Promise<string | null> {
+    if (!url && !data) return null;
+
+    // Already a data URL — use directly.
+    if (url && !url.startsWith("blob:")) return url;
+
+    // Blob URL — fetch the referenced Blob and encode it as base64.
+    if (url?.startsWith("blob:")) {
+        try {
+            const response = await fetch(url);
+            const blob = await response.blob();
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = () => {
+                    console.error(
+                        "[resolveFileUrl] FileReader error while converting blob URL to data URL."
+                    );
+                    resolve(null);
+                };
+                reader.readAsDataURL(blob);
+            });
+        } catch (err) {
+            console.error("[resolveFileUrl] Failed to fetch blob URL:", err);
+            return null;
+        }
+    }
+
+    // Uint8Array — convert to base64 data URL.
+    if (data instanceof Uint8Array) {
+        const binary = Array.from(data, (b) => String.fromCharCode(b)).join("");
+        return `data:${mediaType ?? "application/octet-stream"};base64,${btoa(binary)}`;
+    }
+
+    // String — treat as raw base64 payload.
+    if (typeof data === "string") {
+        return `data:${mediaType ?? "application/octet-stream"};base64,${data}`;
+    }
+
+    return null;
+}
+
+/**
+ * Walks a MediaPipe `Prompt` array and replaces every `{ imageSource: string }`
+ * entry with `{ imageSource: ImageBitmap }`.
+ *
+ * MediaPipe's LiteRT WASM runtime cannot decode data: / blob: URL strings
+ * passed as `imageSource` — it needs a decoded pixel buffer (ImageBitmap).
+ * Passing a raw string causes the runtime to throw:
+ *   "LlmVisionInferenceCalculator failed: Image models could not be created"
+ *
+ * Non-image parts (strings, audio objects) are returned unchanged.
+ */
+async function resolvePromptImageSources(prompt: Prompt): Promise<Prompt> {
+    // Prompt can be a bare string PromptPart — nothing to convert.
+    if (!Array.isArray(prompt)) return prompt;
+
+    const resolved = await Promise.all(
+        (prompt as Array<unknown>).map(async (part) => {
+            if (
+                typeof part !== "object" ||
+                part === null ||
+                !("imageSource" in part) ||
+                typeof (part as Record<string, unknown>).imageSource !== "string"
+            ) {
+                return part;
+            }
+
+            const url = (part as { imageSource: string }).imageSource;
+            try {
+                const response = await fetch(url);
+                const blob = await response.blob();
+                const bitmap = await createImageBitmap(blob);
+                return { imageSource: bitmap };
+            } catch (err) {
+                console.warn(
+                    "[resolvePromptImageSources] Could not decode imageSource to ImageBitmap; " +
+                    "falling back to URL string (may cause a WASM runtime error):",
+                    err,
+                );
+                return part;
+            }
+        }),
+    );
+    return resolved as Prompt;
+}
+
+/**
  * Converts the Vercel AI SDK's `UIMessage[]` into the internal
  * `BuddhiAIMessage[]` format expected by `generateChatTemplate`.
  *
- * Only `text` parts are extracted — file/tool/reasoning parts are not yet
- * supported by the LiteRT transport and are silently dropped.
+ * Text-only messages produce a plain `string` content (backward-compatible).
+ * Messages that include at least one image or audio file produce an array of
+ * `BuddhiAIChatTemplate` items so `generateGemma4Template` can inject the
+ * correct `<|image|>` / `<|audio|>` placeholders.
+ *
+ * When `supportsVision` is `false` (the default for text-only model files),
+ * image and audio parts are silently stripped — passing `{ imageSource }` to a
+ * model that has no vision encoder causes MediaPipe to throw immediately.
+ *
+ * Unsupported file types (video, documents) are always dropped with a warning.
+ * Reasoning parts are never forwarded to the model.
  */
-function uiMessagesToBuddhiMessages(messages: UIMessage[]): BuddhiAIMessage[] {
-    return messages.map((msg) => {
-        // UIMessage.parts is a discriminated union. We collect all text parts
-        // into a single string; multi-part messages are joined with newlines.
-        const textContent = msg.parts
-            .filter((p): p is { type: "text"; text: string } => p.type === "text")
-            .map((p) => p.text)
-            .join("\n");
+async function uiMessagesToBuddhiMessages(
+    messages: UIMessage[],
+    supportsVision: boolean,
+): Promise<BuddhiAIMessage[]> {
+    return Promise.all(
+        messages.map(async (msg) => {
+            const contentParts: BuddhiAIChatTemplate[] = [];
+            let hasMedia = false;
 
-        return {
-            // BuddhiAIChatRole is 'user' | 'assistant' | 'system'
-            role: msg.role as BuddhiAIMessage["role"],
-            content: textContent,
-        };
-    });
+            for (const part of msg.parts) {
+                if (part.type === "text") {
+                    contentParts.push({ type: "text", text: part.text });
+                } else if (part.type === "file") {
+                    const filePart = part as FileUIPart;
+                    const mediaType = filePart.mediaType ?? "";
+                    // `data` exists on the full FileUIPart spec; local parts
+                    // only set `url`, so cast to `unknown` first.
+                    const rawData = (filePart as unknown as { data?: Uint8Array | string }).data;
+
+                    if (mediaType.startsWith("image/")) {
+                        if (!supportsVision) {
+                            // Text-only model: passing imageSource crashes MediaPipe.
+                            console.warn(
+                                `[uiMessagesToBuddhiMessages] Model does not support vision. ` +
+                                `Skipping image "${filePart.filename ?? "image"}" — load a ` +
+                                `vision-capable model to analyse images.`
+                            );
+                        } else {
+                            const dataUrl = await resolveFileUrl(filePart.url, rawData, mediaType);
+                            if (dataUrl) {
+                                contentParts.push({
+                                    type: "image",
+                                    url: dataUrl,
+                                    mediaType,
+                                    fileName: filePart.filename,
+                                });
+                                hasMedia = true;
+                            } else {
+                                console.warn(
+                                    `[uiMessagesToBuddhiMessages] Could not resolve image URL for ` +
+                                    `"${filePart.filename ?? "image"}"; skipping file part.`
+                                );
+                            }
+                        }
+                    } else if (mediaType.startsWith("audio/")) {
+                        if (!supportsVision) {
+                            console.warn(
+                                `[uiMessagesToBuddhiMessages] Model does not support vision/audio. ` +
+                                `Skipping audio "${filePart.filename ?? "audio"}" — load a ` +
+                                `vision-capable model (E2B/E4B) to process audio.`
+                            );
+                        } else {
+                            const dataUrl = await resolveFileUrl(filePart.url, rawData, mediaType);
+                            if (dataUrl) {
+                                contentParts.push({
+                                    type: "audio",
+                                    url: dataUrl,
+                                    mediaType,
+                                    fileName: filePart.filename,
+                                });
+                                hasMedia = true;
+                            } else {
+                                console.warn(
+                                    `[uiMessagesToBuddhiMessages] Could not resolve audio URL for ` +
+                                    `"${filePart.filename ?? "audio"}"; skipping file part.`
+                                );
+                            }
+                        }
+                    } else if (mediaType.startsWith("video/")) {
+                        // LiteRT does not support video — dropped with a warning.
+                        console.warn(
+                            `[uiMessagesToBuddhiMessages] Video files are not supported by the ` +
+                            `on-device inference runtime. Skipping "${filePart.filename ?? "video"}".`
+                        );
+                    } else {
+                        // PDFs, DOCX, and other binary formats have no understanding layer.
+                        console.warn(
+                            `[uiMessagesToBuddhiMessages] Unsupported file type "${mediaType}" ` +
+                            `for "${filePart.filename ?? "file"}". Only images and audio ` +
+                            `(on vision-capable models) are forwarded to the model.`
+                        );
+                    }
+                }
+                // Reasoning parts are produced by the model; never re-sent to it.
+            }
+
+            // Text-only messages use a plain string (backward-compatible with
+            // Gemma 3n and existing chat history). Multimodal messages use an
+            // array so generateGemma4Template can insert media placeholders.
+            const content: BuddhiAIMessage["content"] = hasMedia
+                ? contentParts
+                : contentParts
+                      .filter((p) => p.type === "text")
+                      .map((p) => p.text!)
+                      .join("\n");
+
+            return {
+                role: msg.role as BuddhiAIMessage["role"],
+                content,
+            };
+        }),
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -173,16 +371,40 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
     isReasoningOn: boolean = false;
 
     /**
-     * Plain-text RAG context block to inject into the last user message.
+     * Whether the loaded model file bundles a vision encoder.
      *
-     * Set imperatively by ChatSession.handleSubmit immediately before calling
-     * sendMessage(), using the same mutable-property pattern as isReasoningOn.
-     * The value is reset to null after first use inside sendMessages() so stale
-     * context never bleeds into regenerations or follow-up turns.
+     * When `false` (the default), image and audio parts are stripped before the
+     * Gemma prompt is built.  Passing `{ imageSource }` to a text-only MediaPipe
+     * model causes an immediate "Image models could not be created" crash.
      *
-     * null means no RAG augmentation for this turn.
+     * Set to `true` via a `useEffect` in ChatSession when the active model's
+     * `ModelConfig.supportsVision` flag is `true`.
      */
-    ragContext: string | null = null;
+    supportsVision: boolean = false;
+
+    /**
+     * A Promise that resolves to the RAG context string (or `null`) for the
+     * current turn.  Replaces the old synchronous `ragContext` property.
+     *
+     * **Why a Promise?**
+     * `sendMessage()` must be called *before* RAG retrieval so the user's
+     * message appears in the conversation immediately.  The transport's
+     * `execute` callback awaits this promise, so the LLM prompt is not built
+     * until the context is ready — but the UI update is not blocked.
+     *
+     * Usage in ChatSession.handleSubmit:
+     * ```ts
+     * let resolveRag: (ctx: string | null) => void;
+     * transport.ragContextPromise = new Promise(r => { resolveRag = r; });
+     * sendMessage({ text, files });   // user message appears immediately
+     * // …run retrieval…
+     * resolveRag(ragContextBlock);    // transport unblocks and builds prompt
+     * ```
+     *
+     * Reset to `null` after first use so stale context never bleeds into
+     * regenerations or follow-up turns.
+     */
+    ragContextPromise: Promise<string | null> | null = null;
 
     constructor(
         private readonly llm: LlmInference,
@@ -215,6 +437,16 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                     return;
                 }
 
+                // ── Await RAG context ─────────────────────────────────────────
+                // handleSubmit sets ragContextPromise before calling sendMessage so
+                // the user message appears in the UI immediately while retrieval
+                // runs concurrently.  We await the promise here so the LLM never
+                // sees a prompt without its context.  Reset to null after use so
+                // stale context never bleeds into regenerations or follow-up turns.
+                const pendingRag = this.ragContextPromise;
+                this.ragContextPromise = null;
+                const ragCtx = pendingRag ? await pendingRag : null;
+
                 // ── Build the prompt ──────────────────────────────────────────
                 // Gemma 4 supports a native "system" role in its chat template,
                 // so we prepend a dedicated system message with the SYSTEM_PROMPT.
@@ -225,41 +457,74 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                 //
                 // Gemma 3n has no system role — inject the prompt into the first
                 // user turn instead (legacy behavior).
-                const converted = uiMessagesToBuddhiMessages(messages);
-
-                // ── RAG context injection ─────────────────────────────────
-                // Augment the last user message with the retrieved context
-                // block set by ChatSession.handleSubmit. The context is
-                // appended as plain text so generateChatTemplate receives it
-                // inside the correct <|turn>user … <turn|> block without any
-                // structural changes to the template generator.
                 //
-                // ragContext is reset to null immediately after use so it
-                // never bleeds into regenerations or follow-up turns.
-                if (this.ragContext && converted.length > 0) {
+                // supportsVision is checked here so text-only models never receive
+                // { imageSource } entries that crash LlmVisionInferenceCalculator.
+                const converted = await uiMessagesToBuddhiMessages(messages, this.supportsVision);
+
+                // ── Vision-stripped notice ────────────────────────────────────
+                // When the loaded model is text-only, uiMessagesToBuddhiMessages
+                // silently drops any image/audio file parts.  Without a note the
+                // model has no idea the user attached media and will say something
+                // confusing like "you haven't provided an image."  Injecting a
+                // brief system note into the last user turn lets the model respond
+                // helpfully: explaining the limitation and suggesting a vision model.
+                if (!this.supportsVision && converted.length > 0) {
+                    const hasMediaAttachments = messages.some((msg) =>
+                        msg.parts.some((p) => {
+                            if (p.type !== "file") return false;
+                            const m = (p as FileUIPart).mediaType ?? "";
+                            return m.startsWith("image/") || m.startsWith("audio/");
+                        })
+                    );
+                    if (hasMediaAttachments) {
+                        const lastIdx = converted.length - 1;
+                        if (converted[lastIdx].role === "user") {
+                            const notice =
+                                "\n\n[System note: The user has attached one or more media " +
+                                "files (image or audio) to this message. You are a text-only " +
+                                "model and cannot process media attachments. Please let the " +
+                                "user know you cannot analyse their attached file(s) and " +
+                                "suggest they load a vision-capable model variant to enable " +
+                                "image and audio analysis.]";
+                            const lastMsg = converted[lastIdx];
+                            converted[lastIdx] = {
+                                ...lastMsg,
+                                content:
+                                    typeof lastMsg.content === "string"
+                                        ? lastMsg.content + notice
+                                        : [
+                                              ...lastMsg.content,
+                                              { type: "text" as const, text: notice },
+                                          ],
+                            };
+                        }
+                    }
+                }
+
+                // ── RAG context injection ─────────────────────────────────────
+                // Append the retrieved context as plain text so generateChatTemplate
+                // places it inside the correct <|turn>user … <turn|> block.
+                if (ragCtx && converted.length > 0) {
                     const lastIdx = converted.length - 1;
                     if (converted[lastIdx].role === "user") {
                         const lastMsg = converted[lastIdx];
                         if (typeof lastMsg.content === "string") {
                             converted[lastIdx] = {
                                 ...lastMsg,
-                                content: lastMsg.content + this.ragContext,
+                                content: lastMsg.content + ragCtx,
                             };
                         } else if (Array.isArray(lastMsg.content)) {
                             // Multimodal message — append context as an extra text element.
-                            // uiMessagesToBuddhiMessages already extracts text parts, so
-                            // this element will be picked up by extractTextFromContent().
                             converted[lastIdx] = {
                                 ...lastMsg,
                                 content: [
                                     ...lastMsg.content,
-                                    { type: "text" as const, text: this.ragContext },
+                                    { type: "text" as const, text: ragCtx },
                                 ],
                             };
                         }
                     }
-                    // Reset after use regardless of whether augmentation succeeded.
-                    this.ragContext = null;
                 }
 
                 const buddhiMessages: BuddhiAIMessage[] =
@@ -294,6 +559,15 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                         `Failed to build chat template: ${msg}. ` +
                             "Check that the conversation history is valid."
                     );
+                }
+
+                // ── Resolve imageSource strings → ImageBitmap ─────────────────
+                // MediaPipe's WASM runtime cannot decode data: / blob: URL strings
+                // passed as `imageSource` — passing a raw string causes:
+                //   "LlmVisionInferenceCalculator failed: Image models could not be created"
+                // Convert all string imageSource entries to ImageBitmap objects.
+                if (this.supportsVision) {
+                    prompt = await resolvePromptImageSources(prompt);
                 }
 
                 if (abortSignal?.aborted) {

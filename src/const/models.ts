@@ -13,6 +13,19 @@ export interface ModelConfig {
      * Omit for non-language models or when the default ("gemma4") is correct.
      */
     chatTemplateVersion?: GemmaTemplateVersion;
+    /**
+     * Whether the model's `.task` file bundles a vision encoder.
+     *
+     * MediaPipe's LlmInference will throw "Image models could not be created"
+     * at the very start of inference if `{ imageSource }` / `{ audioSource }`
+     * entries are present in the Prompt array but the model file was packaged
+     * without a multimodal encoder.  Set this to `true` only for model files
+     * that explicitly include vision support.
+     *
+     * Defaults to `false` when omitted — all text-only models fall into this
+     * category.
+     */
+    supportsVision?: boolean;
 }
 
 export const MODELS: ModelConfig[] = [
@@ -25,6 +38,12 @@ export const MODELS: ModelConfig[] = [
         supportsWorker: true,
         modelFile: "gemma-4-E2B-it-web.task",
         chatTemplateVersion: "gemma4",
+        // Vision was tested but gemma-4-E2B-it-web.task does not bundle a vision
+        // encoder for web/WebGPU. The model card states "vision and audio models
+        // are loaded as needed" — they are separate components not in the .task
+        // file. Restore supportsVision: true and re-enable the attachment button in
+        // chat-interface.tsx once a vision-capable .task file is available.
+        // supportsVision: true,
     },
     {
         id: "litert-community/embeddinggemma-300m",

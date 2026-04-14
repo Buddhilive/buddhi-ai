@@ -7,8 +7,85 @@ import {
     updateItemInStore,
 } from "@/lib/indexeddb";
 import { ChatInfo, BuddhiAISavedChat } from "@/types/chat";
+export type { ChatInfo };
 import type { BuddhiAIMessage, BuddhiAIChatTemplate } from "@/types/messages";
 import type { UIMessage } from "ai";
+
+// ─────────────────────────────────────────────────────────
+// File-part serialisation helpers
+// ─────────────────────────────────────────────────────────
+
+/**
+ * Converts a `blob:` URL to a `data:` URL so that file attachments survive
+ * page reloads.  Blob object URLs are revoked when the tab closes; data URLs
+ * (base64) are self-contained and persist in IndexedDB.
+ *
+ * Returns `null` on any fetch / FileReader error so callers can fall back
+ * gracefully instead of storing a broken URL.
+ */
+async function blobUrlToDataUrl(blobUrl: string): Promise<string | null> {
+    try {
+        const response = await fetch(blobUrl);
+        const blob = await response.blob();
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = () => {
+                console.error(
+                    "[serializeMessagesForStorage] FileReader error converting blob URL to data URL."
+                );
+                resolve(null);
+            };
+            reader.readAsDataURL(blob);
+        });
+    } catch (err) {
+        console.error(
+            "[serializeMessagesForStorage] Failed to fetch blob URL for serialisation:",
+            err
+        );
+        return null;
+    }
+}
+
+/**
+ * Walks every `file` part in a `UIMessage[]` and replaces ephemeral `blob:`
+ * URLs with persistent `data:` (base64) URLs before the messages are written
+ * to IndexedDB.
+ *
+ * Non-file parts and file parts that already have a `data:` URL are returned
+ * unchanged.  If a blob URL cannot be fetched the original part is kept with
+ * a console warning — the attachment will display correctly for the current
+ * session but will be lost on reload.
+ */
+export async function serializeMessagesForStorage(
+    messages: UIMessage[]
+): Promise<UIMessage[]> {
+    return Promise.all(
+        messages.map(async (msg) => ({
+            ...msg,
+            parts: await Promise.all(
+                msg.parts.map(async (part) => {
+                    if (part.type !== "file") return part;
+
+                    const filePart = part as { type: "file"; url?: string } & Record<string, unknown>;
+                    // Already a data URL or no URL at all — nothing to do.
+                    if (!filePart.url?.startsWith("blob:")) return part;
+
+                    const dataUrl = await blobUrlToDataUrl(filePart.url);
+                    if (!dataUrl) {
+                        console.warn(
+                            "[serializeMessagesForStorage] Could not serialise blob URL for " +
+                            `"${(filePart as { filename?: string }).filename ?? "file"}". ` +
+                            "The attachment will not be visible after page reload."
+                        );
+                        return part; // keep original — better than dropping the part entirely
+                    }
+                    return { ...part, url: dataUrl };
+                })
+            ),
+        }))
+    );
+}
 
 // ─────────────────────────────────────────────────────────
 // Internal helpers

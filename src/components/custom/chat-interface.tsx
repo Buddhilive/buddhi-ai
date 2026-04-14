@@ -22,9 +22,11 @@
 
 import {
     Attachment,
+    AttachmentInfo,
     AttachmentPreview,
     AttachmentRemove,
     Attachments,
+    type AttachmentData,
 } from "@/components/ai-elements/attachments";
 import {
     Conversation,
@@ -70,6 +72,7 @@ import {
     createNewChat,
     generateChatTitle,
     loadChat,
+    serializeMessagesForStorage,
     updateExistingChat,
 } from "@/lib/chat-manager";
 import { useLiteRTModelStore } from "@/stores/litert-store";
@@ -259,12 +262,13 @@ function ChatSession({
     const setCurrentChatId = useChatStore((s) => s.setCurrentChatId);
     const refreshChats = useChatStore((s) => s.refreshChats);
 
-    // Resolve template version from the active model's config so the transport
-    // uses the correct Gemma prompt format. Falls back to "gemma4" when the
-    // model ID hasn't been stored yet (e.g. on first render).
+    // Resolve per-model config flags so the transport is kept in sync.
+    // Falls back to safe defaults when the model ID hasn't been stored yet.
     const loadedModelId = useLiteRTModelStore((s) => s.liteRTModelModel);
+    const activeModel = MODELS.find((m) => m.id === loadedModelId);
     const templateVersion: GemmaTemplateVersion =
-        MODELS.find((m) => m.id === loadedModelId)?.chatTemplateVersion ?? "gemma4";
+        activeModel?.chatTemplateVersion ?? "gemma4";
+    const supportsVision: boolean = activeModel?.supportsVision ?? false;
 
     // The transport must be stable — useChat stores it once in a useRef and
     // never re-reads it after mount. Only recreate when the model instance or
@@ -274,12 +278,15 @@ function ChatSession({
         [instance, templateVersion]
     );
 
-    // Keep transport.isReasoningOn in sync with the toggle state.
-    // useEffect runs after every render where isReasoningOn changed, ensuring
-    // the next sendMessage call reads the correct value.
+    // Keep transport flags in sync via mutable properties (same pattern as
+    // isReasoningOn — the transport ref is stable so useEffect is correct).
     useEffect(() => {
         transport.isReasoningOn = isReasoningOn;
     }, [transport, isReasoningOn]);
+
+    useEffect(() => {
+        transport.supportsVision = supportsVision;
+    }, [transport, supportsVision]);
 
     // ── useChat ───────────────────────────────────────────────────────────────
     // `messages`    – UIMessage[] managed by the SDK; updates reactively as
@@ -332,45 +339,86 @@ function ChatSession({
             if (!message.text && !message.files?.length) return;
 
             if (message.files?.length) {
-                toast.success("Files attached", {
-                    description: `${message.files.length} file(s) attached to message`,
+                // Warn about file types the model cannot process.
+                const videoFiles = message.files.filter((f) =>
+                    (f.mediaType ?? "").startsWith("video/")
+                );
+                const unsupportedMime = message.files.filter((f) => {
+                    const m = f.mediaType ?? "";
+                    return (
+                        !m.startsWith("image/") &&
+                        !m.startsWith("audio/") &&
+                        !m.startsWith("video/")
+                    );
                 });
-            }
+                // Images/audio on a text-only model — the attachment shows in the
+                // conversation for reference but the LLM will not analyse it.
+                const visionFiles = message.files.filter((f) => {
+                    const m = f.mediaType ?? "";
+                    return m.startsWith("image/") || m.startsWith("audio/");
+                });
 
-            // Clear stale sources from the previous turn immediately so they
-            // don't linger while retrieval runs for this new turn.
-            setSources([]);
-
-            // ── RAG retrieval ─────────────────────────────────────────────
-            // Only attempt retrieval when there is text to embed. File-only
-            // messages are sent as-is with no RAG augmentation.
-            if (message.text?.trim()) {
-                setIsRetrieving(true);
-                try {
-                    const segments = await retrieveRagContext(message.text);
-                    // Set the context on the transport BEFORE calling sendMessage.
-                    // sendMessages() reads transport.ragContext at the very start
-                    // of its execute callback and resets it to null after use.
-                    transport.ragContext = buildRagContextBlock(segments);
-                    setSources(toSourceItems(segments));
-                } catch {
-                    // retrieveRagContext never throws, but belt-and-suspenders:
-                    // if something slips through, clear context and continue.
-                    transport.ragContext = null;
-                } finally {
-                    setIsRetrieving(false);
+                if (videoFiles.length > 0) {
+                    toast.warning("Video files are not supported", {
+                        description:
+                            "The on-device AI model cannot process video. " +
+                            "Only images and audio (on vision-capable models) are sent to the model.",
+                    });
+                } else if (unsupportedMime.length > 0) {
+                    toast.warning("Some attachments may not be processed", {
+                        description:
+                            `Files of type "${unsupportedMime.map((f) => f.mediaType ?? "unknown").join(", ")}" ` +
+                            "cannot be understood by the model. Only images and audio are supported.",
+                    });
+                } else if (!supportsVision && visionFiles.length > 0) {
+                    // Text-only model: images/audio are displayed but not analysed.
+                    toast.info("Image analysis not available", {
+                        description:
+                            "The currently loaded model does not support images or audio. " +
+                            "Your message will be answered as text only. " +
+                            "Load a vision-capable model variant to enable image analysis.",
+                    });
                 }
             }
 
-            // sendMessage appends the user turn and triggers transport.sendMessages.
-            sendMessage({
-                text: message.text || "",
-                files: message.files,
-            });
+            // Clear stale sources from the previous turn immediately.
+            setSources([]);
 
-            setText("");
+            // ── RAG context via promise ───────────────────────────────────────
+            // We set ragContextPromise on the transport BEFORE calling sendMessage
+            // so the user message appears in the conversation instantly (no delay
+            // while the vector store initialises or retrieves).  The transport's
+            // execute callback awaits the promise, so the LLM prompt is still
+            // augmented with the full RAG context — just asynchronously.
+            if (message.text?.trim()) {
+                let resolveRag!: (ctx: string | null) => void;
+                transport.ragContextPromise = new Promise<string | null>((resolve) => {
+                    resolveRag = resolve;
+                });
+
+                // Add the user message to the conversation immediately.
+                sendMessage({ text: message.text || "", files: message.files });
+                setText("");
+
+                // Retrieve RAG context and resolve the promise the transport is awaiting.
+                setIsRetrieving(true);
+                try {
+                    const segments = await retrieveRagContext(message.text);
+                    resolveRag(buildRagContextBlock(segments));
+                    setSources(toSourceItems(segments));
+                } catch {
+                    resolveRag(null);
+                } finally {
+                    setIsRetrieving(false);
+                }
+            } else {
+                // No text to embed — resolve immediately with no RAG context.
+                transport.ragContextPromise = Promise.resolve(null);
+                sendMessage({ text: message.text || "", files: message.files });
+                setText("");
+            }
         },
-        [sendMessage, transport]
+        [sendMessage, transport, supportsVision]
     );
 
     const handleSuggestionClick = useCallback(
@@ -406,11 +454,16 @@ function ChatSession({
 
         (async () => {
             try {
+                // Blob object URLs are ephemeral and die with the browser tab.
+                // Convert any blob: URLs in file parts to base64 data: URLs
+                // before writing to IndexedDB so attachments survive page reloads.
+                const persistableMessages = await serializeMessagesForStorage(messages);
+
                 if (currentChatIdRef.current) {
-                    await updateExistingChat(currentChatIdRef.current, messages);
+                    await updateExistingChat(currentChatIdRef.current, persistableMessages);
                 } else {
-                    const title = generateChatTitle(messages);
-                    const newId = await createNewChat(messages, title);
+                    const title = generateChatTitle(persistableMessages);
+                    const newId = await createNewChat(persistableMessages, title);
                     currentChatIdRef.current = newId;
                     // Update the browser URL silently — no Next.js navigation,
                     // no component re-render, no flicker.
@@ -471,6 +524,25 @@ function ChatSession({
                                                     <MessageResponse key={partIndex}>
                                                         {part.text}
                                                     </MessageResponse>
+                                                );
+                                            }
+                                            if (part.type === "file") {
+                                                // Render the file attachment inline inside the
+                                                // message bubble.  A synthetic `id` is built from
+                                                // the message id + part index because persisted
+                                                // UIMessage file parts carry no id of their own.
+                                                const filePart = part as FileUIPart;
+                                                const attachmentData: AttachmentData = {
+                                                    ...filePart,
+                                                    id: `${message.id}-${partIndex}`,
+                                                };
+                                                return (
+                                                    <Attachments key={partIndex} variant="inline">
+                                                        <Attachment data={attachmentData}>
+                                                            <AttachmentPreview />
+                                                            <AttachmentInfo />
+                                                        </Attachment>
+                                                    </Attachments>
                                                 );
                                             }
                                             return null;
@@ -544,12 +616,17 @@ function ChatSession({
                         </PromptInputBody>
                         <PromptInputFooter>
                             <PromptInputTools>
+                                {/* Attachment button disabled — gemma-4-E2B-it-web.task does not
+                                    bundle a vision encoder for web/WebGPU. Re-enable (and set
+                                    supportsVision: true in models.ts) once a vision-capable
+                                    .task file is available.
                                 <PromptInputActionMenu>
                                     <PromptInputActionMenuTrigger />
                                     <PromptInputActionMenuContent>
                                         <PromptInputActionAddAttachments />
                                     </PromptInputActionMenuContent>
                                 </PromptInputActionMenu>
+                                */}
                                 <SpeechInput
                                     className="shrink-0"
                                     onTranscriptionChange={handleTranscriptionChange}
