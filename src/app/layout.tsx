@@ -1,17 +1,16 @@
 import type { Metadata } from "next";
-import { Albert_Sans, Noto_Sans_Mono } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { ThemeProvider } from "@/components/ui/theme-provider";
-import { Toaster } from "@/components/ui/sonner";
-import { GoogleAnalytics } from "@next/third-parties/google";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeProvider } from "next-themes";
 
-const albertSans = Albert_Sans({
-  variable: "--font-albert-sans",
+const geistSans = Geist({
+  variable: "--font-geist-sans",
   subsets: ["latin"],
 });
 
-const notoMono = Noto_Sans_Mono({
-  variable: "--font-noto-mono",
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
   subsets: ["latin"],
 });
 
@@ -50,7 +49,7 @@ export const metadata: Metadata = {
     locale: "en_US",
     images: [
       {
-        url: "/buddhi-ai-screenshot.png",
+        url: "images/buddhi-ai-screenshot.png",
         width: 1200,
         height: 630,
         alt: "Buddhi AI - Private Client-Side AI Tools",
@@ -61,7 +60,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Buddhi AI - Private Client-Side AI Tools",
     description: "Powerful AI tools that run directly in your browser with complete privacy.",
-    images: ["/buddhi-ai-screenshot.png"],
+    images: ["images/buddhi-ai-screenshot.png"],
     creator: "@buddhilive",
   },
   robots: {
@@ -85,10 +84,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#34b45a" />
+        <meta name="theme-color" content="#e05d38" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="format-detection" content="telephone=no" />
@@ -100,18 +103,16 @@ export default function RootLayout({
           content="A/tiwlx81CZF7NW3SkPsCtJHCKrsrcyp+94rpUqctAbRIR8ndcACedO1WapWH+9PYFYa15SRP82NLm1hs8eGWAMAAABxeyJvcmlnaW4iOiJodHRwOi8vbG9jYWxob3N0OjMwMDAiLCJmZWF0dXJlIjoiQUlQcm9tcHRBUElNdWx0aW1vZGFsSW5wdXQiLCJleHBpcnkiOjE3NzQzMTA0MDAsImlzVGhpcmRQYXJ0eSI6dHJ1ZX0="
         />
       </head>
-      <body className={`${albertSans.variable} ${notoMono.variable} antialiased`}>
+      <body className={geistMono.className + " min-h-full flex flex-col"} suppressHydrationWarning>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
           enableSystem
           disableTransitionOnChange
         >
-          {children}
-          <Toaster position="top-right" closeButton richColors />
+          <TooltipProvider>{children}</TooltipProvider>
         </ThemeProvider>
       </body>
-      <GoogleAnalytics gaId="G-N7X9PSKK0Y" />
     </html>
   );
 }

@@ -1,501 +1,571 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  FileText,
-  Trash2,
-  Upload,
-  Loader2,
-  CheckCircle2,
-  XCircle,
-} from "lucide-react";
-import { DocumentItem, WorkerMessage, WorkerRequest } from "@/types/document-types";
-import { extractTextFromPDF, extractTextFromTXT } from "@/lib/text-embeddings";
-import {
-  deleteDocumentEmbeddings,
-  getDocumentList,
-  initializeVectorDB,
-} from "@/lib/llamaindex-provider";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { documentsApi, reconcileInterruptedDocuments } from "@/lib/documents";
+import { useDocumentStore } from "@/stores/document-store";
 import { toast } from "sonner";
+import {
+    AlertCircleIcon,
+    CheckCircleIcon,
+    DatabaseIcon,
+    FileTextIcon,
+    RefreshCcwIcon,
+    Trash2Icon,
+    UploadCloudIcon,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { DocumentInfo } from "@/types/documents";
 
-interface DocumentManagerProps {
-  chatId?: string;
-  onChatCreated?: (chatId: string) => void;
+// ─── Status badge ─────────────────────────────────────────────────────────────
+
+function StatusBadge({ status }: { status: DocumentInfo["status"] }) {
+    switch (status) {
+        case "completed":
+            return (
+                <Badge className="bg-green-600 text-white shrink-0 gap-1">
+                    <CheckCircleIcon className="h-3 w-3" />
+                    Ready
+                </Badge>
+            );
+        case "processing":
+            return (
+                <Badge variant="secondary" className="animate-pulse shrink-0">
+                    Processing
+                </Badge>
+            );
+        case "pending":
+            return (
+                <Badge variant="outline" className="animate-pulse shrink-0">
+                    Queued
+                </Badge>
+            );
+        case "failed":
+            return (
+                <Badge variant="destructive" className="shrink-0">
+                    Failed
+                </Badge>
+            );
+        default:
+            return <Badge variant="outline" className="shrink-0">Unknown</Badge>;
+    }
 }
 
-export default function DocumentManager({
-  chatId,
-  onChatCreated,
-}: DocumentManagerProps) {
-  const [documents, setDocuments] = useState<DocumentItem[]>([]);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [documentToDelete, setDocumentToDelete] = useState<string | null>(null);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const workerRef = useRef<Worker | null>(null);
+// ─── Step description text ────────────────────────────────────────────────────
 
-  // Spin up the embedding worker once on mount; terminate on unmount
-  useEffect(() => {
-    workerRef.current = new Worker(
-      new URL("../../workers/embedding-worker.ts", import.meta.url)
+function stepText(doc: DocumentInfo): string {
+    switch (doc.status) {
+        case "pending":
+            return "Queued for processing…";
+        case "processing":
+            return "Chunking & generating embeddings…";
+        case "completed":
+            return `Ready — ${doc.chunk_count ?? 0} chunk${doc.chunk_count === 1 ? "" : "s"} indexed`;
+        case "failed":
+            return doc.error_msg ? `Failed: ${doc.error_msg}` : "Processing failed";
+        default:
+            return "";
+    }
+}
+
+// ─── Active upload row (Zustand-driven, no SSE) ───────────────────────────────
+
+interface UploadRowProps {
+    doc: DocumentInfo;
+    onUpdate: (doc: DocumentInfo) => void;
+}
+
+function UploadRow({ doc, onUpdate }: UploadRowProps) {
+    const onUpdateRef = useRef(onUpdate);
+    useEffect(() => {
+        onUpdateRef.current = onUpdate;
+    });
+
+    // Subscribe to live processing state from Zustand store
+    const processingState = useDocumentStore(
+        useCallback((s) => s.docs[doc.id], [doc.id])
     );
-    return () => {
-      workerRef.current?.terminate();
-      workerRef.current = null;
-    };
-  }, []);
 
-  // Check if any document is processing
-  const isProcessing = documents.some(
-    (doc) => doc.status !== "ready" && doc.status !== "error"
-  );
+    // Derive live status: Zustand is the source of truth while processing
+    const liveStatus: DocumentInfo["status"] =
+        processingState?.status ?? doc.status;
 
-  // Load existing documents when chatId changes or dialog opens
-  useEffect(() => {
-    if (chatId) {
-      loadDocuments();
-    }
-  }, [chatId]);
+    // When processing reaches a terminal state, fetch the final PGlite record
+    const prevStatusRef = useRef(liveStatus);
+    useEffect(() => {
+        const prev = prevStatusRef.current;
+        prevStatusRef.current = liveStatus;
 
-  const loadDocuments = async () => {
-    if (!chatId) return;
+        if (
+            (liveStatus === "completed" || liveStatus === "failed") &&
+            prev !== liveStatus
+        ) {
+            documentsApi
+                .getDocument(doc.id)
+                .then(onUpdateRef.current)
+                .catch(() => {
+                    // Fallback: synthesize the doc from store state
+                    onUpdateRef.current({
+                        ...doc,
+                        status: liveStatus,
+                        chunk_count: processingState?.chunkCount ?? null,
+                        error_msg: processingState?.errorMsg ?? null,
+                    });
+                });
+        }
+    }, [liveStatus, doc, processingState]);
 
-    try {
-      // Initialize the database first to ensure schema exists
-      await initializeVectorDB();
+    const isActive = liveStatus === "pending" || liveStatus === "processing";
+    const overallPct = processingState?.overallPct ?? (liveStatus === "completed" ? 100 : 0);
 
-      const docList = await getDocumentList(chatId);
-      const loadedDocs: DocumentItem[] = docList.map((doc) => ({
-        id: doc.documentId,
-        fileName: doc.fileName,
-        status: "ready",
-        progress: 100,
-      }));
-      setDocuments(loadedDocs);
-    } catch (error) {
-      console.error("Error loading documents:", error);
-      toast.error("Failed to load documents");
-    }
-  };
+    // Build descriptive phase text
+    const phaseLabel = processingState?.phase
+        ? `${processingState.phase.charAt(0).toUpperCase()}${processingState.phase.slice(1)}… (${overallPct}%)`
+        : stepText({ ...doc, status: liveStatus });
 
-  // Wraps worker postMessage in a Promise, forwarding progress messages via onProgress.
-  // Filters by documentId so sequential file processing stays isolated.
-  const processWithWorker = (
-    request: WorkerRequest,
-    onProgress: (msg: WorkerMessage) => void
-  ): Promise<void> =>
-    new Promise((resolve, reject) => {
-      const worker = workerRef.current!;
+    return (
+        <div
+            className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${isActive ? "bg-muted/40" : ""
+                }`}
+        >
+            <FileTextIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center gap-2">
+                    <span className="truncate font-medium">{doc.original_name}</span>
+                    <StatusBadge status={liveStatus} />
+                </div>
+                <p
+                    className={`text-xs ${liveStatus === "failed" ? "text-destructive" : "text-muted-foreground"
+                        }`}
+                >
+                    {phaseLabel}
+                </p>
+                {isActive && <Progress value={overallPct} className="h-1" />}
+            </div>
+        </div>
+    );
+}
 
-      const onMessage = (e: MessageEvent<WorkerMessage>) => {
-        const msg = e.data;
-        if (msg.documentId !== request.documentId) return;
-        onProgress(msg);
-        if (msg.type === "complete") { cleanup(); resolve(); }
-        else if (msg.type === "error") { cleanup(); reject(new Error(msg.error ?? "Worker error")); }
-      };
-      const onError = (e: ErrorEvent) => { cleanup(); reject(new Error(e.message)); };
-      const cleanup = () => {
-        worker.removeEventListener("message", onMessage);
-        worker.removeEventListener("error", onError);
-      };
+// ─── Upload tab ───────────────────────────────────────────────────────────────
 
-      worker.addEventListener("message", onMessage);
-      worker.addEventListener("error", onError);
-      worker.postMessage(request);
-    });
+interface UploadTabProps {
+    onDocumentReady: (doc: DocumentInfo) => void;
+}
 
-  const handleFileSelect = async (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
+function UploadTab({ onDocumentReady }: UploadTabProps) {
+    const [uploads, setUploads] = useState<DocumentInfo[]>([]);
+    const [isDragOver, setIsDragOver] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+    const inputRef = useRef<HTMLInputElement>(null);
 
-    // Create a new chat session if chatId doesn't exist
-    let activeChatId = chatId;
-    let isNewChat = false;
-    if (!activeChatId) {
-      activeChatId = Date.now().toString();
-      isNewChat = true;
-      // Don't call onChatCreated yet - wait until documents are processed
-    }
+    const activeCount = useDocumentStore((s) => s.activeCount);
+    const atCapacity = activeCount >= 5;
 
-    // Validate file types
-    const validFiles: File[] = [];
-    const invalidFiles: string[] = [];
+    const handleUpdate = useCallback(
+        (updated: DocumentInfo) => {
+            setUploads((prev) =>
+                prev.map((d) => (d.id === updated.id ? updated : d))
+            );
+            if (updated.status === "completed") {
+                onDocumentReady(updated);
+            }
+        },
+        [onDocumentReady]
+    );
 
-    Array.from(files).forEach((file) => {
-      const extension = file.name.split(".").pop()?.toLowerCase();
-      if (extension === "pdf" || extension === "txt") {
-        validFiles.push(file);
-      } else {
-        invalidFiles.push(file.name);
-      }
-    });
+    const uploadFiles = async (files: File[]) => {
+        if (!files.length) return;
+        setIsUploading(true);
 
-    if (invalidFiles.length > 0) {
-      toast.error(
-        `Invalid file types: ${invalidFiles.join(
-          ", "
-        )}. Only PDF and TXT files are supported.`
-      );
-    }
+        for (const file of files) {
+            // Check capacity before each file
+            const currentActive = useDocumentStore.getState().activeCount;
+            if (currentActive >= 5) {
+                toast.warning(
+                    `Processing queue is full (5/5 slots in use). "${file.name}" was skipped. Wait for a slot to free up.`
+                );
+                continue;
+            }
 
-    if (validFiles.length === 0) return;
-
-    // Initialize database before processing files
-    try {
-      await initializeVectorDB();
-    } catch (error) {
-      console.error("Error initializing database:", error);
-      toast.error("Failed to initialize database");
-      return;
-    }
-
-    let allSuccessful = true;
-
-    // Process each file
-    for (const file of validFiles) {
-      const documentId = `doc_${Date.now()}_${Math.random()
-        .toString(36)
-        .substr(2, 9)}`;
-
-      // Add document to list with uploading status
-      const newDoc: DocumentItem = {
-        id: documentId,
-        fileName: file.name,
-        status: "uploading",
-        progress: 0,
-        fileSize: file.size,
-      };
-
-      setDocuments((prev) => [...prev, newDoc]);
-
-      try {
-        // Text extraction must run on the main thread — pdfjs-dist is loaded
-        // from CDN via a webpackIgnore dynamic import and cannot resolve inside a worker.
-        handleWorkerMessage(documentId, {
-          type: "progress",
-          documentId,
-          progress: { stage: "reading", progress: 0, total: 100, documentId },
-        });
-
-        const ext = file.name.split(".").pop()?.toLowerCase();
-        const text =
-          ext === "pdf"
-            ? await extractTextFromPDF(file)
-            : await extractTextFromTXT(file);
-
-        if (!text?.trim()) {
-          throw new Error(
-            "File contains no extractable text. If this is a scanned document, text extraction is not supported — please use a text-based PDF."
-          );
+            try {
+                const doc = await documentsApi.uploadDocument(file);
+                setUploads((prev) => [doc, ...prev]);
+                toast.success(`"${file.name}" uploaded — processing started`);
+            } catch (err: unknown) {
+                toast.error((err as Error).message || `Failed to upload ${file.name}`);
+            }
         }
 
-        handleWorkerMessage(documentId, {
-          type: "progress",
-          documentId,
-          progress: { stage: "reading", progress: 100, total: 100, documentId },
+        setIsUploading(false);
+        if (inputRef.current) inputRef.current.value = "";
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files ?? []);
+        uploadFiles(files);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragOver(false);
+        if (atCapacity) {
+            toast.warning("Processing queue is full (5/5). Wait for documents to finish before uploading more.");
+            return;
+        }
+        const files = Array.from(e.dataTransfer.files);
+        uploadFiles(files);
+    };
+
+    return (
+        <div className="space-y-6">
+            {/* Drop zone */}
+            <label
+                className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-12 text-center transition-colors ${atCapacity
+                    ? "cursor-not-allowed border-muted-foreground/15 opacity-50"
+                    : isDragOver
+                        ? "border-primary bg-primary/5"
+                        : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"
+                    }`}
+                onDragOver={(e) => {
+                    e.preventDefault();
+                    if (!atCapacity) setIsDragOver(true);
+                }}
+                onDragLeave={() => setIsDragOver(false)}
+                onDrop={handleDrop}
+            >
+                <UploadCloudIcon className="h-10 w-10 text-muted-foreground" />
+                <div className="space-y-1">
+                    <p className="font-medium">
+                        {atCapacity
+                            ? "Queue full — wait for a slot to free up"
+                            : isDragOver
+                                ? "Drop files here"
+                                : "Drag & drop files or click to browse"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                        PDF, TXT, MD — up to 25 MB each
+                    </p>
+                    {activeCount > 0 && (
+                        <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                            {activeCount}/5 processing slots in use
+                        </p>
+                    )}
+                </div>
+                <input
+                    ref={inputRef}
+                    type="file"
+                    accept=".pdf,.txt,.md"
+                    multiple
+                    className="sr-only"
+                    onChange={handleFileChange}
+                    disabled={atCapacity}
+                />
+            </label>
+
+            <Button
+                className="w-full"
+                onClick={() => inputRef.current?.click()}
+                disabled={isUploading || atCapacity}
+            >
+                {isUploading ? (
+                    <RefreshCcwIcon className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                    <UploadCloudIcon className="mr-2 h-4 w-4" />
+                )}
+                {isUploading
+                    ? "Uploading…"
+                    : atCapacity
+                        ? "Queue Full (5/5)"
+                        : "Upload Files"}
+            </Button>
+
+            {/* Active uploads this session */}
+            {uploads.length > 0 && (
+                <div className="space-y-2">
+                    <h3 className="text-sm font-medium text-muted-foreground">
+                        This session
+                    </h3>
+                    <div className="space-y-2">
+                        {uploads.map((doc) => (
+                            <UploadRow key={doc.id} doc={doc} onUpdate={handleUpdate} />
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ─── Document Collection tab ───────────────────────────────────────────────────────
+
+function DocumentCollectionTab() {
+    const [docs, setDocs] = useState<DocumentInfo[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [backendError, setBackendError] = useState<string | null>(null);
+    const [deleteTarget, setDeleteTarget] = useState<DocumentInfo | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    const fetchDocs = useCallback(async () => {
+        try {
+            setLoading(true);
+            setBackendError(null);
+            const data = await documentsApi.listDocuments();
+            setDocs(data);
+        } catch (err: unknown) {
+            const msg = (err as Error).message || "Failed to load documents";
+            setBackendError(msg);
+            toast.error(msg);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    // On first mount: reconcile any interrupted docs then load the list
+    useEffect(() => {
+        (async () => {
+            await reconcileInterruptedDocuments();
+            await fetchDocs();
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const handleDelete = async () => {
+        if (!deleteTarget) return;
+        try {
+            setIsDeleting(true);
+            await documentsApi.deleteDocument(deleteTarget.id);
+            setDocs((prev) => prev.filter((d) => d.id !== deleteTarget.id));
+            toast.success(
+                `"${deleteTarget.original_name}" removed from Document Collection`
+            );
+            setDeleteTarget(null);
+        } catch (err: unknown) {
+            toast.error((err as Error).message || "Failed to delete document");
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
+    const formatDate = (iso: string) =>
+        new Date(iso).toLocaleDateString(undefined, {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
         });
 
-        // Chunking + embedding offloaded to the worker thread to keep the UI responsive.
-        await processWithWorker(
-          { type: "process", documentId, fileName: file.name, text, chatId: activeChatId },
-          (msg) => handleWorkerMessage(documentId, msg)
-        );
+    return (
+        <div className="space-y-4">
+            <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                    {docs.length} document{docs.length !== 1 ? "s" : ""} in Document Collection
+                </p>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchDocs}
+                    disabled={loading}
+                >
+                    <RefreshCcwIcon
+                        className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`}
+                    />
+                    Refresh
+                </Button>
+            </div>
 
-        // Mark as ready
-        setDocuments((prev) =>
-          prev.map((doc) =>
-            doc.id === documentId
-              ? { ...doc, status: "ready", progress: 100 }
-              : doc
-          )
-        );
-
-        toast.success(`Successfully processed ${file.name}`);
-      } catch (error) {
-        console.error(`Error processing ${file.name}:`, error);
-        allSuccessful = false;
-        setDocuments((prev) =>
-          prev.map((doc) =>
-            doc.id === documentId
-              ? {
-                  ...doc,
-                  status: "error",
-                  error:
-                    error instanceof Error
-                      ? error.message
-                      : "Processing failed",
-                }
-              : doc
-          )
-        );
-        toast.error(`Failed to process ${file.name}`);
-      }
-    }
-
-    // If this was a new chat and all documents were processed successfully, create the chat now
-    if (isNewChat && allSuccessful && onChatCreated) {
-      onChatCreated(activeChatId);
-    }
-
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
-
-  const handleWorkerMessage = (documentId: string, message: WorkerMessage) => {
-    if (message.type === "progress" && message.progress) {
-      const { stage, progress, total } = message.progress;
-
-      let status: DocumentItem["status"] = "uploading";
-      let progressPercent = 0;
-
-      switch (stage) {
-        case "reading":
-          status = "uploading";
-          progressPercent = (progress / total) * 25;
-          break;
-        case "chunking":
-          status = "chunking";
-          progressPercent = 25 + (progress / total) * 25;
-          break;
-        case "embedding":
-          status = "embedding";
-          progressPercent = 50 + (progress / total) * 40;
-          break;
-        case "saving":
-          status = "saving";
-          progressPercent = 90 + (progress / total) * 10;
-          break;
-      }
-
-      setDocuments((prev) =>
-        prev.map((doc) =>
-          doc.id === documentId
-            ? { ...doc, status, progress: Math.round(progressPercent) }
-            : doc
-        )
-      );
-    }
-  };
-
-  const handleDeleteClick = (docId: string) => {
-    setDocumentToDelete(docId);
-    setDeleteDialogOpen(true);
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!documentToDelete) return;
-
-    try {
-      await deleteDocumentEmbeddings(documentToDelete);
-      setDocuments((prev) => prev.filter((doc) => doc.id !== documentToDelete));
-      toast.success("Document deleted successfully");
-    } catch (error) {
-      console.error("Error deleting document:", error);
-      toast.error("Failed to delete document");
-    } finally {
-      setDeleteDialogOpen(false);
-      setDocumentToDelete(null);
-    }
-  };
-
-  const handleCancelDelete = () => {
-    setDeleteDialogOpen(false);
-    setDocumentToDelete(null);
-  };
-
-  const handleDialogOpenChange = (open: boolean) => {
-    // Prevent closing if processing
-    if (!open && isProcessing) {
-      toast.warning("Please wait for document processing to complete");
-      return;
-    }
-    setIsDialogOpen(open);
-  };
-
-  const getStatusIcon = (status: DocumentItem["status"]) => {
-    switch (status) {
-      case "ready":
-        return (
-          <CheckCircle2 className="h-4 w-4 text-green-500 dark:text-green-400" />
-        );
-      case "error":
-        return <XCircle className="h-4 w-4 text-destructive" />;
-      default:
-        return <Loader2 className="h-4 w-4 animate-spin text-primary" />;
-    }
-  };
-
-  const getStatusText = (doc: DocumentItem) => {
-    switch (doc.status) {
-      case "uploading":
-        return "Reading file...";
-      case "chunking":
-        return "Chunking text...";
-      case "embedding":
-        return "Generating embeddings...";
-      case "saving":
-        return "Saving to database...";
-      case "ready":
-        return "Ready";
-      case "error":
-        return doc.error || "Error";
-    }
-  };
-
-  return (
-    <>
-      <Dialog open={isDialogOpen} onOpenChange={handleDialogOpenChange}>
-        <DialogTrigger asChild>
-          <Button variant="outline" className="relative">
-            <FileText className="mr-2 h-4 w-4" />
-            {documents.length > 0 ? "Manage" : "Add"}
-            {documents.filter((d) => d.status === "ready").length > 0 && (
-              <Badge
-                variant="secondary"
-                className="ml-2 h-5 min-w-5 px-1 text-xs bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
-              >
-                {documents.filter((d) => d.status === "ready").length}
-              </Badge>
+            {backendError && (
+                <div className="flex items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                    <AlertCircleIcon className="h-4 w-4 shrink-0" />
+                    <span>Failed to load Document Collection: {backendError}</span>
+                </div>
             )}
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle className="text-foreground dark:text-foreground">
-              Document Manager
-            </DialogTitle>
-            <DialogDescription className="text-muted-foreground dark:text-muted-foreground">
-              Upload and manage your documents (PDF, TXT)
-            </DialogDescription>
-          </DialogHeader>
 
-          {/* Add Documents Button */}
-          <div className="py-2">
-            <Button
-              variant="default"
-              className="w-full bg-primary text-primary-foreground hover:bg-primary/90 dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              Add Documents
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept=".pdf,.txt"
-              className="hidden"
-              onChange={handleFileSelect}
-              aria-label="Upload documents"
-            />
-            {!chatId && (
-              <p className="mt-2 text-xs text-muted-foreground text-center">
-                Start a chat to upload documents
-              </p>
-            )}
-          </div>
-
-          {/* Document List */}
-          <div className="border rounded-md bg-background dark:bg-background/50 border-border dark:border-border">
-            <ScrollArea className="h-[300px] w-full">
-              <div className="p-2">
-                {documents.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-[280px] text-muted-foreground dark:text-muted-foreground">
-                    <FileText className="h-12 w-12 mb-2 opacity-50" />
-                    <p className="text-sm">No documents uploaded</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {documents.map((doc) => (
-                      <div
-                        key={doc.id}
-                        className="flex flex-col p-3 rounded-md hover:bg-accent dark:hover:bg-accent/50 transition-colors border border-transparent hover:border-border dark:hover:border-border"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3 flex-1 min-w-0">
-                            {getStatusIcon(doc.status)}
-                            <div className="flex-1 min-w-0">
-                              <span className="text-sm font-medium text-foreground dark:text-foreground truncate block">
-                                {doc.fileName}
-                              </span>
-                              <span className="text-xs text-muted-foreground dark:text-muted-foreground">
-                                {getStatusText(doc)}
-                              </span>
-                            </div>
-                          </div>
-                          {doc.status === "ready" && (
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              onClick={() => handleDeleteClick(doc.id)}
-                              className="text-destructive hover:text-destructive hover:bg-destructive/10 dark:text-destructive dark:hover:text-destructive dark:hover:bg-destructive/20"
-                              aria-label={`Delete ${doc.fileName}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                        {doc.status !== "ready" && doc.status !== "error" && (
-                          <Progress value={doc.progress} className="mt-2 h-1" />
-                        )}
-                      </div>
+            {loading ? (
+                <div className="space-y-2">
+                    {[1, 2, 3].map((i) => (
+                        <div key={i} className="h-12 animate-pulse rounded-lg bg-muted" />
                     ))}
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
-          </div>
-        </DialogContent>
-      </Dialog>
+                </div>
+            ) : docs.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-muted-foreground/20 py-16 text-center">
+                    <DatabaseIcon className="h-10 w-10 text-muted-foreground/40" />
+                    <div className="space-y-1">
+                        <p className="font-medium text-muted-foreground">
+                            No documents yet
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            Upload files in the Upload tab to populate the Document Collection.
+                        </p>
+                    </div>
+                </div>
+            ) : (
+                <div className="rounded-lg border">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Name</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead className="text-right">Chunks</TableHead>
+                                <TableHead>Uploaded</TableHead>
+                                <TableHead className="w-16" />
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {docs.map((doc) => (
+                                <TableRow key={doc.id}>
+                                    <TableCell className="max-w-[240px]">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <FileTextIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                            <span className="truncate text-sm font-medium">
+                                                {doc.original_name}
+                                            </span>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell>
+                                        <StatusBadge status={doc.status} />
+                                    </TableCell>
+                                    <TableCell className="text-right text-sm tabular-nums">
+                                        {doc.chunk_count ?? "—"}
+                                    </TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">
+                                        {formatDate(doc.created_at)}
+                                    </TableCell>
+                                    <TableCell>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                            onClick={() => setDeleteTarget(doc)}
+                                        >
+                                            <Trash2Icon className="h-4 w-4" />
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
+            )}
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle className="text-foreground dark:text-foreground">
-              Confirm Deletion
-            </DialogTitle>
-            <DialogDescription className="text-muted-foreground dark:text-muted-foreground">
-              Are you sure you want to delete this document? This action cannot
-              be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={handleCancelDelete}
-              className="bg-background dark:bg-input/30 border-border dark:border-input hover:bg-accent dark:hover:bg-input/50"
+            {/* Delete confirmation */}
+            <Dialog
+                open={!!deleteTarget}
+                onOpenChange={(open) => !open && setDeleteTarget(null)}
             >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleConfirmDelete}
-              className="bg-destructive text-white hover:bg-destructive/90 dark:bg-destructive/60"
-            >
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Remove document?</DialogTitle>
+                        <DialogDescription>
+                            This will permanently remove{" "}
+                            <span className="font-medium">{deleteTarget?.original_name}</span>{" "}
+                            and all its indexed chunks from the Document Collection. The original
+                            file on disk is kept for audit purposes.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setDeleteTarget(null)}
+                            disabled={isDeleting}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={handleDelete}
+                            disabled={isDeleting}
+                        >
+                            {isDeleting ? (
+                                <RefreshCcwIcon className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                                <Trash2Icon className="mr-2 h-4 w-4" />
+                            )}
+                            Remove
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </div>
+    );
+}
+
+// ─── Root view ────────────────────────────────────────────────────────────────
+
+export function DocumentsView() {
+    const activeCount = useDocumentStore((s) => s.activeCount);
+
+    const handleDocumentReady = useCallback((doc: DocumentInfo) => {
+        toast.success(
+            `"${doc.original_name}" is ready — ${doc.chunk_count} chunks indexed`
+        );
+    }, []);
+
+    // Warn user before tab close / refresh while processing is active
+    useEffect(() => {
+        if (activeCount === 0) return;
+
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            // Modern browsers show a generic dialog; preventDefault triggers it
+            e.preventDefault();
+        };
+
+        window.addEventListener("beforeunload", handleBeforeUnload);
+        return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+    }, [activeCount]);
+
+    return (
+        <div className="flex flex-col gap-6 p-6">
+            <div>
+                <h1 className="text-3xl font-bold tracking-tight">Document Collection</h1>
+                <p className="text-muted-foreground">
+                    Upload documents for RAG retrieval and manage the Document Collection.
+                </p>
+            </div>
+
+            {/* Processing alert banner — persists across tab navigation */}
+            {activeCount > 0 && (
+                <Alert className="border-amber-500/50 bg-amber-500/10 text-amber-600 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-400">
+                    <AlertCircleIcon className="h-4 w-4 !text-amber-600 dark:!text-amber-400" />
+                    <AlertTitle>Processing in Progress</AlertTitle>
+                    <AlertDescription>
+                        {activeCount} document{activeCount !== 1 ? "s are" : " is"} being
+                        processed. Please do not close or refresh this tab — it will
+                        interrupt the pipeline. Navigation within the app is fine.
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            <Tabs defaultValue="knowledge-base" className="w-full">
+                <TabsList className="grid w-full max-w-sm grid-cols-2">
+                    <TabsTrigger value="knowledge-base">Document Collection</TabsTrigger>
+                    <TabsTrigger value="upload">Upload</TabsTrigger>
+                </TabsList>
+                <TabsContent value="knowledge-base" className="mt-6">
+                    <DocumentCollectionTab />
+                </TabsContent>
+
+                <TabsContent value="upload" className="mt-6">
+                    <UploadTab onDocumentReady={handleDocumentReady} />
+                </TabsContent>
+            </Tabs>
+        </div>
+    );
 }
