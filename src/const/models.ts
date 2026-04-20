@@ -4,7 +4,7 @@ export interface ModelConfig {
     id: string;
     name: string;
     description: string;
-    type: "language" | "embedding";
+    type: "language" | "embedding" | "translator";
     supportsWorker?: boolean;
     device?: "webgpu" | "wasm";
     modelFile: string;
@@ -53,5 +53,15 @@ export const MODELS: ModelConfig[] = [
         device: "webgpu",
         supportsWorker: true,
         modelFile: "embeddinggemma-300M_seq2048_mixed-precision.tflite",
+    },
+    {
+        id: "litert-community/TranslateGemma-4B-IT",
+        name: "Translate Gemma 4B-IT",
+        description: "Translation model supporting 56 languages. Powered by Google's TranslateGemma, built on Gemma 3 architecture.",
+        type: "translator",
+        device: "webgpu",
+        supportsWorker: true,
+        modelFile: "translategemma-4b-it-int8-web.task",
+        // TranslateGemma uses a dedicated prompt format — see src/lib/translate-gemma.ts
     },
 ];

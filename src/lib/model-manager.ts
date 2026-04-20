@@ -22,7 +22,7 @@ export interface ModelDownloadRequest {
 export interface ModelInfo {
     id: string;
     name: string;
-    type: "language" | "embedding";
+    type: "language" | "embedding" | "translator";
     status: "not_installed" | "downloading" | "completed" | "failed" | "unavailable";
     progress: number;
     error?: string;

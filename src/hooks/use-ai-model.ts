@@ -24,6 +24,9 @@ export function useModelEngine() {
         if (liteRTModelInstance) return;
         if (initializingRef.current) return;
 
+        // Only initialise "language" type models for the chat engine.
+        // "translator" type models (like TranslateGemma) have their own engine
+        // in use-translate-engine.ts and must never be loaded here.
         const completedModel = MODELS.find(
             (m) => m.type === "language" && models[m.id]?.status === "completed"
         );
