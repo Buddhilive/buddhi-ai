@@ -4,7 +4,6 @@ import {
     Command,
     FileText,
     Sparkles,
-    Wand2,
 } from "lucide-react";
 
 export const SIDEBAR_DATA = {
@@ -27,11 +26,6 @@ export const SIDEBAR_DATA = {
             title: "New Chat",
             url: "/chat",
             icon: Sparkles,
-        },
-        {
-            title: "Prompt Builder",
-            url: "/prompt-builder",
-            icon: Wand2,
         },
         {
             title: "Documents",

@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import { FilesetResolver, LlmInference } from "@mediapipe/tasks-genai";
 import { useLiteRTModelStore } from "@/stores/litert-store";
-export { useLiteRTModelStore };
 import { useModelStore } from "@/stores/model-store";
 import { MODELS } from "@/const/models";
 import { getModelObjectURL } from "@/lib/model-manager";

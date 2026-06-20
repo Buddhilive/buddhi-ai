@@ -41,7 +41,6 @@ export function useNavigation(): NavigationState {
             "/chat": "Ask Buddhi AI",
             "/documents": "Documents",
             "/models": "Models",
-    "/prompt-builder": "Prompt Builder",
         };
 
         // Handle dynamic routes and specific cases
