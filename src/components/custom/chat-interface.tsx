@@ -48,6 +48,19 @@ import {
     ReasoningContent,
     ReasoningTrigger,
 } from "@/components/ai-elements/reasoning";
+import {
+    ModelSelector,
+    ModelSelectorContent,
+    ModelSelectorEmpty,
+    ModelSelectorGroup,
+    ModelSelectorInput,
+    ModelSelectorItem,
+    ModelSelectorList,
+    ModelSelectorLogo,
+    ModelSelectorLogoGroup,
+    ModelSelectorName,
+    ModelSelectorTrigger,
+} from "@/components/ai-elements/model-selector";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import {
     PromptInput,
@@ -94,7 +107,7 @@ import {
     ContextContentHeader,
     ContextTrigger,
 } from "@/components/ai-elements/context";
-import { SYSTEM_PROMPT } from "@/const/system-prompt";
+import { DEFAULT_SYSTEM_PROMPT, PROMPT_BUILDER_SP } from "@/const/system-prompt";
 import { useChat } from "@ai-sdk/react";
 import type { LlmInference } from "@mediapipe/tasks-genai";
 import type { FileUIPart } from "ai";
@@ -123,7 +136,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Shimmer } from "../ai-elements/shimmer";
 
@@ -140,6 +153,25 @@ const suggestions = [
     "How to optimize database queries?",
     "What is the difference between SQL and NoSQL?",
     "Explain cloud computing basics",
+];
+
+const models = [
+    {
+        chef: "Default",
+        chefSlug: "default",
+        id: "default",
+        name: "Default",
+        providers: ["buddhi-ai"],
+        template: DEFAULT_SYSTEM_PROMPT
+    },
+    {
+        chef: "Prompt Builder",
+        chefSlug: "deepthinker",
+        id: "deepthinker",
+        name: "DeepThinker",
+        providers: ["buddhi-ai"],
+        template: PROMPT_BUILDER_SP
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -269,6 +301,19 @@ function ChatSession({
 }) {
     const [text, setText] = useState<string>("");
     const [isReasoningOn, setIsReasoningOn] = useState<boolean>(false);
+
+    /* Prompt Template Selection */
+    const [open, setOpen] = useState(false);
+    const [selectedSystemPrompt, setSelectedSystemPrompt] = useState<string>("Default");
+
+    const handleModelSelect = useCallback((id: string) => {
+        setSelectedSystemPrompt(id);
+        setOpen(false);
+    }, []);
+
+    const selectedSystemPromptData = models.find((model) => model.id === selectedSystemPrompt);
+    const chefs = [...new Set(models.map((model) => model.chef))];
+    const SYSTEM_PROMPT = selectedSystemPromptData?.template || DEFAULT_SYSTEM_PROMPT;
 
     // ── MessageActions state ──────────────────────────────────────────────────
     // `editingMessageId` — ID of the user message currently in edit mode (null = none).
@@ -1094,6 +1139,40 @@ function ChatSession({
                                     size="icon-sm"
                                     variant="ghost"
                                 />
+                                {/* Prompt Template Selector */}
+                                <ModelSelector onOpenChange={setOpen} open={open}>
+                                    <ModelSelectorTrigger asChild>
+                                        <Button className="w-[200px] justify-between" variant="outline">
+                                            {selectedSystemPromptData?.chefSlug && (
+                                                <ModelSelectorLogo provider={selectedSystemPromptData.chefSlug} />
+                                            )}
+                                            {selectedSystemPromptData?.name && (
+                                                <ModelSelectorName>{selectedSystemPromptData.name}</ModelSelectorName>
+                                            )}
+                                        </Button>
+                                    </ModelSelectorTrigger>
+                                    <ModelSelectorContent>
+                                        <ModelSelectorInput placeholder="Search models..." />
+                                        <ModelSelectorList>
+                                            <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
+                                            {chefs.map((chef) => (
+                                                <ModelSelectorGroup heading={chef} key={chef}>
+                                                    {models
+                                                        .filter((model) => model.chef === chef)
+                                                        .map((model) => (
+                                                            <ModelItem
+                                                                key={model.id}
+                                                                model={model}
+                                                                onSelect={handleModelSelect}
+                                                                selectedModel={selectedSystemPrompt}
+                                                            />
+                                                        ))}
+                                                </ModelSelectorGroup>
+                                            ))}
+                                        </ModelSelectorList>
+                                    </ModelSelectorContent>
+                                </ModelSelector>
+                                {/* Reasoning Switch */}
                                 <PromptInputButton
                                     onClick={toggleReasoning}
                                     variant={isReasoningOn ? "default" : "ghost"}
@@ -1184,3 +1263,35 @@ export function ChatInterface() {
     // ensuring each ChatSession starts with a clean state and loads its own data.
     return <ChatSession instance={instance} chatId={chatId} key={chatId ?? "new"} />;
 }
+
+/* Prompt Template Selector */
+interface ModelItemProps {
+    model: (typeof models)[0];
+    selectedModel: string;
+    onSelect: (id: string) => void;
+}
+
+const ModelItem = memo(({ model, selectedModel, onSelect }: ModelItemProps) => {
+    const handleSelect = useCallback(
+        () => onSelect(model.id),
+        [onSelect, model.id]
+    );
+    return (
+        <ModelSelectorItem key={model.id} onSelect={handleSelect} value={model.id}>
+            <ModelSelectorLogo provider={model.chefSlug} />
+            <ModelSelectorName>{model.name}</ModelSelectorName>
+            <ModelSelectorLogoGroup>
+                {model.providers.map((provider) => (
+                    <ModelSelectorLogo key={provider} provider={provider} />
+                ))}
+            </ModelSelectorLogoGroup>
+            {selectedModel === model.id ? (
+                <CheckIcon className="ml-auto size-4" />
+            ) : (
+                <div className="ml-auto size-4" />
+            )}
+        </ModelSelectorItem>
+    );
+});
+
+ModelItem.displayName = "ModelItem";
