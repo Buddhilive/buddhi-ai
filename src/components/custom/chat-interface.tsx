@@ -166,9 +166,9 @@ const models = [
     },
     {
         chef: "Prompt Builder",
-        chefSlug: "deepthinker",
-        id: "deepthinker",
-        name: "DeepThinker",
+        chefSlug: "prompt-builder",
+        id: "prompt-builder",
+        name: "Prompt Builder",
         providers: ["buddhi-ai"],
         template: PROMPT_BUILDER_SP
     },
@@ -304,7 +304,7 @@ function ChatSession({
 
     /* Prompt Template Selection */
     const [open, setOpen] = useState(false);
-    const [selectedSystemPrompt, setSelectedSystemPrompt] = useState<string>("Default");
+    const [selectedSystemPrompt, setSelectedSystemPrompt] = useState<string>("default");
 
     const handleModelSelect = useCallback((id: string) => {
         setSelectedSystemPrompt(id);
@@ -423,6 +423,10 @@ function ChatSession({
     useEffect(() => {
         transport.supportsVision = supportsVision;
     }, [transport, supportsVision]);
+
+    useEffect(() => {
+        transport.systemPrompt = SYSTEM_PROMPT;
+    }, [transport, SYSTEM_PROMPT]);
 
     // Keep the transport's chatId in sync so the memory middleware can look up
     // the correct sessionStorage key when sendMessages() is called.
@@ -1139,10 +1143,19 @@ function ChatSession({
                                     size="icon-sm"
                                     variant="ghost"
                                 />
+                                {/* Reasoning Switch */}
+                                <PromptInputButton
+                                    onClick={toggleReasoning}
+                                    variant={isReasoningOn ? "default" : "ghost"}
+                                >
+                                    <Brain size={16} />
+                                    <span>Reasoning</span>
+                                </PromptInputButton>
+
                                 {/* Prompt Template Selector */}
                                 <ModelSelector onOpenChange={setOpen} open={open}>
                                     <ModelSelectorTrigger asChild>
-                                        <Button className="w-[200px] justify-between" variant="outline">
+                                        <Button className="justify-between" variant="secondary">
                                             {selectedSystemPromptData?.chefSlug && (
                                                 <ModelSelectorLogo provider={selectedSystemPromptData.chefSlug} />
                                             )}
@@ -1152,7 +1165,7 @@ function ChatSession({
                                         </Button>
                                     </ModelSelectorTrigger>
                                     <ModelSelectorContent>
-                                        <ModelSelectorInput placeholder="Search models..." />
+                                        <ModelSelectorInput placeholder="Search template..." />
                                         <ModelSelectorList>
                                             <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
                                             {chefs.map((chef) => (
@@ -1172,14 +1185,6 @@ function ChatSession({
                                         </ModelSelectorList>
                                     </ModelSelectorContent>
                                 </ModelSelector>
-                                {/* Reasoning Switch */}
-                                <PromptInputButton
-                                    onClick={toggleReasoning}
-                                    variant={isReasoningOn ? "default" : "ghost"}
-                                >
-                                    <Brain size={16} />
-                                    <span>Reasoning</span>
-                                </PromptInputButton>
                             </PromptInputTools>
 
                             <div className="flex items-center gap-1">
