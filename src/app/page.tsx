@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { motion, useScroll, useTransform, useSpring, useMotionValue } from "motion/react";
 import React, { useRef } from "react";
-import { Cpu, ShieldCheck, Zap, ServerOff, ArrowRight, BrainCircuit } from "lucide-react";
+import { Cpu, ShieldCheck, Zap, ServerOff, ArrowRight, BrainCircuit, Wand2, Sparkles, Layers, Lock } from "lucide-react";
 
 // Tilt Card Component for the 3D hover magnetic effect
 function TiltCard({ children, className }: { children: React.ReactNode, className?: string }) {
@@ -291,6 +291,192 @@ export default function Home() {
               </TiltCard>
             </motion.div>
           ))}
+        </div>
+      </section>
+
+      {/* Prompt Builder Spotlight Section */}
+      <section className="relative py-32 px-6 bg-zinc-100/50 dark:bg-zinc-900/10 overflow-hidden z-20 border-y border-zinc-200 dark:border-zinc-900">
+        <div className="absolute top-0 left-0 w-[500px] h-[500px] rounded-full bg-[#e05d38]/5 blur-[120px] pointer-events-none" />
+        <div className="max-w-7xl mx-auto relative z-10">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-center">
+
+            {/* Left side: Information and copy */}
+            <div className="lg:col-span-5 flex flex-col items-start text-left">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6 }}
+                className="mb-6 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#e05d38]/10 text-[#e05d38] border border-[#e05d38]/20 text-xs font-bold tracking-wider uppercase"
+              >
+                <Sparkles className="w-3.5 h-3.5" /> Spotlight Feature
+              </motion.div>
+
+              <motion.h2
+                initial={{ opacity: 0, y: 25 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: 0.1 }}
+                className="text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight mb-6 text-zinc-900 dark:text-zinc-50 leading-tight"
+              >
+                Buddhi AI <br className="hidden md:inline" />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#e05d38] to-[#f2ccbf] dark:from-[#e05d38] dark:to-[#eaab95]">
+                  Prompt Builder
+                </span>
+              </motion.h2>
+
+              <motion.p
+                initial={{ opacity: 0, y: 25 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+                className="text-lg md:text-xl text-zinc-600 dark:text-zinc-400 mb-8 leading-relaxed font-medium"
+              >
+                The Ultimate Free Supercharger for Your AI Workflow.
+                Many users struggle with the <strong className="text-zinc-800 dark:text-zinc-200">&quot;blank page problem&quot;</strong> or hit frustrating daily credit limits.
+                Buddhi AI solves this by generating elite instructions for the tools you use daily.
+              </motion.p>
+
+              <div className="space-y-6 mb-10 w-full">
+                {[
+                  {
+                    title: "What is a Prompt Builder?",
+                    desc: "It acts as a bridge between vague ideas and precise machine responses. It enforces a repeatable structure (Persona, Task, Context, Format), uses meta-prompting for professional refinement, and eliminates trial-and-error costs.",
+                    icon: Wand2
+                  },
+                  {
+                    title: "Truly Free — No Credits or Subscriptions",
+                    desc: "Runs directly in your browser using local processing. With zero API overhead, you get uncapped generation and professional-grade mega-prompt structures without monthly fees.",
+                    icon: Lock
+                  },
+                  {
+                    title: "The Perfect Companion for Your Stack",
+                    desc: "Designed to make your existing AI tools perform better. It acts as the local control layer, ensuring ChatGPT, Midjourney, and other cloud models perform at their peak.",
+                    icon: Layers
+                  }
+                ].map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="flex gap-4 items-start"
+                  >
+                    <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-[#e05d38]/10 text-[#e05d38] flex items-center justify-center mt-1">
+                      <item.icon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 mb-1">{item.title}</h4>
+                      <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">{item.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: 0.6 }}
+              >
+                <Link href="/chat">
+                  <motion.button
+                    whileHover={{ scale: 1.05, boxShadow: "0 0 40px -10px #e05d38" }}
+                    whileTap={{ scale: 0.95 }}
+                    className="group flex items-center justify-center gap-2 h-14 px-8 rounded-full bg-[#e05d38] text-white font-bold text-md shadow-[0_0_30px_-15px_#e05d38] transition-all font-sans cursor-pointer"
+                  >
+                    Supercharge Your Input
+                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                  </motion.button>
+                </Link>
+              </motion.div>
+            </div>
+
+            {/* Right side: HTML/CSS/SVG Mockup */}
+            <div className="lg:col-span-7 w-full flex justify-center">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.8, type: "spring", bounce: 0.2 }}
+                className="w-full max-w-2xl rounded-3xl bg-zinc-900 border border-zinc-800 shadow-2xl p-6 relative overflow-hidden"
+              >
+                {/* Mockup Header Bar */}
+                <div className="flex items-center justify-between pb-4 border-b border-zinc-800 mb-6">
+                  <div className="flex gap-2">
+                    <span className="w-3 h-3 rounded-full bg-red-500/70 block" />
+                    <span className="w-3 h-3 rounded-full bg-yellow-500/70 block" />
+                    <span className="w-3 h-3 rounded-full bg-green-500/70 block" />
+                  </div>
+                  <div className="px-3 py-0.5 rounded-md bg-zinc-950/60 text-[9px] text-zinc-500 font-mono tracking-wider">
+                    LOCAL ENGINE: GEMMA-4-ON-DEVICE
+                  </div>
+                </div>
+
+                {/* Input Area */}
+                <div className="mb-6 space-y-2">
+                  <span className="text-[10px] text-[#e05d38] font-bold font-mono tracking-wider block">1. RAW USER INPUT</span>
+                  <div className="p-4 rounded-xl bg-zinc-950/80 border border-zinc-800 text-zinc-300 font-mono text-xs leading-relaxed relative overflow-hidden">
+                    <span className="relative z-10">&quot;write a youtube video title finder&quot;</span>
+                    {/* Blinking Cursor */}
+                    <span className="w-1 h-3.5 bg-zinc-300 inline-block align-middle ml-1 animate-pulse" />
+                  </div>
+                </div>
+
+                {/* Processing SVG Vector */}
+                <div className="flex items-center justify-center my-6 py-2 relative">
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-30">
+                    <div className="w-full h-px border-t border-dashed border-[#e05d38]" />
+                  </div>
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
+                    className="relative z-10 w-12 h-12 rounded-full bg-[#e05d38]/10 border border-[#e05d38]/30 flex items-center justify-center text-[#e05d38] shadow-[0_0_20px_rgba(224,93,56,0.2)]"
+                  >
+                    <BrainCircuit className="w-6 h-6" />
+                  </motion.div>
+
+                  {/* Local Processing Sparkles */}
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    className="absolute right-[35%] w-2 h-2 rounded-full bg-amber-400"
+                  />
+                  <motion.div
+                    animate={{ scale: [1, 1.3, 1], opacity: [0.3, 0.8, 0.3] }}
+                    transition={{ duration: 2.5, repeat: Infinity, delay: 0.5 }}
+                    className="absolute left-[35%] w-3 h-3 rounded-full bg-[#e05d38]"
+                  />
+                </div>
+
+                {/* Output Area */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-green-400 font-bold font-mono tracking-wider block">2. SHAPED MEGA-PROMPT OUTPUT</span>
+                    <span className="text-[9px] text-zinc-500 font-mono">Status: Formatted (4 Pillars)</span>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-300 font-mono text-[11px] leading-relaxed space-y-3">
+                    <div>
+                      <span className="text-amber-500 font-bold"># Persona:</span>
+                      <p className="pl-3 text-zinc-400">You are an expert YouTube growth strategist and CTR optimization specialist.</p>
+                    </div>
+                    <div>
+                      <span className="text-amber-500 font-bold"># Task:</span>
+                      <p className="pl-3 text-zinc-400">Brainstorm 10 highly engaging, click-worthy titles under 60 characters.</p>
+                    </div>
+                    <div>
+                      <span className="text-amber-500 font-bold"># Context:</span>
+                      <p className="pl-3 text-zinc-400">Video Topic: [INSERT_VIDEO_TOPIC], Target Audience: [AUDIENCE].</p>
+                    </div>
+                    <div>
+                      <span className="text-amber-500 font-bold"># Format:</span>
+                      <p className="pl-3 text-zinc-400">Numbered list. Under each title, explain the psychological click trigger.</p>
+                    </div>
+                  </div>
+                </div>
+
+              </motion.div>
+            </div>
+
+          </div>
         </div>
       </section>
 
