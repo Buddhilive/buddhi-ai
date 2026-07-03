@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     default: "Buddhi AI - Private Client-Side AI",
     template: "%s | Buddhi AI"
   },
-  description: "Experience the future of private AI with Buddhi AI. Privacy-first AI that runs directly in your browser.",
+  description: "Experience the future of private AI with Buddhi AI. Privacy-first Chat, Prompt Builder, Summarizer, and Writer running entirely on-device in your browser.",
   keywords: [
     "AI tools",
     "client-side AI",
@@ -28,6 +28,9 @@ export const metadata: Metadata = {
     "AI chat",
     "text summarizer",
     "AI writer",
+    "prompt builder",
+    "prompt generator",
+    "prompt engineering",
     "privacy-first AI",
     "local AI processing",
     "secure AI tools",
@@ -42,7 +45,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "Buddhi AI - Private Client-Side AI Tools",
-    description: "Powerful AI tools that run directly in your browser. Chat, Summarizer, and Writer with complete privacy and no server-side data processing.",
+    description: "Powerful AI tools that run directly in your browser. Chat, Prompt Builder, Summarizer, and Writer with complete privacy and no server-side data processing.",
     url: "https://ai.buddhilive.com",
     siteName: "Buddhi AI",
     type: "website",
@@ -59,7 +62,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Buddhi AI - Private Client-Side AI Tools",
-    description: "Powerful AI tools that run directly in your browser with complete privacy.",
+    description: "Powerful on-device AI tools (Chat, Prompt Builder, Summarizer, Writer) running in your browser with complete privacy.",
     images: ["images/buddhi-ai-screenshot.png"],
     creator: "@buddhilive",
   },
