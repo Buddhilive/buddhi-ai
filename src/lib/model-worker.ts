@@ -20,6 +20,7 @@ self.onmessage = async (event: MessageEvent) => {
       console.log(`[Worker] Loading model (dtype: ${dtype || 'q4f16'})...`)
       await AutoModelForCausalLM.from_pretrained(modelId, {
         dtype: dtype || 'q4f16',
+        device: 'webgpu',
         progress_callback: progressCallback,
       })
 
