@@ -1,13 +1,6 @@
 import { AppSidebar } from "@/components/app-sidebar";
 import { DownloadGuard } from "@/components/download-guard";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
+import { AppBreadcrumbs } from "@/components/app-breadcrumbs";
 import { Separator } from "@/components/ui/separator";
 import {
   SidebarInset,
@@ -27,19 +20,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               orientation="vertical"
               className="mr-2 data-vertical:h-4 data-vertical:self-auto"
             />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="#">
-                    Build Your Application
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block" />
-                <BreadcrumbItem>
-                  <BreadcrumbPage>Data Fetching</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
+            <AppBreadcrumbs />
           </div>
         </header>
         <DownloadGuard>

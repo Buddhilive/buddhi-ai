@@ -6,6 +6,7 @@ const DTYPE = 'q4f16'
 
 export function useModelWorker() {
   const workerRef = useRef<Worker | null>(null)
+  const hasCheckedCache = useRef(false)
   const store = useModelStore()
 
   const getWorker = useCallback(() => {
@@ -17,9 +18,11 @@ export function useModelWorker() {
       workerRef.current.onmessage = (event) => {
         const { type, file, message, isCached } = event.data
 
+        // Always read the freshest state inside this event listener
+        const currentStatus = useModelStore.getState().status
+
         switch (type) {
           case 'PROGRESS':
-            // Transformers.js sends different statuses: initiate, download, progress, done, ready
             if (file.status === 'progress' || file.status === 'downloading' || file.status === 'loaded') {
               store.updateFileProgress({
                 name: file.name || file.file,
@@ -37,15 +40,18 @@ export function useModelWorker() {
             }
             break
           case 'COMPLETE':
+            console.log('[useModelWorker] Download complete')
             store.setStatus('complete')
             break
           case 'ERROR':
+            console.error('[useModelWorker] Worker error:', message)
             store.setError(message)
             break
           case 'CACHE_STATUS':
-            if (isCached && (store.status === 'checking' || store.status === 'idle')) {
+            console.log(`[useModelWorker] Cache check received: isCached=${isCached}, currentStatus=${currentStatus}`)
+            if (isCached && (currentStatus === 'checking' || currentStatus === 'idle')) {
               store.setStatus('complete')
-            } else if (!isCached && store.status === 'checking') {
+            } else if (!isCached && currentStatus === 'checking') {
               store.setStatus('idle')
             }
             break
@@ -65,8 +71,10 @@ export function useModelWorker() {
   }, [])
 
   useEffect(() => {
-    // Only check cache if we are idle or already checking
-    if (store.status === 'idle') {
+    // Prevent infinite loop by checking cache only once per mount
+    if (store.status === 'idle' && !hasCheckedCache.current) {
+      console.log('[useModelWorker] Initiating cache check...')
+      hasCheckedCache.current = true
       store.setStatus('checking')
       const worker = getWorker()
       worker.postMessage({ type: 'CHECK_CACHE', modelId: MODEL_ID })
@@ -74,6 +82,7 @@ export function useModelWorker() {
   }, [store.status, store, getWorker])
 
   const startDownload = useCallback(() => {
+    console.log('[useModelWorker] Starting download...')
     if (store.status === 'error' || store.status === 'cancelled') {
       store.resetState()
     }
@@ -83,6 +92,7 @@ export function useModelWorker() {
   }, [getWorker, store])
 
   const cancelDownload = useCallback(() => {
+    console.log('[useModelWorker] Cancelling download...')
     if (workerRef.current) {
       workerRef.current.terminate()
       workerRef.current = null

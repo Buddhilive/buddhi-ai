@@ -7,16 +7,17 @@ self.onmessage = async (event: MessageEvent) => {
 
   if (type === 'START') {
     try {
+      console.log(`[Worker] Starting model download for: ${modelId} (${dtype})`)
       const progressCallback = (progress: unknown) => {
         self.postMessage({ type: 'PROGRESS', file: progress })
       }
 
-      // Load tokenizer
+      console.log(`[Worker] Loading tokenizer...`)
       await AutoTokenizer.from_pretrained(modelId, {
         progress_callback: progressCallback,
       })
 
-      // Load model
+      console.log(`[Worker] Loading model (dtype: ${dtype || 'q4f16'})...`)
       await AutoModelForCausalLM.from_pretrained(modelId, {
         dtype: dtype || 'q4f16',
         progress_callback: progressCallback,
@@ -30,15 +31,18 @@ self.onmessage = async (event: MessageEvent) => {
     }
   } else if (type === 'CHECK_CACHE') {
     try {
+      console.log(`[Worker] Checking cache for model: ${modelId}...`)
       let isCached = false
       if ('caches' in self) {
         const cache = await caches.open('transformers-cache')
         const keys = await cache.keys()
-        // Simple heuristic: if we have multiple files matching the modelId in the cache
+        
         const modelKeys = keys.filter(req => req.url.includes(modelId))
         
-        // A typical model has at least a config.json, tokenizer.json, and the .onnx file
         isCached = modelKeys.length >= 3
+        console.log(`[Worker] Cache check result: ${isCached} (found ${modelKeys.length} matching files in transformers-cache)`)
+      } else {
+        console.warn(`[Worker] Cache API not available in this browser environment.`)
       }
       self.postMessage({ type: 'CACHE_STATUS', isCached })
     } catch (error) {
