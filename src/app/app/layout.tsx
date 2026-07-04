@@ -1,4 +1,5 @@
 import { AppSidebar } from "@/components/app-sidebar";
+import { DownloadGuard } from "@/components/download-guard";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -41,7 +42,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </Breadcrumb>
           </div>
         </header>
-        {children}
+        <DownloadGuard>
+          {children}
+        </DownloadGuard>
       </SidebarInset>
     </SidebarProvider>
   )
