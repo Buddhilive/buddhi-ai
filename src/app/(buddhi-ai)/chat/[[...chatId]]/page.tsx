@@ -1,4 +1,4 @@
-import { ChatInterface } from "@/components/custom/chat-interface";
+import { ChatInterface } from "@/components/custom/chat/chat-interface";
 
 export default function ChatPage() {
     return <ChatInterface />;

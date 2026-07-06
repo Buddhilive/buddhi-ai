@@ -29,7 +29,7 @@
  *  { type: 'abort' }                           ← user pressed Stop
  */
 
-import { SYSTEM_PROMPT } from "@/const/system-prompt";
+import { DEFAULT_SYSTEM_PROMPT } from "@/const/system-prompt";
 import { generateChatTemplate } from "@/lib/buddhi-ai-core/chat-template-generator";
 import { applyMemoryContext } from "@/lib/memory";
 import { useMemoryStore } from "@/stores/memory-store";
@@ -313,9 +313,9 @@ async function uiMessagesToBuddhiMessages(
             const content: BuddhiAIMessage["content"] = hasMedia
                 ? contentParts
                 : contentParts
-                      .filter((p) => p.type === "text")
-                      .map((p) => p.text!)
-                      .join("\n");
+                    .filter((p) => p.type === "text")
+                    .map((p) => p.text!)
+                    .join("\n");
 
             return {
                 role: msg.role as BuddhiAIMessage["role"],
@@ -373,6 +373,12 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
     isReasoningOn: boolean = false;
 
     /**
+     * The system prompt to use for the conversation.
+     * Updated imperatively by ChatSession when the user selects a different prompt.
+     */
+    systemPrompt: string = DEFAULT_SYSTEM_PROMPT;
+
+    /**
      * Whether the loaded model file bundles a vision encoder.
      *
      * When `false` (the default), image and audio parts are stripped before the
@@ -420,7 +426,7 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
     constructor(
         private readonly llm: LlmInference,
         private readonly templateVersion: GemmaTemplateVersion = "gemma4",
-    ) {}
+    ) { }
 
     /**
      * Called by `useChat` whenever the user submits a message or requests a
@@ -518,9 +524,9 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                                     typeof lastMsg.content === "string"
                                         ? lastMsg.content + notice
                                         : [
-                                              ...lastMsg.content,
-                                              { type: "text" as const, text: notice },
-                                          ],
+                                            ...lastMsg.content,
+                                            { type: "text" as const, text: notice },
+                                        ],
                             };
                         }
                     }
@@ -554,22 +560,22 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                 const buddhiMessages: BuddhiAIMessage[] =
                     this.templateVersion === "gemma4"
                         ? [
-                              {
-                                  role: "system",
-                                  content: SYSTEM_PROMPT,
-                                  enableThinking: this.isReasoningOn,
-                              },
-                              ...converted,
-                          ]
+                            {
+                                role: "system",
+                                content: this.systemPrompt,
+                                enableThinking: this.isReasoningOn,
+                            },
+                            ...converted,
+                        ]
                         : converted.length > 0 && converted[0].role === "user"
-                        ? [
-                              {
-                                  ...converted[0],
-                                  content: `${SYSTEM_PROMPT}\n\n${converted[0].content}`,
-                              },
-                              ...converted.slice(1),
-                          ]
-                        : converted;
+                            ? [
+                                {
+                                    ...converted[0],
+                                    content: `${this.systemPrompt}\n\n${converted[0].content}`,
+                                },
+                                ...converted.slice(1),
+                            ]
+                            : converted;
 
                 let prompt: Awaited<ReturnType<typeof generateChatTemplate>>;
                 try {
@@ -581,7 +587,7 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                         err instanceof Error ? err.message : String(err);
                     throw new Error(
                         `Failed to build chat template: ${msg}. ` +
-                            "Check that the conversation history is valid."
+                        "Check that the conversation history is valid."
                     );
                 }
 
@@ -630,9 +636,9 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                 }
 
                 // ── Open the assistant message ────────────────────────────────
-                const messageId       = nanoid();
+                const messageId = nanoid();
                 const reasoningPartId = nanoid();
-                const textPartId      = nanoid();
+                const textPartId = nanoid();
 
                 writer.write({ type: "start", messageId });
 
@@ -655,12 +661,12 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                 //                    template tokens (<turn|>, <end_of_turn>) can be
                 //                    stripped before the final chunk is emitted.
 
-                const THINKING_HEADER     = "<|channel>thought\n";
+                const THINKING_HEADER = "<|channel>thought\n";
                 const THINKING_HEADER_LEN = THINKING_HEADER.length;   // 18
-                const THINKING_END        = "<channel|>";
-                const THINKING_END_LEN    = THINKING_END.length;       // 10
-                const THINKING_TAIL       = 12;
-                const TEXT_TAIL           = 20;
+                const THINKING_END = "<channel|>";
+                const THINKING_END_LEN = THINKING_END.length;       // 10
+                const THINKING_TAIL = 12;
+                const TEXT_TAIL = 20;
 
                 // ── Streaming state ───────────────────────────────────────────
                 // "think-pre"  — initial state (reasoning mode only): buffering
@@ -682,7 +688,7 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
 
                 // Absolute positions in `accumulated`:
                 let reasoningWrittenUpTo = THINKING_HEADER_LEN; // right after the header
-                let textOffset  = 0; // where the visible text begins
+                let textOffset = 0; // where the visible text begins
                 let textEmitted = 0; // how far into accumulated text has been streamed
 
                 try {
@@ -713,7 +719,7 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                                         // reasoningWrittenUpTo already = THINKING_HEADER_LEN
                                     } else {
                                         // No thinking block — fall through to text detection.
-                                        textOffset  = 0;
+                                        textOffset = 0;
                                         textEmitted = 0;
                                         mode = "detecting";
                                         writer.write({ type: "text-start", id: textPartId });
@@ -730,8 +736,8 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
 
                                 if (endIdx !== -1) {
                                     // Emit remaining reasoning (strip trailing \n before marker)
-                                    const rawThinking    = accumulated.slice(THINKING_HEADER_LEN, endIdx);
-                                    const cleanThinking  = rawThinking.endsWith("\n")
+                                    const rawThinking = accumulated.slice(THINKING_HEADER_LEN, endIdx);
+                                    const cleanThinking = rawThinking.endsWith("\n")
                                         ? rawThinking.slice(0, -1)
                                         : rawThinking;
                                     const thinkingRemain = cleanThinking.slice(
@@ -760,7 +766,7 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
 
                                 } else if (done) {
                                     // Response ended inside the thinking block — no visible text.
-                                    const rawThinking    = accumulated.slice(THINKING_HEADER_LEN).trimEnd();
+                                    const rawThinking = accumulated.slice(THINKING_HEADER_LEN).trimEnd();
                                     const thinkingRemain = rawThinking.slice(
                                         reasoningWrittenUpTo - THINKING_HEADER_LEN
                                     );
@@ -773,7 +779,7 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                                     }
                                     writer.write({ type: "reasoning-end", id: reasoningPartId });
                                     writer.write({ type: "text-start", id: textPartId });
-                                    writer.write({ type: "text-end",   id: textPartId });
+                                    writer.write({ type: "text-end", id: textPartId });
                                     writer.write({ type: "finish", finishReason: "stop" });
                                     settled = true;
                                     return;
@@ -857,7 +863,7 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                                     });
                                 }
 
-                                writer.write({ type: "text-end",  id: textPartId });
+                                writer.write({ type: "text-end", id: textPartId });
                                 writer.write({ type: "finish", finishReason: "stop" });
                                 settled = true;
                             }
@@ -867,7 +873,7 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                     const msg = err instanceof Error ? err.message : String(err);
                     throw new Error(
                         `MediaPipe LLM inference failed: ${msg}. ` +
-                            "Try reloading the page or reducing the conversation length."
+                        "Try reloading the page or reducing the conversation length."
                     );
                 }
 
@@ -875,9 +881,9 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                 if (!settled) {
                     console.warn(
                         "[MediaPipeChatTransport] generateResponse resolved " +
-                            "without a `done` callback. Closing stream manually."
+                        "without a `done` callback. Closing stream manually."
                     );
-                    writer.write({ type: "text-end",  id: textPartId });
+                    writer.write({ type: "text-end", id: textPartId });
                     writer.write({ type: "finish", finishReason: "stop" });
                 }
             },
