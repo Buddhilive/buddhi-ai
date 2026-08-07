@@ -77,9 +77,9 @@ function stepText(doc: DocumentInfo): string {
         case "pending":
             return "Queued for processing…";
         case "processing":
-            return "Chunking & generating embeddings…";
+            return "Parsing & indexing…";
         case "completed":
-            return `Ready — ${doc.chunk_count ?? 0} chunk${doc.chunk_count === 1 ? "" : "s"} indexed`;
+            return "Ready — indexed for search";
         case "failed":
             return doc.error_msg ? `Failed: ${doc.error_msg}` : "Processing failed";
         default:
@@ -127,7 +127,6 @@ function UploadRow({ doc, onUpdate }: UploadRowProps) {
                     onUpdateRef.current({
                         ...doc,
                         status: liveStatus,
-                        chunk_count: processingState?.chunkCount ?? null,
                         error_msg: processingState?.errorMsg ?? null,
                     });
                 });
@@ -423,7 +422,6 @@ function DocumentCollectionTab() {
                             <TableRow>
                                 <TableHead>Name</TableHead>
                                 <TableHead>Status</TableHead>
-                                <TableHead className="text-right">Chunks</TableHead>
                                 <TableHead>Uploaded</TableHead>
                                 <TableHead className="w-16" />
                             </TableRow>
@@ -441,9 +439,6 @@ function DocumentCollectionTab() {
                                     </TableCell>
                                     <TableCell>
                                         <StatusBadge status={doc.status} />
-                                    </TableCell>
-                                    <TableCell className="text-right text-sm tabular-nums">
-                                        {doc.chunk_count ?? "—"}
                                     </TableCell>
                                     <TableCell className="text-sm text-muted-foreground">
                                         {formatDate(doc.created_at)}
@@ -476,7 +471,7 @@ function DocumentCollectionTab() {
                         <DialogDescription>
                             This will permanently remove{" "}
                             <span className="font-medium">{deleteTarget?.original_name}</span>{" "}
-                            and all its indexed chunks from the Document Collection. The original
+                            and remove it from the search index. The original
                             file on disk is kept for audit purposes.
                         </DialogDescription>
                     </DialogHeader>
@@ -513,9 +508,7 @@ export function DocumentsView() {
     const activeCount = useDocumentStore((s) => s.activeCount);
 
     const handleDocumentReady = useCallback((doc: DocumentInfo) => {
-        toast.success(
-            `"${doc.original_name}" is ready — ${doc.chunk_count} chunks indexed`
-        );
+        toast.success(`"${doc.original_name}" is ready — indexed for search`);
     }, []);
 
     // Warn user before tab close / refresh while processing is active

@@ -3,17 +3,14 @@
  *
  * Manages the full document lifecycle:
  *   1. Validate & store raw file in IndexedDB ("buddhi-ai-doc-store")
- *   2. Run the vectorization pipeline (extract → chunk → embed → save to PGlite)
+ *   2. Run the OKF ingestion pipeline (extract → build concept → index → save)
  *   3. Track real-time progress via the Zustand document-store
  *   4. Support reconciliation of documents interrupted by a page close
  */
 
-import { extractTextFromPDF } from "@/lib/text-embeddings";
-import {
-    chunkText,
-    createVectorIndexBatched,
-    deleteDocumentEmbeddings,
-} from "@/lib/llamaindex-provider";
+import { extractText, fileToConcept } from "@/lib/okf/ingest";
+import { putConcept, deleteConcept, getAllConcepts } from "@/lib/okf/store";
+import { indexConcept, removeFromIndex } from "@/lib/okf/search";
 import { useDocumentStore } from "@/stores/document-store";
 import { DocPhase, DocumentInfo, DocStoreRecord } from "@/types/documents";
 
@@ -25,9 +22,6 @@ const DOC_STORE_NAME = "documents";
 
 const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
 const SUPPORTED_EXTENSIONS = ["pdf", "txt", "md"];
-
-/** chatId used in PGlite for all global knowledge-base documents */
-export const GLOBAL_KB_CHAT_ID = "knowledge-base-global";
 
 // ─── IndexedDB helpers ────────────────────────────────────────────────────────
 
@@ -135,7 +129,7 @@ function toInfo(record: DocStoreRecord): DocumentInfo {
     return info;
 }
 
-// ─── Vectorization pipeline ───────────────────────────────────────────────────
+// ─── OKF ingestion pipeline ────────────────────────────────────────────────────
 
 /**
  * Runs entirely asynchronously — never awaited by the caller.
@@ -150,55 +144,28 @@ async function runPipeline(doc: DocumentInfo, fileData: ArrayBuffer): Promise<vo
         await idbUpdate(doc.id, { status: "processing" });
 
         const file = new File([fileData], doc.original_name);
-        const ext = doc.original_name.split(".").pop()?.toLowerCase();
+        const text = await extractText(file);
 
-        let text: string;
-        if (ext === "pdf") {
-            text = await extractTextFromPDF(file);
-        } else {
-            text = await file.text();
-        }
+        // ── Stage 2: build OKF concept ─────────────────────────────────────────
+        store.updateProgress(doc.id, "parsing" as DocPhase, 35);
+        const existingIds = new Set((await getAllConcepts()).map((c) => c.id));
+        const concept = fileToConcept(file, text, existingIds);
 
-        if (!text || text.trim().length === 0) {
-            throw new Error(
-                ext === "pdf"
-                    ? "No extractable text found. Scanned/image-only PDFs are not supported — please use a text-based PDF."
-                    : "File appears to be empty."
-            );
-        }
+        // ── Stage 3: keyword-index the concept ─────────────────────────────────
+        store.updateProgress(doc.id, "indexing" as DocPhase, 65);
+        await indexConcept(concept);
 
-        // ── Stage 2: chunking ────────────────────────────────────────────────
-        store.updateProgress(doc.id, "chunking" as DocPhase, 30);
-        const chunks = await chunkText(text, 200, 20, doc.id.toString());
-
-        if (chunks.length === 0) {
-            throw new Error("No chunks were generated — the document may contain only whitespace.");
-        }
-
-        // ── Stage 3: embedding + storage (batched, 50 chunks at a time) ──────
-        store.updateProgress(doc.id, "embedding" as DocPhase, 35);
-
-        let totalChunks = 0;
-        await createVectorIndexBatched(
-            chunks,
-            GLOBAL_KB_CHAT_ID,
-            doc.id.toString(),
-            doc.original_name,
-            (processed, total) => {
-                // Map 0-100% onto the 35-95% window
-                const pct = 35 + Math.round((processed / total) * 60);
-                store.updateProgress(doc.id, "embedding" as DocPhase, Math.min(pct, 95));
-                totalChunks = total;
-            }
-        );
+        // ── Stage 4: persist ────────────────────────────────────────────────────
+        store.updateProgress(doc.id, "saving" as DocPhase, 90);
+        await putConcept(concept);
 
         // ── Done ─────────────────────────────────────────────────────────────
         await idbUpdate(doc.id, {
             status: "completed",
-            chunk_count: totalChunks,
+            concept_id: concept.id,
             error_msg: null,
         });
-        store.completeDoc(doc.id, totalChunks);
+        store.completeDoc(doc.id);
     } catch (error) {
         const msg =
             error instanceof Error ? error.message : "An unknown error occurred during processing.";
@@ -209,13 +176,6 @@ async function runPipeline(doc: DocumentInfo, fileData: ArrayBuffer): Promise<vo
             await idbUpdate(doc.id, { status: "failed", error_msg: msg });
         } catch (updateErr) {
             console.error("[documents] Could not persist failure to IDB:", updateErr);
-        }
-
-        // Clean up any partial embeddings written before the failure
-        try {
-            await deleteDocumentEmbeddings(doc.id.toString());
-        } catch (cleanupErr) {
-            console.error("[documents] Could not clean up partial embeddings:", cleanupErr);
         }
 
         store.failDoc(doc.id, msg);
@@ -269,7 +229,7 @@ export const documentsApi = {
             original_name: file.name,
             file_size: file.size,
             status: "pending",
-            chunk_count: null,
+            concept_id: null,
             error_msg: null,
             created_at: new Date().toISOString(),
         };
@@ -318,18 +278,22 @@ export const documentsApi = {
     },
 
     /**
-     * Remove a document — deletes its vector embeddings from PGlite,
+     * Remove a document — deletes its OKF concept from the store/search index,
      * then removes the IDB record and Zustand state.
      */
     async deleteDocument(id: number): Promise<void> {
-        // Remove vector embeddings first (best-effort)
-        try {
-            await deleteDocumentEmbeddings(id.toString());
-        } catch (err) {
-            console.error(
-                `[documents] Failed to delete embeddings for doc ${id} — continuing with IDB deletion:`,
-                err
-            );
+        const record = await idbGet(id);
+
+        if (record?.concept_id) {
+            try {
+                await deleteConcept(record.concept_id);
+                await removeFromIndex(record.concept_id);
+            } catch (err) {
+                console.error(
+                    `[documents] Failed to delete OKF concept for doc ${id} — continuing with IDB deletion:`,
+                    err
+                );
+            }
         }
 
         await idbDelete(id);

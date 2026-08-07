@@ -45,13 +45,4 @@ export const MODELS: ModelConfig[] = [
         // chat-interface.tsx once a vision-capable .task file is available.
         // supportsVision: true,
     },
-    {
-        id: "litert-community/embeddinggemma-300m",
-        name: "Embedding Gemma 300M",
-        description: "Compact embedding model for semantic search and retrieval tasks.",
-        type: "embedding",
-        device: "webgpu",
-        supportsWorker: true,
-        modelFile: "embeddinggemma-300M_seq2048_mixed-precision.tflite",
-    },
 ];

@@ -13,7 +13,6 @@ export const useDocumentStore = create<DocumentStore>()((set) => ({
                     status: "pending",
                     phase: null,
                     overallPct: 0,
-                    chunkCount: null,
                     errorMsg: null,
                 },
             },
@@ -35,7 +34,7 @@ export const useDocumentStore = create<DocumentStore>()((set) => ({
         }));
     },
 
-    completeDoc(id, chunkCount) {
+    completeDoc(id) {
         set((s) => ({
             docs: {
                 ...s.docs,
@@ -44,7 +43,6 @@ export const useDocumentStore = create<DocumentStore>()((set) => ({
                     status: "completed",
                     phase: null,
                     overallPct: 100,
-                    chunkCount,
                     errorMsg: null,
                 },
             },
