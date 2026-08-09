@@ -3,6 +3,7 @@ import {
     BrainCircuit,
     Command,
     FileText,
+    Network,
     Sparkles,
 } from "lucide-react";
 
@@ -31,6 +32,11 @@ export const SIDEBAR_DATA = {
             title: "Documents",
             url: "/documents",
             icon: FileText,
+        },
+        {
+            title: "Knowledge Graph",
+            url: "/knowledge-graph",
+            icon: Network,
         },
         {
             title: "Models",

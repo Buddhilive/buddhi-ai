@@ -23,6 +23,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "cytoscape": "3.33.1",
     "embla-carousel-react": "^8.6.0",
     "gray-matter": "^4.0.3",
     "lucide-react": "^1.7.0",

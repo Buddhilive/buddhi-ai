@@ -40,6 +40,7 @@ export function useNavigation(): NavigationState {
         const pathTitleMap: Record<string, string> = {
             "/chat": "Ask Buddhi AI",
             "/documents": "Documents",
+            "/knowledge-graph": "Knowledge Graph",
             "/models": "Models",
         };
 
