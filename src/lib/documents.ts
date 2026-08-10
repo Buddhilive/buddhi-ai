@@ -11,8 +11,12 @@
 import { extractText, fileToConcept } from "@/lib/okf/ingest";
 import { putConcept, deleteConcept, getAllConcepts } from "@/lib/okf/store";
 import { indexConcept, removeFromIndex } from "@/lib/okf/search";
+import { serializeFrontmatter } from "@/lib/okf/frontmatter";
+import { extractFrontmatterWithLlm } from "@/lib/okf/enrich";
 import { useDocumentStore } from "@/stores/document-store";
+import { useLiteRTModelStore } from "@/stores/litert-store";
 import { DocPhase, DocumentInfo, DocStoreRecord } from "@/types/documents";
+import type { OkfConcept } from "@/lib/okf/types";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -132,6 +136,25 @@ function toInfo(record: DocStoreRecord): DocumentInfo {
 // ─── OKF ingestion pipeline ────────────────────────────────────────────────────
 
 /**
+ * Best-effort content classification via the on-device model. Mutates
+ * `concept.frontmatter`/`concept.raw` in place; no-ops (and never throws) if
+ * no model is ready or extraction fails.
+ */
+async function enrichConceptIfPossible(docId: number, concept: OkfConcept): Promise<void> {
+    const { liteRTModelInstance, liteRTModelStatus } = useLiteRTModelStore.getState();
+    if (liteRTModelStatus !== "ready" || !liteRTModelInstance) return;
+
+    try {
+        const fields = await extractFrontmatterWithLlm(liteRTModelInstance, concept.fileName, concept.body);
+        if (fields) {
+            Object.assign(concept.frontmatter, fields);
+            concept.raw = serializeFrontmatter(concept.frontmatter, concept.body);
+        }
+    } catch (err) {
+        console.warn(`[documents] LLM enrichment failed for doc ${docId}, keeping default frontmatter:`, err);
+    }
+}
+/**
  * Runs entirely asynchronously — never awaited by the caller.
  * Updates Zustand store at each stage so the UI stays in sync.
  */
@@ -147,12 +170,18 @@ async function runPipeline(doc: DocumentInfo, fileData: ArrayBuffer): Promise<vo
         const text = await extractText(file);
 
         // ── Stage 2: build OKF concept ─────────────────────────────────────────
-        store.updateProgress(doc.id, "parsing" as DocPhase, 35);
+        store.updateProgress(doc.id, "parsing" as DocPhase, 30);
         const existingIds = new Set((await getAllConcepts()).map((c) => c.id));
-        const concept = fileToConcept(file, text, existingIds);
+        const { concept, enrichable } = fileToConcept(file, text, existingIds);
+
+        // ── Stage 2b: optional on-device LLM classification ────────────────────
+        if (enrichable) {
+            store.updateProgress(doc.id, "enriching" as DocPhase, 50);
+            await enrichConceptIfPossible(doc.id, concept);
+        }
 
         // ── Stage 3: keyword-index the concept ─────────────────────────────────
-        store.updateProgress(doc.id, "indexing" as DocPhase, 65);
+        store.updateProgress(doc.id, "indexing" as DocPhase, 70);
         await indexConcept(concept);
 
         // ── Stage 4: persist ────────────────────────────────────────────────────

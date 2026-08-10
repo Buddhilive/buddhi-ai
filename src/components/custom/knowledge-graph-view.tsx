@@ -19,16 +19,32 @@ import { Streamdown } from "streamdown";
 const PALETTE_VARS = ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"] as const;
 const PLACEHOLDER_TYPE = "(unresolved)";
 
+let normalizeCtx: CanvasRenderingContext2D | null = null;
+
+/**
+ * Cytoscape draws to <canvas> and parses colors with its own regex parser —
+ * it doesn't resolve CSS var()/oklch(). Round-tripping through a canvas
+ * context normalizes any valid CSS color (including oklch()) to rgb()/rgba(),
+ * which cytoscape's parser does understand.
+ */
+function normalizeColor(cssColor: string): string {
+	if (!cssColor) return cssColor;
+	if (!normalizeCtx) normalizeCtx = document.createElement("canvas").getContext("2d");
+	if (!normalizeCtx) return cssColor;
+	normalizeCtx.fillStyle = "#000";
+	normalizeCtx.fillStyle = cssColor;
+	return normalizeCtx.fillStyle;
+}
+
+function themeColor(varName: string): string {
+	return normalizeColor(getComputedStyle(document.documentElement).getPropertyValue(varName).trim());
+}
 function buildTypeColors(types: string[]): Map<string, string> {
-	const styles = getComputedStyle(document.documentElement);
 	const map = new Map<string, string>();
 	types
 		.filter((t) => t !== PLACEHOLDER_TYPE)
 		.forEach((type, i) => {
-			const colorVal = styles
-				.getPropertyValue(PALETTE_VARS[i % PALETTE_VARS.length])
-				.trim();
-			map.set(type, colorVal);
+			map.set(type, themeColor(PALETTE_VARS[i % PALETTE_VARS.length]));
 		});
 	return map;
 }
@@ -79,10 +95,10 @@ export function KnowledgeGraphView() {
 					selector: "node",
 					style: {
 						"background-color": (ele) =>
-							colorsRef.current.get(ele.data("type")) ?? "hsl(var(--muted-foreground))",
+							colorsRef.current.get(ele.data("type")) ?? themeColor("--muted-foreground"),
 						label: "data(label)",
 						"font-size": 10,
-						color: "hsl(var(--foreground))",
+						color: () => themeColor("--foreground"),
 						"text-valign": "bottom",
 						"text-margin-y": 4,
 						width: 24,
@@ -95,21 +111,21 @@ export function KnowledgeGraphView() {
 						"background-opacity": 0.25,
 						"border-width": 1,
 						"border-style": "dashed",
-						"border-color": "hsl(var(--muted-foreground))",
+						"border-color": () => themeColor("--muted-foreground"),
 						width: 16,
 						height: 16,
 					},
 				},
 				{
 					selector: "node:selected",
-					style: { "border-width": 3, "border-color": "hsl(var(--primary))" },
+					style: { "border-width": 3, "border-color": () => themeColor("--primary") },
 				},
 				{
 					selector: "edge",
 					style: {
 						width: 1.5,
-						"line-color": "hsl(var(--border))",
-						"target-arrow-color": "hsl(var(--border))",
+						"line-color": () => themeColor("--border"),
+						"target-arrow-color": () => themeColor("--border"),
 						"target-arrow-shape": "triangle",
 						"curve-style": "bezier",
 					},

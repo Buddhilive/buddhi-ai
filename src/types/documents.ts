@@ -1,4 +1,4 @@
-export type DocPhase = "reading" | "parsing" | "indexing" | "saving" | null;
+export type DocPhase = "reading" | "parsing" | "enriching" | "indexing" | "saving" | null;
 export type DocProcessingStatus = "pending" | "processing" | "completed" | "failed";
 
 export interface DocProcessingState {
