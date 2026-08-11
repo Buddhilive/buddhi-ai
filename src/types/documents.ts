@@ -23,8 +23,14 @@ export interface DocumentInfo {
     original_name: string;
     file_size: number;
     status: "pending" | "processing" | "completed" | "failed";
-    /** OKF concept id — used to look up/remove the concept in the OKF store. */
+    /** OKF root concept id — used to look up/remove the root concept in the OKF store. */
     concept_id: string | null;
+    /**
+     * All OKF concept ids produced for this document (root + any decomposed
+     * sub-concepts). Falls back to `[concept_id]` when absent (older records
+     * written before decomposition existed).
+     */
+    concept_ids: string[] | null;
     error_msg: string | null;
     created_at: string;
 }

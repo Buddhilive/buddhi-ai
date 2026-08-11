@@ -8,15 +8,17 @@
  *   4. Support reconciliation of documents interrupted by a page close
  */
 
-import { extractText, fileToConcept } from "@/lib/okf/ingest";
+import { extractText, fileToConcept, PRODUCER_ACTOR } from "@/lib/okf/ingest";
 import { putConcept, deleteConcept, getAllConcepts } from "@/lib/okf/store";
 import { indexConcept, removeFromIndex } from "@/lib/okf/search";
 import { serializeFrontmatter } from "@/lib/okf/frontmatter";
 import { extractFrontmatterWithLlm } from "@/lib/okf/enrich";
+import { extractConceptsWithLlm, type DecomposedConcept } from "@/lib/okf/decompose";
+import { uniqueConceptId } from "@/lib/okf/bundle";
 import { useDocumentStore } from "@/stores/document-store";
 import { useLiteRTModelStore } from "@/stores/litert-store";
 import { DocPhase, DocumentInfo, DocStoreRecord } from "@/types/documents";
-import type { OkfConcept } from "@/lib/okf/types";
+import type { OkfConcept, OkfFrontmatter } from "@/lib/okf/types";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -154,6 +156,83 @@ async function enrichConceptIfPossible(docId: number, concept: OkfConcept): Prom
         console.warn(`[documents] LLM enrichment failed for doc ${docId}, keeping default frontmatter:`, err);
     }
 }
+
+/**
+ * Best-effort decomposition into several cross-linked sub-concepts via the
+ * on-device model. Returns `[]` (never throws) when no model is ready, the
+ * document isn't eligible, or extraction fails — callers should treat that
+ * as "root concept only," exactly like the pre-decomposition behavior.
+ * Mutates `root.body`/`root.raw` in place to link out to whatever
+ * sub-concepts are returned.
+ */
+async function decomposeConceptIfPossible(
+    docId: number,
+    root: OkfConcept,
+    text: string,
+    existingIds: Set<string>
+): Promise<OkfConcept[]> {
+    const { liteRTModelInstance, liteRTModelStatus } = useLiteRTModelStore.getState();
+    if (liteRTModelStatus !== "ready" || !liteRTModelInstance) return [];
+
+    let decomposed: DecomposedConcept[] | null = null;
+    try {
+        decomposed = await extractConceptsWithLlm(liteRTModelInstance, root.fileName, text);
+    } catch (err) {
+        console.warn(`[documents] LLM decomposition failed for doc ${docId}, keeping single concept:`, err);
+    }
+    if (!decomposed) {
+        // extractConceptsWithLlm returns null when model runs but produces invalid output;
+        // see console for [okf/decompose] warnings about why
+        return [];
+    }
+    if (decomposed.length === 0) return [];
+
+    const slugToId = new Map<string, string>();
+    for (const d of decomposed) {
+        const id = uniqueConceptId(`${root.id}--${d.slug}`, existingIds);
+        existingIds.add(id);
+        slugToId.set(d.slug, id);
+    }
+
+    const now = new Date().toISOString();
+    const subConcepts: OkfConcept[] = decomposed.map((d) => {
+        const id = slugToId.get(d.slug)!;
+        const relatedLinks = d.relatesTo
+            .map((slug) => slugToId.get(slug))
+            .filter((relId): relId is string => Boolean(relId) && relId !== id);
+
+        let body = d.body.trim();
+        body += `\n\nPart of [${root.frontmatter.title ?? root.id}](/${root.id}.md).`;
+        if (relatedLinks.length > 0) {
+            body += `\n\nSee also: ${relatedLinks.map((relId) => `[${relId}](/${relId}.md)`).join(", ")}.`;
+        }
+
+        const frontmatter: OkfFrontmatter = {
+            type: d.type,
+            title: d.title,
+            ...(d.description ? { description: d.description } : {}),
+            ...(d.tags.length > 0 ? { tags: d.tags } : {}),
+            generated: { by: PRODUCER_ACTOR, at: now },
+        };
+
+        return {
+            id,
+            frontmatter,
+            body,
+            raw: serializeFrontmatter(frontmatter, body),
+            fileName: root.fileName,
+            fileSize: body.length,
+            createdAt: now,
+        };
+    });
+
+    root.body = `${root.body.trim()}\n\n# Concepts\n\n${subConcepts
+        .map((c) => `- [${c.frontmatter.title ?? c.id}](/${c.id}.md)`)
+        .join("\n")}\n`;
+    root.raw = serializeFrontmatter(root.frontmatter, root.body);
+
+    return subConcepts;
+}
 /**
  * Runs entirely asynchronously — never awaited by the caller.
  * Updates Zustand store at each stage so the UI stays in sync.
@@ -173,25 +252,39 @@ async function runPipeline(doc: DocumentInfo, fileData: ArrayBuffer): Promise<vo
         store.updateProgress(doc.id, "parsing" as DocPhase, 30);
         const existingIds = new Set((await getAllConcepts()).map((c) => c.id));
         const { concept, enrichable } = fileToConcept(file, text, existingIds);
+        existingIds.add(concept.id);
 
         // ── Stage 2b: optional on-device LLM classification ────────────────────
         if (enrichable) {
-            store.updateProgress(doc.id, "enriching" as DocPhase, 50);
+            store.updateProgress(doc.id, "enriching" as DocPhase, 45);
             await enrichConceptIfPossible(doc.id, concept);
         }
 
-        // ── Stage 3: keyword-index the concept ─────────────────────────────────
-        store.updateProgress(doc.id, "indexing" as DocPhase, 70);
-        await indexConcept(concept);
+        // ── Stage 2c: optional on-device decomposition into linked sub-concepts ─
+        let subConcepts: OkfConcept[] = [];
+        if (enrichable) {
+            store.updateProgress(doc.id, "enriching" as DocPhase, 60);
+            subConcepts = await decomposeConceptIfPossible(doc.id, concept, text, existingIds);
+        }
+        const allConcepts = [concept, ...subConcepts];
 
-        // ── Stage 4: persist ────────────────────────────────────────────────────
+        // ── Stage 3: keyword-index every concept ─────────────────────────────────
+        store.updateProgress(doc.id, "indexing" as DocPhase, 70);
+        for (const c of allConcepts) {
+            await indexConcept(c);
+        }
+
+        // ── Stage 4: persist every concept ────────────────────────────────────────
         store.updateProgress(doc.id, "saving" as DocPhase, 90);
-        await putConcept(concept);
+        for (const c of allConcepts) {
+            await putConcept(c);
+        }
 
         // ── Done ─────────────────────────────────────────────────────────────
         await idbUpdate(doc.id, {
             status: "completed",
             concept_id: concept.id,
+            concept_ids: allConcepts.map((c) => c.id),
             error_msg: null,
         });
         store.completeDoc(doc.id);
@@ -259,6 +352,7 @@ export const documentsApi = {
             file_size: file.size,
             status: "pending",
             concept_id: null,
+            concept_ids: null,
             error_msg: null,
             created_at: new Date().toISOString(),
         };
@@ -313,13 +407,15 @@ export const documentsApi = {
     async deleteDocument(id: number): Promise<void> {
         const record = await idbGet(id);
 
-        if (record?.concept_id) {
+        const conceptIds = record?.concept_ids ?? (record?.concept_id ? [record.concept_id] : []);
+
+        for (const conceptId of conceptIds) {
             try {
-                await deleteConcept(record.concept_id);
-                await removeFromIndex(record.concept_id);
+                await deleteConcept(conceptId);
+                await removeFromIndex(conceptId);
             } catch (err) {
                 console.error(
-                    `[documents] Failed to delete OKF concept for doc ${id} — continuing with IDB deletion:`,
+                    `[documents] Failed to delete OKF concept "${conceptId}" for doc ${id} — continuing with IDB deletion:`,
                     err
                 );
             }
@@ -371,3 +467,6 @@ export async function reconcileInterruptedDocuments(): Promise<void> {
         console.error("[documents] reconcileInterruptedDocuments failed:", err);
     }
 }
+
+
+

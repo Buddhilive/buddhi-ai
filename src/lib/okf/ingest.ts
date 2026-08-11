@@ -1,11 +1,13 @@
 /**
- * ingest.ts — converts an uploaded file into a single OKF concept.
+ * ingest.ts — converts an uploaded file into a single root OKF concept.
  *
- * Per the ingestion decision, each upload becomes exactly one concept (no
- * chunking). A `.md` upload with valid authored frontmatter (non-empty
- * `type`) is treated as curated and returned as-is (enrichable: false).
- * Otherwise frontmatter is synthesized minimally; documents.ts may then run
- * LLM-based enrichment (okf/enrich.ts) to fill in type/tags/description.
+ * Per the ingestion decision, each upload becomes exactly one root concept
+ * (no chunking here). A `.md` upload with valid authored frontmatter
+ * (non-empty `type`) is treated as curated and returned as-is
+ * (enrichable: false). Otherwise frontmatter is synthesized minimally;
+ * documents.ts may then run LLM-based enrichment (okf/enrich.ts) to fill in
+ * type/tags/description on the root concept, and LLM-based decomposition
+ * (okf/decompose.ts) to derive several linked sub-concepts from it.
  */
 
 import packageJson from "../../../package.json";
@@ -14,7 +16,7 @@ import { toConceptId } from "@/lib/okf/bundle";
 import { parseFrontmatter, serializeFrontmatter } from "@/lib/okf/frontmatter";
 import type { OkfConcept, OkfFrontmatter } from "@/lib/okf/types";
 
-const PRODUCER_ACTOR = `buddhi-ai/${packageJson.version}`;
+export const PRODUCER_ACTOR = `buddhi-ai/${packageJson.version}`;
 
 function humanizeTitle(fileName: string): string {
     return fileName

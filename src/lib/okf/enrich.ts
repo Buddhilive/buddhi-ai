@@ -22,9 +22,10 @@ export type EnrichedFields = Partial<Pick<OkfFrontmatter, "type" | "tags" | "des
 
 // MediaPipe's LlmInference is not reentrant — serialize extraction calls so
 // concurrent document uploads (documents.ts allows up to 5 in parallel) never
-// call generateResponse on top of each other.
+// call generateResponse on top of each other. Shared with okf/decompose.ts,
+// which drives the same LlmInference instance.
 let queue: Promise<unknown> = Promise.resolve();
-function enqueue<T>(fn: () => Promise<T>): Promise<T> {
+export function enqueueLlmCall<T>(fn: () => Promise<T>): Promise<T> {
     const result = queue.then(fn, fn);
     queue = result.catch(() => undefined);
     return result;
@@ -120,7 +121,7 @@ export function extractFrontmatterWithLlm(
     fileName: string,
     body: string
 ): Promise<EnrichedFields | null> {
-    return enqueue(async () => {
+    return enqueueLlmCall(async () => {
         try {
             return await runExtraction(instance, fileName, body);
         } catch (err) {
