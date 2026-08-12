@@ -21,6 +21,7 @@ export interface GraphEdgeData {
 	id: string;
 	source: string;
 	target: string;
+	kind: "containment" | "relatesTo" | "reference";
 }
 
 export interface ConceptGraph {
@@ -74,14 +75,56 @@ export function resolveConceptLink(fromId: string, href: string): string | null 
 	return resolved || null;
 }
 
-function extractLinkTargets(concept: OkfConcept): string[] {
-	const targets = new Set<string>();
+interface LinkWithKind {
+	target: string;
+	kind: "containment" | "relatesTo" | "reference";
+}
+
+/**
+ * Extracts link targets with their semantic kind (containment, relatesTo, or reference).
+ * Kind detection is based on textual patterns from documents.ts::decomposeConceptIfPossible:
+ *   - "Part of [...]" → containment (lines ~201)
+ *   - "See also: ..." → relatesTo (lines ~202)
+ *   - After "# Concepts" heading → containment (lines ~214-217)
+ *   - Otherwise → reference
+ */
+function extractLinkTargetsWithKind(concept: OkfConcept): LinkWithKind[] {
+	const result: LinkWithKind[] = [];
+	const seenTargets = new Set<string>();
+
+	// Find the position of the "# Concepts" heading to detect root→sub links
+	const conceptsHeadingIdx = concept.body.indexOf("\n# Concepts\n");
+
 	for (const match of concept.body.matchAll(LINK_RE)) {
 		if (match[1] === "!") continue; // skip image embeds
 		const target = resolveConceptLink(concept.id, match[2]);
-		if (target && target !== concept.id) targets.add(target);
+		if (!target || target === concept.id || seenTargets.has(target)) continue;
+		seenTargets.add(target);
+
+		let kind: "containment" | "relatesTo" | "reference" = "reference";
+
+		// Check if preceded by "Part of "
+		const beforeMatch = concept.body.slice(Math.max(0, match.index! - 50), match.index!);
+		if (beforeMatch.includes("Part of ")) {
+			kind = "containment";
+		}
+		// Check if inside "See also:" line
+		else if (beforeMatch.includes("See also:")) {
+			kind = "relatesTo";
+		}
+		// Check if after "# Concepts" heading
+		else if (conceptsHeadingIdx !== -1 && match.index! > conceptsHeadingIdx) {
+			kind = "containment";
+		}
+
+		result.push({ target, kind });
 	}
-	return [...targets];
+
+	return result;
+}
+
+function extractLinkTargets(concept: OkfConcept): string[] {
+	return extractLinkTargetsWithKind(concept).map(link => link.target);
 }
 
 /** Builds Cytoscape elements + a backlink index from the full concept set. */
@@ -103,25 +146,25 @@ export function buildConceptGraph(concepts: OkfConcept[]): ConceptGraph {
 	}
 
 	for (const c of concepts) {
-		for (const targetId of extractLinkTargets(c)) {
-			const key = `${c.id}->${targetId}`;
+		for (const link of extractLinkTargetsWithKind(c)) {
+			const key = `${c.id}->${link.target}`;
 			if (seenEdgeKeys.has(key)) continue;
 			seenEdgeKeys.add(key);
-			edges.push({ data: { id: key, source: c.id, target: targetId } });
+			edges.push({ data: { id: key, source: c.id, target: link.target, kind: link.kind } });
 
-			if (!existingIds.has(targetId) && !nodes.has(targetId)) {
-				nodes.set(targetId, {
-					id: targetId,
-					label: targetId,
+			if (!existingIds.has(link.target) && !nodes.has(link.target)) {
+				nodes.set(link.target, {
+					id: link.target,
+					label: link.target,
 					type: "(unresolved)",
 					tags: [],
 					placeholder: true,
 				});
 			}
 
-			const list = backlinks.get(targetId);
+			const list = backlinks.get(link.target);
 			if (list) list.push(c.id);
-			else backlinks.set(targetId, [c.id]);
+			else backlinks.set(link.target, [c.id]);
 		}
 	}
 
@@ -131,3 +174,6 @@ export function buildConceptGraph(concepts: OkfConcept[]): ConceptGraph {
 		backlinks,
 	};
 }
+
+
+
