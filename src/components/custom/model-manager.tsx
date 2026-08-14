@@ -24,7 +24,6 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Input } from "@/components/ui/input";
 import {
     Trash2Icon,
     XCircleIcon,
@@ -33,8 +32,6 @@ import {
     AlertCircleIcon,
     CheckCircleIcon,
     BrainCircuitIcon,
-    KeyRoundIcon,
-    ExternalLinkIcon,
 } from "lucide-react";
 
 // ─── Root view ────────────────────────────────────────────────────────────────
@@ -157,8 +154,6 @@ function ModelCard({ model }: ModelCardProps) {
     const [isCanceling, setIsCanceling] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-    const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
-    const [accessToken, setAccessToken] = useState(process.env.NEXT_PUBLIC_HF_TOKEN || "");
 
     // Subscribe to the entire models map to detect any changes
     const allModels = useModelStore((state) => state.models);
@@ -171,10 +166,10 @@ function ModelCard({ model }: ModelCardProps) {
 
     const inProgress = status === "downloading";
 
-    const startInstall = async (token?: string) => {
+    const startInstall = async () => {
         try {
             setIsInstalling(true);
-            await modelsApi.downloadModel({ model: model.id, accessToken: token });
+            await modelsApi.downloadModel({ model: model.id });
             toast.success(`Download started for ${model.name}`);
         } catch (err: unknown) {
             const msg = (err as Error).message || "Failed to start download";
@@ -185,7 +180,7 @@ function ModelCard({ model }: ModelCardProps) {
     };
 
     const handleInstall = () => {
-        setTokenDialogOpen(true);
+        startInstall();
     };
 
     const handleCancel = async () => {
@@ -309,76 +304,6 @@ function ModelCard({ model }: ModelCardProps) {
                     ) : null}
                 </CardFooter>
             </Card>
-
-            {/* Access token dialog — shown before download starts */}
-            <Dialog open={tokenDialogOpen} onOpenChange={(open) => {
-                setTokenDialogOpen(open);
-                if (!open) setAccessToken("");
-            }}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <KeyRoundIcon className="h-4 w-4" />
-                            Install {model.name}
-                        </DialogTitle>
-                        <DialogDescription>
-                            This model is hosted on HuggingFace. Some models (e.g. Gemma family)
-                            require you to accept their licence and provide an access token.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="space-y-3 py-1">
-                        <div className="space-y-1.5">
-                            <label htmlFor="hf-token" className="text-sm font-medium">HuggingFace Access Token <span className="text-muted-foreground">(optional)</span></label>
-                            <Input
-                                id="hf-token"
-                                type="password"
-                                placeholder="hf_..."
-                                value={accessToken}
-                                onChange={(e) => setAccessToken(e.target.value)}
-                                autoComplete="off"
-                            />
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                            If this model is gated, accept its licence on{" "}
-                            <a
-                                href={`https://huggingface.co/${model.id}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="underline inline-flex items-center gap-0.5"
-                            >
-                                huggingface.co <ExternalLinkIcon className="h-3 w-3" />
-                            </a>{" "}
-                            then paste your access token above. Leave blank for public models.
-                        </p>
-                    </div>
-
-                    <DialogFooter>
-                        <Button
-                            variant="outline"
-                            onClick={() => { setTokenDialogOpen(false); setAccessToken(""); }}
-                            disabled={isInstalling}
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={() => {
-                                setTokenDialogOpen(false);
-                                startInstall(accessToken || undefined);
-                                setAccessToken("");
-                            }}
-                            disabled={isInstalling}
-                        >
-                            {isInstalling ? (
-                                <RefreshCcwIcon className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                                <DownloadIcon className="mr-2 h-4 w-4" />
-                            )}
-                            Download
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
 
             {/* Delete confirmation dialog */}
             <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
