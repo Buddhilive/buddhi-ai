@@ -57,9 +57,13 @@ export function resolveConceptLink(fromId: string, href: string): string | null 
 	const path = href.split(/[?#]/)[0];
 	if (!path) return null;
 	if (/^[a-z][a-z0-9+.-]*:/i.test(path)) return null; // http:, mailto:, data:, etc.
-	if (!path.toLowerCase().endsWith(".md")) return null;
 
-	const stripped = path.slice(0, -3);
+	let stripped = path;
+	if (stripped.toLowerCase().endsWith(".md")) {
+		stripped = stripped.slice(0, -3);
+	} else if (stripped.toLowerCase().endsWith(".markdown")) {
+		stripped = stripped.slice(0, -9);
+	}
 
 	if (stripped.startsWith("/")) {
 		const resolved = normalizeSegments(stripped.split("/")).join("/");
@@ -67,8 +71,6 @@ export function resolveConceptLink(fromId: string, href: string): string | null 
 	}
 
 	// Path-relative: resolve against the directory containing `fromId`.
-	// (Today's bundle is flat per bundle.ts, so fromParts is always [] and this
-	// degrades to a no-op join — but it's correct if ids ever gain "/" nesting.)
 	const fromParts = fromId.split("/");
 	fromParts.pop();
 	const resolved = normalizeSegments([...fromParts, ...stripped.split("/")]).join("/");
@@ -83,17 +85,18 @@ interface LinkWithKind {
 /**
  * Extracts link targets with their semantic kind (containment, relatesTo, or reference).
  * Kind detection is based on textual patterns from documents.ts::decomposeConceptIfPossible:
- *   - "Part of [...]" → containment (lines ~201)
- *   - "See also: ..." → relatesTo (lines ~202)
- *   - After "# Concepts" heading → containment (lines ~214-217)
+ *   - "Part of [...]" → containment
+ *   - "See also: ..." → relatesTo
+ *   - After "# Concepts" heading → containment
  *   - Otherwise → reference
  */
 function extractLinkTargetsWithKind(concept: OkfConcept): LinkWithKind[] {
 	const result: LinkWithKind[] = [];
 	const seenTargets = new Set<string>();
 
-	// Find the position of the "# Concepts" heading to detect root→sub links
-	const conceptsHeadingIdx = concept.body.indexOf("\n# Concepts\n");
+	// Find the position of the "# Concepts" heading to detect root→sub links (tolerant to CRLF / # levels)
+	const conceptsHeadingMatch = concept.body.match(/(?:^|\r?\n)#+\s*Concepts\b/i);
+	const conceptsHeadingIdx = conceptsHeadingMatch ? (conceptsHeadingMatch.index ?? -1) : -1;
 
 	for (const match of concept.body.matchAll(LINK_RE)) {
 		if (match[1] === "!") continue; // skip image embeds
@@ -104,8 +107,8 @@ function extractLinkTargetsWithKind(concept: OkfConcept): LinkWithKind[] {
 		let kind: "containment" | "relatesTo" | "reference" = "reference";
 
 		// Check if preceded by "Part of "
-		const beforeMatch = concept.body.slice(Math.max(0, match.index! - 50), match.index!);
-		if (beforeMatch.includes("Part of ")) {
+		const beforeMatch = concept.body.slice(Math.max(0, (match.index ?? 0) - 60), match.index ?? 0);
+		if (/Part\s+of\s*$/i.test(beforeMatch) || beforeMatch.includes("Part of ")) {
 			kind = "containment";
 		}
 		// Check if inside "See also:" line
@@ -113,7 +116,7 @@ function extractLinkTargetsWithKind(concept: OkfConcept): LinkWithKind[] {
 			kind = "relatesTo";
 		}
 		// Check if after "# Concepts" heading
-		else if (conceptsHeadingIdx !== -1 && match.index! > conceptsHeadingIdx) {
+		else if (conceptsHeadingIdx !== -1 && (match.index ?? 0) > conceptsHeadingIdx) {
 			kind = "containment";
 		}
 
