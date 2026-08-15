@@ -224,7 +224,7 @@ function buildGraphStylesheet(
 				label: "data(label)",
 				color: fgColor,
 				"font-size": 11,
-				"font-family": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+				"font-family": 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
 				"font-weight": "normal",
 				"text-max-width": "110px",
 				"text-wrap": "ellipsis",
@@ -548,28 +548,30 @@ export function KnowledgeGraphView() {
 			elements: [...graph.nodes, ...graph.edges],
 			minZoom: 0.15,
 			maxZoom: 3.5,
-			wheelSensitivity: 0.35,
 			boxSelectionEnabled: false,
 			style: stylesheet,
-			layout: {
-				name: "cose",
-				animate: true,
-				animationDuration: 400,
-				fit: true,
-				padding: 50,
-				randomize: true, // Crucial: avoids initial 0,0 collision
-				nodeRepulsion: () => 8500,
-				idealEdgeLength: () => 95,
-				edgeElasticity: () => 32,
-				nodeOverlap: 20,
-				gravity: 0.9,
-				numIter: 1000,
-				initialTemp: 1000,
-				coolingFactor: 0.99,
-				minTemp: 1.0,
-				componentSpacing: 60,
-			},
+			layout: { name: "null" },
 		});
+
+		const layout = cy.layout({
+			name: "cose",
+			animate: true,
+			animationDuration: 400,
+			fit: true,
+			padding: 50,
+			randomize: true, // Crucial: avoids initial 0,0 collision
+			nodeRepulsion: () => 8500,
+			idealEdgeLength: () => 95,
+			edgeElasticity: () => 32,
+			nodeOverlap: 20,
+			gravity: 0.9,
+			numIter: 1000,
+			initialTemp: 1000,
+			coolingFactor: 0.99,
+			minTemp: 1.0,
+			componentSpacing: 60,
+		});
+		layout.run();
 
 		// Node tap -> selection
 		cy.on("tap", "node", (evt) => {
@@ -663,6 +665,7 @@ export function KnowledgeGraphView() {
 
 		return () => {
 			ro.disconnect();
+			layout.stop();
 			if (!cy.destroyed()) {
 				cy.destroy();
 			}
