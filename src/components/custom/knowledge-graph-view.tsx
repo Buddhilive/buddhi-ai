@@ -1011,7 +1011,7 @@ export function KnowledgeGraphView() {
 
 			{/* Detail panel on the right */}
 			{!isEmpty && (
-				<div className="w-80 lg:w-96 flex flex-col shrink-0 min-h-0">
+				<div className="w-80 lg:w-96 flex flex-col h-full overflow-hidden">
 					{selectedEdgeId ? (
 						<Card className="flex flex-col h-full overflow-hidden p-5 border-border bg-card/90 shadow-sm">
 							<div className="flex items-center justify-between pb-3 border-b border-border">
@@ -1084,7 +1084,7 @@ export function KnowledgeGraphView() {
 					) : selectedNode ? (
 						<Card className="flex flex-col h-full overflow-hidden p-5 border-border bg-card/90 shadow-sm">
 							{/* Node Header */}
-							<div className="space-y-2 pb-4 border-b border-border">
+							<div className="space-y-2 pb-4 mb-3 border-b border-border">
 								<div className="flex items-start justify-between gap-2">
 									<h2 className="text-lg font-bold tracking-tight break-words">
 										{selectedNode.node.label}
@@ -1120,7 +1120,7 @@ export function KnowledgeGraphView() {
 							</div>
 
 							{/* Concept Body or Placeholder info */}
-							<ScrollArea className="flex-1 my-3 pr-3">
+							<ScrollArea className="flex-1 min-h-0 pr-3">
 								{selectedNode.node.placeholder ? (
 									<div className="rounded-lg border border-dashed border-border p-4 text-center my-4">
 										<InfoIcon className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
