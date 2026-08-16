@@ -3,19 +3,22 @@
  *
  * Manages the full document lifecycle:
  *   1. Validate & store raw file in IndexedDB ("buddhi-ai-doc-store")
- *   2. Run the vectorization pipeline (extract → chunk → embed → save to PGlite)
+ *   2. Run the OKF ingestion pipeline (extract → build concept → index → save)
  *   3. Track real-time progress via the Zustand document-store
  *   4. Support reconciliation of documents interrupted by a page close
  */
 
-import { extractTextFromPDF } from "@/lib/text-embeddings";
-import {
-    chunkText,
-    createVectorIndexBatched,
-    deleteDocumentEmbeddings,
-} from "@/lib/llamaindex-provider";
+import { extractText, fileToConcept, PRODUCER_ACTOR } from "@/lib/okf/ingest";
+import { putConcept, deleteConcept, getAllConcepts } from "@/lib/okf/store";
+import { indexConcept, removeFromIndex } from "@/lib/okf/search";
+import { serializeFrontmatter } from "@/lib/okf/frontmatter";
+import { extractFrontmatterWithLlm } from "@/lib/okf/enrich";
+import { extractConceptsWithLlm, type DecomposedConcept } from "@/lib/okf/decompose";
+import { uniqueConceptId } from "@/lib/okf/bundle";
 import { useDocumentStore } from "@/stores/document-store";
+import { useLiteRTModelStore } from "@/stores/litert-store";
 import { DocPhase, DocumentInfo, DocStoreRecord } from "@/types/documents";
+import type { OkfConcept, OkfFrontmatter } from "@/lib/okf/types";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -25,9 +28,6 @@ const DOC_STORE_NAME = "documents";
 
 const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
 const SUPPORTED_EXTENSIONS = ["pdf", "txt", "md"];
-
-/** chatId used in PGlite for all global knowledge-base documents */
-export const GLOBAL_KB_CHAT_ID = "knowledge-base-global";
 
 // ─── IndexedDB helpers ────────────────────────────────────────────────────────
 
@@ -135,8 +135,104 @@ function toInfo(record: DocStoreRecord): DocumentInfo {
     return info;
 }
 
-// ─── Vectorization pipeline ───────────────────────────────────────────────────
+// ─── OKF ingestion pipeline ────────────────────────────────────────────────────
 
+/**
+ * Best-effort content classification via the on-device model. Mutates
+ * `concept.frontmatter`/`concept.raw` in place; no-ops (and never throws) if
+ * no model is ready or extraction fails.
+ */
+async function enrichConceptIfPossible(docId: number, concept: OkfConcept): Promise<void> {
+    const { liteRTModelInstance, liteRTModelStatus } = useLiteRTModelStore.getState();
+    if (liteRTModelStatus !== "ready" || !liteRTModelInstance) return;
+
+    try {
+        const fields = await extractFrontmatterWithLlm(liteRTModelInstance, concept.fileName, concept.body);
+        if (fields) {
+            Object.assign(concept.frontmatter, fields);
+            concept.raw = serializeFrontmatter(concept.frontmatter, concept.body);
+        }
+    } catch (err) {
+        console.warn(`[documents] LLM enrichment failed for doc ${docId}, keeping default frontmatter:`, err);
+    }
+}
+
+/**
+ * Best-effort decomposition into several cross-linked sub-concepts via the
+ * on-device model. Returns `[]` (never throws) when no model is ready, the
+ * document isn't eligible, or extraction fails — callers should treat that
+ * as "root concept only," exactly like the pre-decomposition behavior.
+ * Mutates `root.body`/`root.raw` in place to link out to whatever
+ * sub-concepts are returned.
+ */
+async function decomposeConceptIfPossible(
+    docId: number,
+    root: OkfConcept,
+    text: string,
+    existingIds: Set<string>
+): Promise<OkfConcept[]> {
+    const { liteRTModelInstance, liteRTModelStatus } = useLiteRTModelStore.getState();
+    if (liteRTModelStatus !== "ready" || !liteRTModelInstance) return [];
+
+    let decomposed: DecomposedConcept[] | null = null;
+    try {
+        decomposed = await extractConceptsWithLlm(liteRTModelInstance, root.fileName, text);
+    } catch (err) {
+        console.warn(`[documents] LLM decomposition failed for doc ${docId}, keeping single concept:`, err);
+    }
+    if (!decomposed) {
+        // extractConceptsWithLlm returns null when model runs but produces invalid output;
+        // see console for [okf/decompose] warnings about why
+        return [];
+    }
+    if (decomposed.length === 0) return [];
+
+    const slugToId = new Map<string, string>();
+    for (const d of decomposed) {
+        const id = uniqueConceptId(`${root.id}--${d.slug}`, existingIds);
+        existingIds.add(id);
+        slugToId.set(d.slug, id);
+    }
+
+    const now = new Date().toISOString();
+    const subConcepts: OkfConcept[] = decomposed.map((d) => {
+        const id = slugToId.get(d.slug)!;
+        const relatedLinks = d.relatesTo
+            .map((slug) => slugToId.get(slug))
+            .filter((relId): relId is string => Boolean(relId) && relId !== id);
+
+        let body = d.body.trim();
+        body += `\n\nPart of [${root.frontmatter.title ?? root.id}](/${root.id}.md).`;
+        if (relatedLinks.length > 0) {
+            body += `\n\nSee also: ${relatedLinks.map((relId) => `[${relId}](/${relId}.md)`).join(", ")}.`;
+        }
+
+        const frontmatter: OkfFrontmatter = {
+            type: d.type,
+            title: d.title,
+            ...(d.description ? { description: d.description } : {}),
+            ...(d.tags.length > 0 ? { tags: d.tags } : {}),
+            generated: { by: PRODUCER_ACTOR, at: now },
+        };
+
+        return {
+            id,
+            frontmatter,
+            body,
+            raw: serializeFrontmatter(frontmatter, body),
+            fileName: root.fileName,
+            fileSize: body.length,
+            createdAt: now,
+        };
+    });
+
+    root.body = `${root.body.trim()}\n\n# Concepts\n\n${subConcepts
+        .map((c) => `- [${c.frontmatter.title ?? c.id}](/${c.id}.md)`)
+        .join("\n")}\n`;
+    root.raw = serializeFrontmatter(root.frontmatter, root.body);
+
+    return subConcepts;
+}
 /**
  * Runs entirely asynchronously — never awaited by the caller.
  * Updates Zustand store at each stage so the UI stays in sync.
@@ -150,55 +246,48 @@ async function runPipeline(doc: DocumentInfo, fileData: ArrayBuffer): Promise<vo
         await idbUpdate(doc.id, { status: "processing" });
 
         const file = new File([fileData], doc.original_name);
-        const ext = doc.original_name.split(".").pop()?.toLowerCase();
+        const text = await extractText(file);
 
-        let text: string;
-        if (ext === "pdf") {
-            text = await extractTextFromPDF(file);
-        } else {
-            text = await file.text();
+        // ── Stage 2: build OKF concept ─────────────────────────────────────────
+        store.updateProgress(doc.id, "parsing" as DocPhase, 30);
+        const existingIds = new Set((await getAllConcepts()).map((c) => c.id));
+        const { concept, enrichable } = fileToConcept(file, text, existingIds);
+        existingIds.add(concept.id);
+
+        // ── Stage 2b: optional on-device LLM classification ────────────────────
+        if (enrichable) {
+            store.updateProgress(doc.id, "enriching" as DocPhase, 45);
+            await enrichConceptIfPossible(doc.id, concept);
         }
 
-        if (!text || text.trim().length === 0) {
-            throw new Error(
-                ext === "pdf"
-                    ? "No extractable text found. Scanned/image-only PDFs are not supported — please use a text-based PDF."
-                    : "File appears to be empty."
-            );
+        // ── Stage 2c: optional on-device decomposition into linked sub-concepts ─
+        let subConcepts: OkfConcept[] = [];
+        if (enrichable) {
+            store.updateProgress(doc.id, "enriching" as DocPhase, 60);
+            subConcepts = await decomposeConceptIfPossible(doc.id, concept, text, existingIds);
+        }
+        const allConcepts = [concept, ...subConcepts];
+
+        // ── Stage 3: keyword-index every concept ─────────────────────────────────
+        store.updateProgress(doc.id, "indexing" as DocPhase, 70);
+        for (const c of allConcepts) {
+            await indexConcept(c);
         }
 
-        // ── Stage 2: chunking ────────────────────────────────────────────────
-        store.updateProgress(doc.id, "chunking" as DocPhase, 30);
-        const chunks = await chunkText(text, 200, 20, doc.id.toString());
-
-        if (chunks.length === 0) {
-            throw new Error("No chunks were generated — the document may contain only whitespace.");
+        // ── Stage 4: persist every concept ────────────────────────────────────────
+        store.updateProgress(doc.id, "saving" as DocPhase, 90);
+        for (const c of allConcepts) {
+            await putConcept(c);
         }
-
-        // ── Stage 3: embedding + storage (batched, 50 chunks at a time) ──────
-        store.updateProgress(doc.id, "embedding" as DocPhase, 35);
-
-        let totalChunks = 0;
-        await createVectorIndexBatched(
-            chunks,
-            GLOBAL_KB_CHAT_ID,
-            doc.id.toString(),
-            doc.original_name,
-            (processed, total) => {
-                // Map 0-100% onto the 35-95% window
-                const pct = 35 + Math.round((processed / total) * 60);
-                store.updateProgress(doc.id, "embedding" as DocPhase, Math.min(pct, 95));
-                totalChunks = total;
-            }
-        );
 
         // ── Done ─────────────────────────────────────────────────────────────
         await idbUpdate(doc.id, {
             status: "completed",
-            chunk_count: totalChunks,
+            concept_id: concept.id,
+            concept_ids: allConcepts.map((c) => c.id),
             error_msg: null,
         });
-        store.completeDoc(doc.id, totalChunks);
+        store.completeDoc(doc.id);
     } catch (error) {
         const msg =
             error instanceof Error ? error.message : "An unknown error occurred during processing.";
@@ -209,13 +298,6 @@ async function runPipeline(doc: DocumentInfo, fileData: ArrayBuffer): Promise<vo
             await idbUpdate(doc.id, { status: "failed", error_msg: msg });
         } catch (updateErr) {
             console.error("[documents] Could not persist failure to IDB:", updateErr);
-        }
-
-        // Clean up any partial embeddings written before the failure
-        try {
-            await deleteDocumentEmbeddings(doc.id.toString());
-        } catch (cleanupErr) {
-            console.error("[documents] Could not clean up partial embeddings:", cleanupErr);
         }
 
         store.failDoc(doc.id, msg);
@@ -269,7 +351,8 @@ export const documentsApi = {
             original_name: file.name,
             file_size: file.size,
             status: "pending",
-            chunk_count: null,
+            concept_id: null,
+            concept_ids: null,
             error_msg: null,
             created_at: new Date().toISOString(),
         };
@@ -318,18 +401,24 @@ export const documentsApi = {
     },
 
     /**
-     * Remove a document — deletes its vector embeddings from PGlite,
+     * Remove a document — deletes its OKF concept from the store/search index,
      * then removes the IDB record and Zustand state.
      */
     async deleteDocument(id: number): Promise<void> {
-        // Remove vector embeddings first (best-effort)
-        try {
-            await deleteDocumentEmbeddings(id.toString());
-        } catch (err) {
-            console.error(
-                `[documents] Failed to delete embeddings for doc ${id} — continuing with IDB deletion:`,
-                err
-            );
+        const record = await idbGet(id);
+
+        const conceptIds = record?.concept_ids ?? (record?.concept_id ? [record.concept_id] : []);
+
+        for (const conceptId of conceptIds) {
+            try {
+                await deleteConcept(conceptId);
+                await removeFromIndex(conceptId);
+            } catch (err) {
+                console.error(
+                    `[documents] Failed to delete OKF concept "${conceptId}" for doc ${id} — continuing with IDB deletion:`,
+                    err
+                );
+            }
         }
 
         await idbDelete(id);
@@ -378,3 +467,6 @@ export async function reconcileInterruptedDocuments(): Promise<void> {
         console.error("[documents] reconcileInterruptedDocuments failed:", err);
     }
 }
+
+
+
