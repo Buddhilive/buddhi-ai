@@ -1,7 +1,7 @@
 /**
  * graph.ts — builds a Cytoscape-ready link graph from OKF concepts.
  *
- * Implements okf-guide.md §3 (bundle-relative/relative link resolution) and
+ * Implements (bundle-relative/relative link resolution) and
  * §8.2 step 3 (record edges even when the target concept doesn't exist, so
  * "cited by" backlink views and dangling-link tolerance both work).
  */
@@ -49,7 +49,7 @@ function normalizeSegments(parts: string[]): string[] {
 
 /**
  * Resolves a markdown link href against the id of the concept that contains it,
- * per okf-guide.md §3: bundle-relative ("/a/b.md") or path-relative ("./b.md",
+ * §3: bundle-relative ("/a/b.md") or path-relative ("./b.md",
  * "../b.md"). Returns null for external links (any URL scheme), anchors, and
  * anything not targeting a ".md" concept file.
  */

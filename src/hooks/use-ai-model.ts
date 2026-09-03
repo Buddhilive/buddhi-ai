@@ -50,7 +50,7 @@ export function useModelEngine() {
                 );
                 const llmInference = await LlmInference.createFromOptions(genai, {
                     baseOptions: { modelAssetPath: objectUrl },
-                    maxTokens: 131072,
+                    maxTokens: 31000,
                 });
                 setLiteRTModelInstance(llmInference);
                 setLiteRTModelModel(completedModel.id);

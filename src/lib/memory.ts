@@ -35,7 +35,7 @@ import type { UIMessage } from "ai";
 // ---------------------------------------------------------------------------
 
 /** Token threshold that triggers automatic summarization. */
-export const SUMMARIZATION_THRESHOLD = 120_000;
+export const SUMMARIZATION_THRESHOLD = 30_000;
 
 /**
  * Maximum context window size for display in the Context component.

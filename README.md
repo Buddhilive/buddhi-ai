@@ -22,7 +22,7 @@ The guiding principle of Buddhi AI is to deliver robust AI utility while upholdi
 ### Core Features
 
 - **Local-First Chat:** Fully interactive chat powered entirely by client-side models (Gemma 4 E2B) running in WebGPU or WASM modes.
-- **Open Knowledge Format (OKF) System:** Ingests documents (PDF, TXT, MD) and decomposes them into structured, cross-linked Markdown concepts following the [OKF v0.2 specification](okf-guide.md). Metadata (provenance, trust, lifecycle) and relationship graphs are stored locally.
+- **Open Knowledge Format (OKF) System:** Ingests documents (PDF, TXT, MD) and decomposes them into structured, cross-linked Markdown concepts following the OKF v0.2 specification. Metadata (provenance, trust, lifecycle) and relationship graphs are stored locally.
 - **Interactive Knowledge Graph:** Visualizes cross-linked concepts using Cytoscape.js, featuring color-coded concept categories, edge relation kinds, zoom controls, hover metadata, and neighborhood isolation.
 - **Prompt Builder & Selector:** A custom interface allowing users to craft, customize, and experiment with system prompts and model templates to modify model responses.
 - **Model Manager:** Visual interface to download and manage model files (such as Gemma 4 E2B) locally using a streaming progress worker without requiring external access tokens.

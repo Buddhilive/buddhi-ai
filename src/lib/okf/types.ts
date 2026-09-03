@@ -1,7 +1,7 @@
 /**
  * types.ts — Open Knowledge Format (OKF) v0.2 domain types.
  *
- * See okf-guide.md for the full spec. These types cover only the minimal
+ * These types cover only the minimal
  * frontmatter shape this app emits during auto-ingestion; the `[key: string]`
  * index signature on OkfFrontmatter preserves any additional keys a concept
  * may carry, per spec §7 ("consumers should preserve [unknown keys] on

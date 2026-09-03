@@ -2,7 +2,7 @@
  * bundle.ts — concept id helpers.
  *
  * A concept id is the bundle-relative file path minus the `.md` suffix
- * (okf-guide.md §2). This app's bundle is flat (no directory hierarchy);
+ * This app's bundle is flat (no directory hierarchy);
  * ingestion produces one root concept per uploaded file, optionally paired
  * with several decomposed sub-concept ids derived from the root id
  * (see okf/decompose.ts) — those still live at the bundle root, just with
