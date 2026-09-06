@@ -1,6 +1,6 @@
 import { useMemoryStore } from "@/stores/memory-store";
 import { runSummarization } from "@/lib/memory";
-import type { LlmInference } from "@mediapipe/tasks-genai";
+import type { Engine } from "@litert-lm/core";
 import type { GemmaTemplateVersion } from "@/types/messages";
 import { toast } from "sonner";
 import type { UIMessage } from "ai";
@@ -10,13 +10,11 @@ export function useChatMemory({
     systemPrompt,
     templateVersion,
     currentChatIdRef,
-    transport,
 }: {
-    instance: LlmInference | null;
+    instance: Engine | null;
     systemPrompt: string;
     templateVersion: GemmaTemplateVersion;
     currentChatIdRef: React.MutableRefObject<string | null>;
-    transport: any; // MediaPipeChatTransport
 }) {
     const tokenCount = useMemoryStore((s) => s.tokenCount);
     const isSummarizing = useMemoryStore((s) => s.isSummarizing);
@@ -47,8 +45,6 @@ export function useChatMemory({
                 templateVersion
             );
             setIsSummarized(true);
-            // Update the transport's chatId in case it was set during load.
-            transport.chatId = chatId;
         } catch (err) {
             console.error("[ChatSession] Summarization failed:", err);
             toast.error(

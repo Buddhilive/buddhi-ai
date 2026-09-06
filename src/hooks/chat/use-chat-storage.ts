@@ -15,7 +15,7 @@ import {
     SUMMARIZATION_THRESHOLD,
 } from "@/lib/memory";
 import type { UIMessage } from "ai";
-import type { LlmInference } from "@mediapipe/tasks-genai";
+import type { Engine } from "@litert-lm/core";
 import type { GemmaTemplateVersion } from "@/types/messages";
 
 export function useChatStorage({
@@ -26,18 +26,16 @@ export function useChatStorage({
     status,
     systemPrompt,
     templateVersion,
-    transport,
     triggerSummarization,
     resetMemory,
 }: {
     chatId: string | null;
-    instance: LlmInference | null;
+    instance: Engine | null;
     messages: UIMessage[];
     setMessages: (messages: UIMessage[]) => void;
     status: string;
     systemPrompt: string;
     templateVersion: GemmaTemplateVersion;
-    transport: any;
     triggerSummarization: (msgs: UIMessage[]) => Promise<void>;
     resetMemory: () => void;
 }) {
@@ -69,8 +67,7 @@ export function useChatStorage({
                             );
                             const count = await countTokensForMessages(
                                 instance,
-                                buddhiMsgs,
-                                templateVersion
+                                buddhiMsgs
                             );
                             useMemoryStore.getState().setTokenCount(count);
 
@@ -118,7 +115,6 @@ export function useChatStorage({
                     currentChatIdRef.current = newId;
                     window.history.replaceState(null, "", `/chat/${newId}`);
                     setCurrentChatId(newId);
-                    transport.chatId = newId;
                 }
                 await refreshChats();
             } catch (error) {

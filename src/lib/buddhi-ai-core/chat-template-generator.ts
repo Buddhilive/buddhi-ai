@@ -33,14 +33,17 @@
  * model (e.g. if a user has the old model cached locally).
  */
 
-import type {
-    Prompt,
-    Image as MediaPipeImage,
-    Audio as MediaPipeAudio,
-} from "@mediapipe/tasks-genai";
+export interface MediaPipeImage {
+    imageSource: unknown;
+}
 
-/** Element type of a MediaPipe Prompt array. */
-type PromptPart = string | MediaPipeImage | MediaPipeAudio;
+export interface MediaPipeAudio {
+    audioSource: unknown;
+}
+
+/** Element type of a prompt array. */
+export type PromptPart = string | MediaPipeImage | MediaPipeAudio;
+export type Prompt = PromptPart[];
 import type {
     BuddhiAIMessage,
     BuddhiAIChatTemplate,

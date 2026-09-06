@@ -31,13 +31,6 @@ import {
     Attachments,
     type AttachmentData,
 } from "@/components/ai-elements/attachments";
-import {
-    Source,
-    Sources,
-    SourcesContent,
-    SourcesTrigger,
-} from "@/components/ai-elements/sources";
-import type { RagSourceItem } from "@/lib/rag";
 
 interface ChatMessagesProps {
     messages: UIMessage[];
@@ -52,7 +45,6 @@ interface ChatMessagesProps {
     handleCopy: (id: string, text: string) => void;
     copiedMessageId: string | null;
     handleRegenerate: () => void;
-    sources: RagSourceItem[];
     sendMessage: (msg: { text: string }) => void;
 }
 
@@ -69,7 +61,6 @@ export function ChatMessages({
     handleCopy,
     copiedMessageId,
     handleRegenerate,
-    sources,
     sendMessage,
 }: ChatMessagesProps) {
     return (
@@ -160,22 +151,6 @@ export function ChatMessages({
                                                 return null;
                                             })}
                                         </MessageContent>
-
-                                        {message.role === "assistant" &&
-                                            isLastMessage &&
-                                            sources.length > 0 && (
-                                                <Sources>
-                                                    <SourcesTrigger count={sources.length} />
-                                                    <SourcesContent>
-                                                        {sources.map((source) => (
-                                                            <Source
-                                                                key={source.documentId}
-                                                                title={source.fileName}
-                                                            />
-                                                        ))}
-                                                    </SourcesContent>
-                                                </Sources>
-                                            )}
                                     </Message>
                                 )}
                             </MessageBranchContent>

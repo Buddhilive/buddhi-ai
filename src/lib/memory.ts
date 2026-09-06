@@ -25,9 +25,8 @@
  * running. Token counting should only happen when status === "ready".
  */
 
-import { generateChatTemplate } from "@/lib/buddhi-ai-core/chat-template-generator";
 import type { BuddhiAIMessage, GemmaTemplateVersion } from "@/types/messages";
-import type { LlmInference } from "@mediapipe/tasks-genai";
+import type { Engine } from "@litert-lm/core";
 import type { UIMessage } from "ai";
 
 // ---------------------------------------------------------------------------
@@ -35,7 +34,7 @@ import type { UIMessage } from "ai";
 // ---------------------------------------------------------------------------
 
 /** Token threshold that triggers automatic summarization. */
-export const SUMMARIZATION_THRESHOLD = 30_000;
+export const SUMMARIZATION_THRESHOLD = 8192;
 
 /**
  * Maximum context window size for display in the Context component.
@@ -250,25 +249,28 @@ export function applyMemoryContext(
  * allow concurrent inference and tokenization.
  */
 export async function countTokensForMessages(
-    instance: LlmInference,
-    messages: BuddhiAIMessage[],
-    templateVersion: GemmaTemplateVersion,
+    instance: Engine,
+    messages: BuddhiAIMessage[]
 ): Promise<number> {
     if (messages.length === 0) return 0;
     try {
-        const prompt = await generateChatTemplate(messages, { templateVersion });
-        const count = instance.sizeInTokens(prompt);
-        if (count === undefined) {
-            console.warn(
-                "[Memory] sizeInTokens returned undefined — " +
-                "cannot determine token count. Returning 0."
-            );
-            return 0;
-        }
-        return count;
+        const prefaceMessages = messages.map((m) => ({
+            role: m.role,
+            content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+        }));
+        const conversation = await instance.createConversation({
+            preface: { messages: prefaceMessages },
+        });
+        const count = await conversation.getTokenCount();
+        await conversation.delete().catch(() => {});
+        return count ?? 0;
     } catch (err) {
         console.warn("[Memory] Failed to count tokens:", err);
-        return 0;
+        const totalChars = messages.reduce(
+            (acc, m) => acc + (typeof m.content === "string" ? m.content.length : 100),
+            0
+        );
+        return Math.round(totalChars / 4);
     }
 }
 
@@ -377,7 +379,7 @@ function formatMessageForSummary(msg: BuddhiAIMessage): string {
  * in useMemoryStore and for showing the "Summarizing…" shimmer.
  */
 export async function runSummarization(
-    instance: LlmInference,
+    instance: Engine,
     uiMessages: UIMessage[],
     systemPrompt: string,
     chatId: string,
@@ -400,73 +402,71 @@ export async function runSummarization(
 
     const conversationText = middle.map(formatMessageForSummary).join("\n\n");
 
-    const summarizationMessages: BuddhiAIMessage[] = [
-        {
-            role: "system",
-            content:
-                "You are a summarization assistant. Your sole task is to create a " +
-                "comprehensive yet concise summary of the conversation excerpt provided. " +
-                "Include: key topics discussed, decisions made, code written or reviewed, " +
-                "questions asked and answered, any important facts or context established, " +
-                "and the overall progression of the conversation. " +
-                "Write the summary in third-person prose. Do not add commentary or preamble — " +
-                "output only the summary itself.",
+    const conversation = await instance.createConversation({
+        preface: {
+            messages: [
+                {
+                    role: "system",
+                    content:
+                        "You are a summarization assistant. Your sole task is to create a " +
+                        "comprehensive yet concise summary of the conversation excerpt provided. " +
+                        "Include: key topics discussed, decisions made, code written or reviewed, " +
+                        "questions asked and answered, any important facts or context established, " +
+                        "and the overall progression of the conversation. " +
+                        "Write the summary in third-person prose. Do not add commentary or preamble — " +
+                        "output only the summary itself.",
+                },
+            ],
         },
-        {
-            role: "user",
-            content:
-                "Please summarize the following conversation excerpt. " +
-                "The summary will be used as working memory to continue the conversation:\n\n" +
-                `<CONVERSATION>\n${conversationText}\n</CONVERSATION>`,
-        },
-    ];
+    });
 
-    let prompt;
-    try {
-        prompt = await generateChatTemplate(summarizationMessages, { templateVersion });
-    } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`[Memory] Failed to build summarization template: ${msg}`);
-    }
+    const userPrompt =
+        "Please summarize the following conversation excerpt. " +
+        "The summary will be used as working memory to continue the conversation:\n\n" +
+        `<CONVERSATION>\n${conversationText}\n</CONVERSATION>`;
 
     console.debug(
         `[Memory] Running summarization for chat "${chatId}" ` +
         `(${middle.length} messages in middle slice).`
     );
 
-    const summary = await new Promise<string>((resolve, reject) => {
-        let accumulated = "";
-        try {
-            instance.generateResponse(prompt, (chunk: string, done: boolean) => {
-                if (done) {
-                    // Strip trailing template tokens that may bleed through.
-                    const clean = accumulated
-                        .trim()
-                        .replace(/<turn\|>\s*$/, "")
-                        .replace(/<end_of_turn>\s*$/, "")
-                        .trim();
-                    resolve(clean);
-                } else {
-                    accumulated += chunk;
+    let accumulated = "";
+    const stream = conversation.sendMessageStreaming(userPrompt);
+    const reader = stream.getReader();
+    try {
+        while (true) {
+            const { done, value: chunk } = await reader.read();
+            if (done) break;
+            if (chunk?.content) {
+                if (typeof chunk.content === "string") {
+                    accumulated += chunk.content;
+                } else if (Array.isArray(chunk.content)) {
+                    for (const part of chunk.content) {
+                        if (part.type === "text" && part.text) {
+                            accumulated += part.text;
+                        }
+                    }
                 }
-            });
-        } catch (err) {
-            reject(
-                new Error(
-                    `[Memory] generateResponse threw during summarization: ${err instanceof Error ? err.message : String(err)
-                    }`
-                )
-            );
+            }
         }
-    });
+    } finally {
+        reader.releaseLock();
+        await conversation.delete().catch(() => {});
+    }
 
-    if (!summary) {
+    const clean = accumulated
+        .trim()
+        .replace(/<turn\|>\s*$/, "")
+        .replace(/<end_of_turn>\s*$/, "")
+        .trim();
+
+    if (!clean) {
         throw new Error("[Memory] Summarization produced an empty result.");
     }
 
     const ctx: MemoryContext = {
         chatId,
-        summary,
+        summary: clean,
         summaryTokenCount: 0, // Counted separately if needed; kept as 0 to avoid extra LLM call.
         createdAt: Date.now(),
         originalMessageCount: messages.length,
@@ -475,8 +475,8 @@ export async function runSummarization(
 
     console.debug(
         `[Memory] Summarization complete for chat "${chatId}". ` +
-        `Summary length: ${summary.length} chars.`
+        `Summary length: ${clean.length} chars.`
     );
 
-    return summary;
+    return clean;
 }

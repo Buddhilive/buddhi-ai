@@ -36,8 +36,9 @@ export const useModelStore = create<ModelStore>()(
                 })),
             removeModel: (id) =>
                 set((s) => {
-                    const { [id]: _, ...rest } = s.models;
-                    return { models: rest };
+                    const next = { ...s.models };
+                    delete next[id];
+                    return { models: next };
                 }),
             setHydrated: (hydrated) => set({ hydrated }),
         }),

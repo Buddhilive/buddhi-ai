@@ -15,7 +15,7 @@ export interface DownloadRequest {
     type: "download";
     modelId: string;      // Zustand key — same as HF repo ID
     repoId: string;       // HuggingFace repo ID, e.g. "litert-community/gemma-3-270m-it"
-    filename: string;     // File path inside the repo, e.g. "gemma3-270m-it-q8-web.task"
+    filename: string;     // File path inside the repo, e.g. "gemma-4-E2B-it-web.litertlm"
     accessToken?: string; // HF access token — required for gated models (Gemma, etc.)
 }
 

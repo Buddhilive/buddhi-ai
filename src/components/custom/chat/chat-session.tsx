@@ -1,12 +1,11 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { useChat } from "@ai-sdk/react";
-import type { LlmInference } from "@mediapipe/tasks-genai";
+import type { Engine } from "@litert-lm/core";
 import { MODELS } from "@/const/models";
 import { DEFAULT_SYSTEM_PROMPT, PROMPT_BUILDER_SP } from "@/const/system-prompt";
-import { MediaPipeChatTransport } from "@/lib/buddhi-ai-core/chat-api";
+import { LiteRTChatTransport } from "@/lib/buddhi-ai-core/chat-api";
 import { useLiteRTModelStore } from "@/stores/litert-store";
-import { buildRagContextBlock, retrieveRagContext, toSourceItems, type RagSourceItem } from "@/lib/rag";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import type { GemmaTemplateVersion } from "@/types/messages";
 
@@ -51,16 +50,13 @@ export function ChatSession({
     instance,
     chatId,
 }: {
-    instance: LlmInference;
+    instance: Engine;
     chatId: string | null;
 }) {
     const [text, setText] = useState<string>("");
     const [isReasoningOn, setIsReasoningOn] = useState<boolean>(false);
     const [open, setOpen] = useState(false);
     const [selectedSystemPrompt, setSelectedSystemPrompt] = useState<string>("default");
-
-    const [sources, setSources] = useState<RagSourceItem[]>([]);
-    const [isRetrieving, setIsRetrieving] = useState(false);
 
     const handleModelSelect = useCallback((id: string) => {
         setSelectedSystemPrompt(id);
@@ -70,20 +66,24 @@ export function ChatSession({
     const selectedSystemPromptData = models.find((model) => model.id === selectedSystemPrompt);
     const chefs = [...new Set(models.map((model) => model.chef))];
     const systemPrompt = selectedSystemPromptData?.template || DEFAULT_SYSTEM_PROMPT;
-
     const loadedModelId = useLiteRTModelStore((s) => s.liteRTModelModel);
     const activeModel = MODELS.find((m) => m.id === loadedModelId);
     const templateVersion: GemmaTemplateVersion = activeModel?.chatTemplateVersion ?? "gemma4";
     const supportsVision: boolean = activeModel?.supportsVision ?? false;
 
-    const transport = useMemo(
-        () => new MediaPipeChatTransport(instance, templateVersion),
-        [instance, templateVersion]
-    );
+    const currentChatIdRef = useRef<string | null>(chatId);
 
-    useEffect(() => { transport.isReasoningOn = isReasoningOn; }, [transport, isReasoningOn]);
-    useEffect(() => { transport.supportsVision = supportsVision; }, [transport, supportsVision]);
-    useEffect(() => { transport.systemPrompt = systemPrompt; }, [transport, systemPrompt]);
+    const getOptions = useCallback(() => ({
+        isReasoningOn,
+        systemPrompt,
+        supportsVision,
+        chatId: currentChatIdRef.current ?? chatId,
+    }), [isReasoningOn, systemPrompt, supportsVision, chatId]);
+
+    const transport = useMemo(
+        () => new LiteRTChatTransport(instance, getOptions, templateVersion),
+        [instance, getOptions, templateVersion]
+    );
 
     const { messages, setMessages, sendMessage, stop, status } = useChat({
         transport,
@@ -92,15 +92,11 @@ export function ChatSession({
     const {
         tokenCount,
         isSummarizing,
-        isSummarized,
-        setIsSummarizing,
-        setIsSummarized,
         resetMemory,
         triggerSummarization,
-    } = useChatMemory({ instance, systemPrompt, templateVersion, transport, currentChatIdRef: { current: chatId } });
+    } = useChatMemory({ instance, systemPrompt, templateVersion, currentChatIdRef });
     
-    // We update the currentChatIdRef from the useChatStorage hook
-    const { isLoadingChat, currentChatIdRef } = useChatStorage({
+    const { isLoadingChat } = useChatStorage({
         chatId,
         instance,
         messages,
@@ -108,20 +104,9 @@ export function ChatSession({
         status,
         systemPrompt,
         templateVersion,
-        transport,
         triggerSummarization,
         resetMemory,
     });
-
-    // Rebind triggerSummarization to have the correct ref
-    const { triggerSummarization: triggerSummarizationBound } = useChatMemory({
-        instance, systemPrompt, templateVersion, transport, currentChatIdRef
-    });
-
-    // Make sure we pass the same updated ref down
-    useEffect(() => {
-        transport.chatId = currentChatIdRef.current;
-    }, [transport, currentChatIdRef.current]);
 
     const {
         editingMessageId,
@@ -137,11 +122,10 @@ export function ChatSession({
         messages,
         setMessages,
         sendMessage,
-        transport,
         currentChatIdRef,
     });
 
-    const isSubmitDisabled = !text.trim() || status === "streaming" || status === "submitted" || isRetrieving || isSummarizing;
+    const isSubmitDisabled = !text.trim() || status === "streaming" || status === "submitted" || isSummarizing;
 
     const handleSubmit = useCallback(
         async (message: PromptInputMessage) => {
@@ -173,34 +157,10 @@ export function ChatSession({
                 }
             }
 
-            setSources([]);
-
-            if (message.text?.trim()) {
-                let resolveRag!: (ctx: string | null) => void;
-                transport.ragContextPromise = new Promise<string | null>((resolve) => {
-                    resolveRag = resolve;
-                });
-
-                sendMessage({ text: message.text || "", files: message.files });
-                setText("");
-
-                setIsRetrieving(true);
-                try {
-                    const segments = await retrieveRagContext(message.text);
-                    resolveRag(buildRagContextBlock(segments));
-                    setSources(toSourceItems(segments));
-                } catch {
-                    resolveRag(null);
-                } finally {
-                    setIsRetrieving(false);
-                }
-            } else {
-                transport.ragContextPromise = Promise.resolve(null);
-                sendMessage({ text: message.text || "", files: message.files });
-                setText("");
-            }
+            sendMessage({ text: message.text || "", files: message.files });
+            setText("");
         },
-        [sendMessage, transport, supportsVision]
+        [sendMessage, supportsVision]
     );
 
     const handleTranscriptionChange = useCallback((transcript: string) => {
@@ -238,7 +198,6 @@ export function ChatSession({
                 handleCopy={handleCopy}
                 copiedMessageId={copiedMessageId}
                 handleRegenerate={handleRegenerate}
-                sources={sources}
                 sendMessage={sendMessage}
             />
             <ChatInput
