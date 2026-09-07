@@ -15,7 +15,8 @@ import {
 } from "@/components/ui/sidebar"
 import { useNavigation } from "@/hooks/use-navigation";
 import { useModelEngine } from "@/hooks/use-ai-model";
-import { ModeToggle } from "@/components/custom/toggle-mode"
+import { ModeToggle } from "@/components/custom/toggle-mode";
+import { DesignerModeToggle } from "@/components/custom/designer/designer-mode-toggle";
 
 export default function BuddhiAILayout({ children }: { children: React.ReactNode }) {
 
@@ -44,6 +45,7 @@ export default function BuddhiAILayout({ children }: { children: React.ReactNode
             </Breadcrumb>
           </div>
           <div className="flex items-center gap-2 px-4">
+            <DesignerModeToggle />
             <ModeToggle />
           </div>
         </header>

@@ -10,7 +10,7 @@ export const SIDEBAR_DATA = {
         {
             name: "BuddhiAI",
             logo: Brain,
-            plan: "AI in Browser",
+            plan: "AI Web & UI Designer",
             url: "/",
         },
         {

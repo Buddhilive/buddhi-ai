@@ -1,0 +1,63 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-09-07",
+  "skills": [
+    {
+      "id": "web-design-engineer",
+      "name": "Web & UI Design Engineer",
+      "version": "1.0.0",
+      "description": "Design stunning, production-ready web interfaces, landing pages, and components using pure semantic HTML, modern CSS, and inline SVGs.",
+      "category": "frontend-design",
+      "entryPoint": "web-design-engineer/SKILL.md",
+      "triggers": [
+        "design",
+        "ui",
+        "landing page",
+        "hero",
+        "website",
+        "figma",
+        "mockup",
+        "component",
+        "card",
+        "navbar",
+        "footer",
+        "dashboard",
+        "button",
+        "layout",
+        "web page"
+      ],
+      "recipes": [
+        {
+          "id": "linear",
+          "name": "Linear Dark",
+          "file": "web-design-engineer/references/style-recipes/linear.md",
+          "description": "High precision, sleek dark UI with subtle borders and glowing accents"
+        },
+        {
+          "id": "minimal-editorial",
+          "name": "Minimal Editorial",
+          "file": "web-design-engineer/references/style-recipes/minimal-editorial.md",
+          "description": "Warm tones, crisp typography, and generous negative space"
+        },
+        {
+          "id": "modern-saas",
+          "name": "Modern SaaS",
+          "file": "web-design-engineer/references/style-recipes/modern-saas.md",
+          "description": "Clean enterprise layout with soft glassmorphism, badge accents, and modular cards"
+        }
+      ],
+      "references": [
+        {
+          "id": "design-tokens",
+          "name": "Design Tokens",
+          "file": "web-design-engineer/references/design-tokens.md"
+        },
+        {
+          "id": "anti-patterns",
+          "name": "Anti-Patterns Blocklist",
+          "file": "web-design-engineer/references/anti-patterns.md"
+        }
+      ]
+    }
+  ]
+}
