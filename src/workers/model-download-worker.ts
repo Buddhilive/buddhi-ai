@@ -32,6 +32,7 @@ export interface DeleteRequest {
 export interface CheckCacheRequest {
     type: "check-cache";
     modelId: string;
+    filename?: string;
 }
 
 export type WorkerRequest =
@@ -82,7 +83,8 @@ export type WorkerMessage =
 
 // ─── Cache config ─────────────────────────────────────────────────────────────
 
-const CACHE_NAME = "buddhi-ai-models-cache-v1";
+const CACHE_NAME = "buddhi-ai-models-cache-v2";
+const LEGACY_CACHE_NAMES = ["buddhi-ai-models-cache-v1"];
 
 // ─── Active downloads ─────────────────────────────────────────────────────────
 
@@ -94,8 +96,11 @@ function send(msg: WorkerMessage): void {
     self.postMessage(msg);
 }
 
-function cacheKey(modelId: string): string {
-    return `https://cache.buddhi-ai.local/models/${modelId.replace(/\//g, "_")}`;
+function cacheKey(modelId: string, filename?: string): string {
+    const sanitized = modelId.replace(/\//g, "_");
+    return filename
+        ? `https://cache.buddhi-ai.local/models/${sanitized}/${filename}`
+        : `https://cache.buddhi-ai.local/models/${sanitized}`;
 }
 
 async function openCache(): Promise<Cache> {
@@ -111,11 +116,29 @@ async function openCache(): Promise<Cache> {
 
 // ─── Operations ───────────────────────────────────────────────────────────────
 
-async function checkCache(modelId: string): Promise<boolean> {
+async function checkCache(modelId: string, filename?: string): Promise<boolean> {
     try {
         const cache = await openCache();
+        // Check exact filename key first
+        if (filename) {
+            const resp = await cache.match(new Request(cacheKey(modelId, filename)));
+            if (resp) return true;
+        }
+
+        // Fallback to legacy unversioned key
         const response = await cache.match(new Request(cacheKey(modelId)));
-        return !!response;
+        if (!response) return false;
+
+        // If filename is specified, verify that the cached file matches
+        if (filename) {
+            const cachedFilename = response.headers.get("x-filename");
+            if (cachedFilename && cachedFilename !== filename) {
+                // Mismatched file (e.g. legacy .task vs .litertlm) -> delete stale entry
+                await cache.delete(new Request(cacheKey(modelId)));
+                return false;
+            }
+        }
+        return true;
     } catch {
         return false;
     }
@@ -131,7 +154,7 @@ async function downloadModel(req: DownloadRequest): Promise<void> {
     }
 
     // Cache hit — skip download
-    const cached = await checkCache(modelId);
+    const cached = await checkCache(modelId, filename);
     if (cached) {
         send({ type: "progress", modelId, percentage: 100, loaded: 0, total: 0, fromCache: true });
         send({ type: "complete", modelId, fromCache: true });
@@ -215,7 +238,7 @@ async function downloadModel(req: DownloadRequest): Promise<void> {
             "x-filename": filename,
         });
         await cache.put(
-            new Request(cacheKey(modelId)),
+            new Request(cacheKey(modelId, filename)),
             new Response(blob, { headers: cacheHeaders })
         );
 
@@ -246,15 +269,23 @@ async function deleteModel(modelId: string): Promise<void> {
     try {
         const cache = await openCache();
 
-        // Primary key match
-        await cache.delete(new Request(cacheKey(modelId)));
-
-        // Fallback: scan all entries for x-model-id header match
+        // Delete from active cache
         const keys = await cache.keys();
         for (const req of keys) {
             const resp = await cache.match(req);
-            if (resp?.headers.get("x-model-id") === modelId) {
+            if (resp?.headers.get("x-model-id") === modelId || req.url.includes(modelId.replace(/\//g, "_"))) {
                 await cache.delete(req);
+            }
+        }
+
+        // Clean up legacy caches if present
+        for (const legacyName of LEGACY_CACHE_NAMES) {
+            try {
+                if (await caches.has(legacyName)) {
+                    await caches.delete(legacyName);
+                }
+            } catch {
+                // ignore
             }
         }
 
@@ -289,7 +320,7 @@ self.addEventListener("message", async (event: MessageEvent<WorkerRequest>) => {
             break;
 
         case "check-cache": {
-            const cached = await checkCache(req.modelId);
+            const cached = await checkCache(req.modelId, req.filename);
             send({ type: "cache-status", modelId: req.modelId, cached });
             break;
         }

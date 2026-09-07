@@ -53,7 +53,7 @@ export function useModelEngine() {
                 const objectUrl = await getModelObjectURL(completedModel.id);
                 if (!objectUrl) {
                     initializingRef.current = false;
-                    setLiteRTModelStatus("error");
+                    setLiteRTModelStatus("idle");
                     return;
                 }
                 objectUrlRef.current = objectUrl;

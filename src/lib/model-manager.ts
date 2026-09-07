@@ -126,10 +126,10 @@ function toModelInfo(id: string, state: ModelState, config: ModelConfig): ModelI
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Ask worker to check the Cache API; returns a promise that resolves when worker replies. */
-function checkCacheForModel(modelId: string): Promise<boolean> {
+function checkCacheForModel(modelId: string, filename?: string): Promise<boolean> {
     return new Promise((resolve) => {
         cacheCheckResolvers.set(modelId, resolve);
-        getWorker().postMessage({ type: "check-cache", modelId } satisfies WorkerRequest);
+        getWorker().postMessage({ type: "check-cache", modelId, filename } satisfies WorkerRequest);
     });
 }
 
@@ -137,24 +137,70 @@ function checkCacheForModel(modelId: string): Promise<boolean> {
 //
 // Must mirror the constants in model-download-worker.ts exactly.
 
-const CACHE_NAME = "buddhi-ai-models-cache-v1";
-function modelCacheKey(modelId: string): string {
-    return `https://cache.buddhi-ai.local/models/${modelId.replace(/\//g, "_")}`;
+const CACHE_NAME = "buddhi-ai-models-cache-v2";
+const LEGACY_CACHE_NAMES = ["buddhi-ai-models-cache-v1"];
+
+function modelCacheKey(modelId: string, filename?: string): string {
+    const sanitized = modelId.replace(/\//g, "_");
+    return filename
+        ? `https://cache.buddhi-ai.local/models/${sanitized}/${filename}`
+        : `https://cache.buddhi-ai.local/models/${sanitized}`;
 }
 
 /**
  * Retrieve the downloaded model from the Cache API and return a blob: URL.
  * The caller is responsible for calling URL.revokeObjectURL() when done.
- * Returns null if the model is not in the cache.
+ * Returns null if the model is not in the cache or fails validation.
  */
 export async function getModelObjectURL(modelId: string): Promise<string | null> {
     try {
+        const config = MODELS.find((m) => m.id === modelId);
+        const filename = config?.modelFile;
         const cache = await caches.open(CACHE_NAME);
-        const response = await cache.match(new Request(modelCacheKey(modelId)));
+
+        let response = filename
+            ? await cache.match(new Request(modelCacheKey(modelId, filename)))
+            : null;
+
+        if (!response) {
+            response = await cache.match(new Request(modelCacheKey(modelId)));
+        }
+
         if (!response) return null;
+
+        // Verify filename header if present
+        const cachedFilename = response.headers.get("x-filename");
+        if (filename && cachedFilename && cachedFilename !== filename) {
+            console.warn(`[model-manager] Cached file (${cachedFilename}) does not match expected (${filename}). Purging.`);
+            if (filename) await cache.delete(new Request(modelCacheKey(modelId, filename)));
+            await cache.delete(new Request(modelCacheKey(modelId)));
+            return null;
+        }
+
         const blob = await response.blob();
+
+        // Magic number check for LiteRT-LM models
+        if (filename?.endsWith(".litertlm")) {
+            const headerBuffer = await blob.slice(0, 8).arrayBuffer();
+            const headerText = new TextDecoder().decode(headerBuffer);
+            if (headerText !== "LITERTLM") {
+                console.warn(
+                    `[model-manager] Cached model file for ${modelId} does not start with LITERTLM magic bytes (got "${headerText}"). Purging legacy .task cache.`
+                );
+                if (filename) await cache.delete(new Request(modelCacheKey(modelId, filename)));
+                await cache.delete(new Request(modelCacheKey(modelId)));
+                useModelStore.getState().setModel(modelId, {
+                    status: "not_installed",
+                    progress: 0,
+                    error: "Cached model was in legacy format (.task). Please download the new LiteRT-LM model.",
+                });
+                return null;
+            }
+        }
+
         return URL.createObjectURL(blob);
-    } catch {
+    } catch (err) {
+        console.error("[model-manager] Error retrieving model object URL:", err);
         return null;
     }
 }
@@ -172,12 +218,19 @@ export const modelsApi = {
      *   - `not_installed` in store but found in cache → mark as `completed`
      */
     async listModels(): Promise<ModelInfo[]> {
+        // Asynchronously purge obsolete legacy cache containers
+        if (typeof window !== "undefined" && "caches" in window) {
+            for (const legacy of LEGACY_CACHE_NAMES) {
+                caches.delete(legacy).catch(() => {});
+            }
+        }
+
         const store = useModelStore.getState();
         const result: ModelInfo[] = [];
 
         // Kick off all cache checks in parallel
         const cacheChecks = await Promise.all(
-            MODELS.map((config) => checkCacheForModel(config.id).catch(() => false))
+            MODELS.map((config) => checkCacheForModel(config.id, config.modelFile).catch(() => false))
         );
 
         MODELS.forEach((config, i) => {
@@ -201,7 +254,7 @@ export const modelsApi = {
                 };
                 store.setModel(config.id, finalState);
             } else if (storeState.status === "completed" && !cachedOnDisk) {
-                // Store says complete but cache is empty (e.g., browser cleared cache)
+                // Store says complete but cache is empty or stale (.task)
                 finalState = { status: "not_installed", progress: 0 };
                 store.setModel(config.id, finalState);
             } else if (storeState.status === "not_installed" && cachedOnDisk) {
