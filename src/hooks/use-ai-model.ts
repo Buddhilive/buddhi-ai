@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import "@/lib/litert-log-filter";
 import { Engine } from "@litert-lm/core";
 import { useLiteRTModelStore } from "@/stores/litert-store";
 import { useModelStore } from "@/stores/model-store";

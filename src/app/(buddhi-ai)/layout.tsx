@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/sidebar"
 import { useNavigation } from "@/hooks/use-navigation";
 import { useModelEngine } from "@/hooks/use-ai-model";
+import "@/lib/litert-log-filter";
 import { ModeToggle } from "@/components/custom/toggle-mode";
 import { DesignerModeToggle } from "@/components/custom/designer/designer-mode-toggle";
 
