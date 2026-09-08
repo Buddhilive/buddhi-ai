@@ -89,7 +89,7 @@ export function ChatSession({
 
     const selectedSystemPromptData = models.find((model) => model.id === selectedSystemPrompt);
     const chefs = [...new Set(models.map((model) => model.chef))];
-    
+
     // Dynamic progressive system prompt composition
     const baseSystemPrompt = selectedSystemPromptData?.template || DEFAULT_SYSTEM_PROMPT;
     const systemPrompt = useMemo(() => {
@@ -148,7 +148,7 @@ export function ChatSession({
         resetMemory,
         triggerSummarization,
     } = useChatMemory({ instance, systemPrompt, templateVersion, currentChatIdRef });
-    
+
     const { isLoadingChat } = useChatStorage({
         chatId,
         instance,
@@ -247,11 +247,10 @@ export function ChatSession({
         <div className="relative flex h-[calc(100vh-80px)] w-full overflow-hidden">
             {/* Left: Chat Panel */}
             <div
-                className={`flex flex-col h-full overflow-hidden divide-y transition-all duration-200 ${
-                    showSplitCanvas
-                        ? "w-full lg:w-[420px] xl:w-[480px] shrink-0 border-r"
+                className={`flex flex-col h-full overflow-hidden divide-y transition-all duration-200 ${showSplitCanvas
+                        ? "w-full lg:w-[420px] xl:w-[480px] shrink-0"
                         : "flex-1 w-full"
-                }`}
+                    }`}
             >
                 <ChatMessages
                     messages={messages}

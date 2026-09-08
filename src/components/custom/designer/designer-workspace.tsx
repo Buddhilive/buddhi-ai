@@ -18,11 +18,10 @@ export function DesignerWorkspace({ children }: DesignerWorkspaceProps) {
     return (
         <div className="relative flex h-[calc(100vh-80px)] w-full overflow-hidden">
             <div
-                className={`flex flex-col h-full overflow-hidden divide-y transition-all duration-200 ${
-                    showSplitCanvas
+                className={`flex flex-col h-full overflow-hidden divide-y transition-all duration-200 ${showSplitCanvas
                         ? "w-full lg:w-[420px] xl:w-[480px] shrink-0 border-r"
                         : "flex-1 w-full"
-                }`}
+                    }`}
             >
                 {children}
             </div>

@@ -21,7 +21,7 @@ export function DesignerCanvas() {
     }, [viewport]);
 
     return (
-        <div className="flex h-full w-full flex-col bg-zinc-950/40 select-none overflow-hidden">
+        <div className="flex h-full w-full flex-col bg-zinc-950/40 select-none overflow-hidden rounded-xl">
             {/* Top Toolbar */}
             <ViewportToolbar />
 
