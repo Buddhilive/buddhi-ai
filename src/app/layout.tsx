@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "next-themes";
+import { SandboxServiceWorkerRegistrar } from "@/components/custom/sandbox/sandbox-sw-registrar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -16,25 +17,24 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Buddhi AI - Private Client-Side AI",
-    template: "%s | Buddhi AI"
+    default: "Buddhi Vibe — On-Device Next.js Vibe Coding",
+    template: "%s | Buddhi Vibe",
   },
-  description: "Experience the future of private AI with Buddhi AI. Privacy-first Chat, Prompt Builder, Summarizer, and Writer running entirely on-device in your browser.",
+  description:
+    "Vibe code complete full-stack Next.js 16 App Router applications on-device. Zero backend servers, client-side WebAssembly execution, live preview, and embedded SQLite.",
   keywords: [
-    "AI tools",
-    "client-side AI",
-    "private AI",
-    "browser AI",
-    "AI chat",
-    "text summarizer",
-    "AI writer",
-    "prompt builder",
-    "prompt generator",
-    "prompt engineering",
-    "privacy-first AI",
-    "local AI processing",
-    "secure AI tools",
-    "free AI tools"
+    "vibe coding",
+    "next.js on device",
+    "client-side nextjs",
+    "webassembly sandbox",
+    "browser nodejs sandbox",
+    "ai code generator",
+    "local ai coding",
+    "gemma on-device",
+    "private ai coding",
+    "app router builder",
+    "sqlite browser",
+    "zero server ai"
   ],
   authors: [{ name: "Buddhi Kavindra" }],
   creator: "Buddhilive Labs",
@@ -44,10 +44,11 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   openGraph: {
-    title: "Buddhi AI - Private Client-Side AI Tools",
-    description: "Powerful AI tools that run directly in your browser. Chat, Prompt Builder, Summarizer, and Writer with complete privacy and no server-side data processing.",
+    title: "Buddhi Vibe — On-Device Next.js Vibe Coding",
+    description:
+      "Develop and preview full-stack Next.js applications directly in your browser with zero backend and absolute privacy.",
     url: "https://ai.buddhilive.com",
-    siteName: "Buddhi AI",
+    siteName: "Buddhi Vibe",
     type: "website",
     locale: "en_US",
     images: [
@@ -55,14 +56,15 @@ export const metadata: Metadata = {
         url: "images/buddhi-ai-screenshot.png",
         width: 1200,
         height: 630,
-        alt: "Buddhi AI - Private Client-Side AI Tools",
+        alt: "Buddhi Vibe — On-Device Next.js Coding",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Buddhi AI - Private Client-Side AI Tools",
-    description: "Powerful on-device AI tools (Chat, Prompt Builder, Summarizer, Writer) running in your browser with complete privacy.",
+    title: "Buddhi Vibe — On-Device Next.js Vibe Coding",
+    description:
+      "Develop and preview full-stack Next.js applications directly in your browser with zero backend and absolute privacy.",
     images: ["images/buddhi-ai-screenshot.png"],
     creator: "@buddhilive",
   },
@@ -113,7 +115,10 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <TooltipProvider>{children}</TooltipProvider>
+          <TooltipProvider>
+            <SandboxServiceWorkerRegistrar />
+            {children}
+          </TooltipProvider>
         </ThemeProvider>
       </body>
     </html>

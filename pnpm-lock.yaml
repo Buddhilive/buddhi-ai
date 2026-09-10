@@ -11,6 +11,12 @@ importers:
       '@ai-sdk/react':
         specifier: ^3.0.160
         version: 3.0.160(react@19.2.8)(zod@4.3.6)
+      '@buddhilive/sandbox':
+        specifier: 0.1.0-beta.1
+        version: 0.1.0-beta.1
+      '@buddhilive/sandbox-sw':
+        specifier: 0.1.0-beta.2
+        version: 0.1.0-beta.2
       '@litert-lm/core':
         specifier: ^0.17.0
         version: 0.17.0
@@ -310,6 +316,12 @@ packages:
 
   '@braintree/sanitize-url@7.1.2':
     resolution: {integrity: sha512-jigsZK+sMF/cuiB7sERuo9V7N9jx+dhmHHnQyDSVdpZwVutaBu7WvNYqMDLSgFgfB30n452TP3vjDAvFC973mA==}
+
+  '@buddhilive/sandbox-sw@0.1.0-beta.2':
+    resolution: {integrity: sha512-shYF6ZVNZkDM2BFiKu2GaI+tE0V4GQAl6FWIpXZeMaUUZvvo51SGRIGWGx5Zz8EVmtb9jL1tRSX+4NYYvDrMsA==}
+
+  '@buddhilive/sandbox@0.1.0-beta.1':
+    resolution: {integrity: sha512-jLxGK00FIRqzARNsWd70QTaLJnq+5i7qlW1P6ME9t9rBJ5mTBkocyf8pIA7KYmZand4P9WaBS0cmCclzOkwpQw==}
 
   '@chevrotain/cst-dts-gen@11.1.2':
     resolution: {integrity: sha512-XTsjvDVB5nDZBQB8o0o/0ozNelQtn2KrUVteIHSlPd2VAV2utEb6JzyCJaJ8tGxACR4RiBNWy5uYUHX2eji88Q==}
@@ -2914,6 +2926,9 @@ packages:
     resolution: {integrity: sha512-7yAQpD2UMJzLi1Dqv7qFYnPbaPx7ZfFK6PiIxQ4PfkGPyNyl2Ugx+a/umUonmKqjhM4DnfbMvdX6otXq83soQQ==}
     engines: {node: ^12.20 || >= 14.13}
 
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
+
   figures@6.1.0:
     resolution: {integrity: sha512-d+l3qxjSesT4V7v2fh+QnmFnUWv9lSpjarhShNTgBOfA0ttejbQUAlHLitbjkoRiDulW0OPoQPYIGhIC8ohejg==}
     engines: {node: '>=18'}
@@ -5249,6 +5264,12 @@ snapshots:
       '@babel/helper-validator-identifier': 7.28.5
 
   '@braintree/sanitize-url@7.1.2': {}
+
+  '@buddhilive/sandbox-sw@0.1.0-beta.2': {}
+
+  '@buddhilive/sandbox@0.1.0-beta.1':
+    dependencies:
+      fflate: 0.8.3
 
   '@chevrotain/cst-dts-gen@11.1.2':
     dependencies:
@@ -8080,6 +8101,8 @@ snapshots:
     dependencies:
       node-domexception: 1.0.0
       web-streams-polyfill: 3.3.3
+
+  fflate@0.8.3: {}
 
   figures@6.1.0:
     dependencies:

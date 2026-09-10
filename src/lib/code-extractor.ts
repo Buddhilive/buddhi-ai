@@ -1,45 +1,77 @@
+import { VibeCodingFile } from "@/types/sandbox";
+
 export interface ExtractedCodeBlock {
-    language: string;
-    code: string;
-    isComplete: boolean;
+  language: string;
+  code: string;
+  isComplete: boolean;
 }
 
 /**
- * Extracts the primary HTML/web code block from an AI assistant markdown message.
+ * Extracts all multi-file code blocks with `path=` annotations from AI markdown.
+ * Supports streaming/unclosed code blocks.
+ */
+export function extractVibeCodingFiles(markdown: string): VibeCodingFile[] {
+  if (!markdown) return [];
+
+  const filesMap = new Map<string, VibeCodingFile>();
+
+  // Matches ```lang path=some/path.ext\n content ``` or unclosed at end of string
+  const blockRegex = /```(\w+)?\s+path=([^\n\r]+)[\r\n]([\s\S]*?)(?:```|$)/gi;
+
+  let match: RegExpExecArray | null;
+  while ((match = blockRegex.exec(markdown)) !== null) {
+    const language = (match[1] || "plaintext").toLowerCase();
+    const rawPath = match[2].trim();
+    // Normalize path: strip leading /workspace/, ./, or leading slashes
+    const normalizedPath = rawPath
+      .replace(/^[/\\]+/, "")
+      .replace(/^workspace[/\\]+/i, "")
+      .replace(/^\.[/\\]+/, "");
+
+    const content = match[3] ?? "";
+    const isComplete = match[0].endsWith("```");
+
+    if (normalizedPath) {
+      filesMap.set(normalizedPath, {
+        path: normalizedPath,
+        content: content.trimEnd(),
+        language,
+        isComplete,
+      });
+    }
+  }
+
+  // Fallback: If no path= blocks found, check if there's a single package.json or jsx/tsx/html block
+  if (filesMap.size === 0) {
+    const genericBlockRegex = /```(tsx|jsx|html|javascript|typescript|js|ts)\s*[\r\n]([\s\S]*?)(?:```|$)/gi;
+    const fallbackMatch = genericBlockRegex.exec(markdown);
+    if (fallbackMatch && fallbackMatch[2]?.trim()) {
+      const lang = fallbackMatch[1].toLowerCase();
+      const defaultName = lang === "html" ? "app/page.html" : "app/page.tsx";
+      filesMap.set(defaultName, {
+        path: defaultName,
+        content: fallbackMatch[2].trimEnd(),
+        language: lang,
+        isComplete: fallbackMatch[0].endsWith("```"),
+      });
+    }
+  }
+
+  return Array.from(filesMap.values());
+}
+
+/**
+ * Legacy compatibility helper.
  */
 export function extractWebCodeFromMarkdown(markdown: string): ExtractedCodeBlock | null {
-    if (!markdown) return null;
-
-    // 1. Look for completed HTML block
-    const htmlRegex = /```(?:html|htm)\s*([\s\S]*?)```/i;
-    const match = markdown.match(htmlRegex);
-    if (match && match[1]?.trim()) {
-        return {
-            language: "html",
-            code: match[1].trim(),
-            isComplete: true,
-        };
-    }
-
-    // 2. Look for open/streaming HTML block (unclosed triple backticks)
-    const openHtmlRegex = /```(?:html|htm)\s*([\s\S]*)$/i;
-    const openMatch = markdown.match(openHtmlRegex);
-    if (openMatch && openMatch[1]?.trim()) {
-        return {
-            language: "html",
-            code: openMatch[1].trim(),
-            isComplete: false,
-        };
-    }
-
-    // 3. Fallback: check if raw text contains DOCTYPE or <html>
-    if (markdown.includes("<!DOCTYPE html>") || markdown.includes("<html") || markdown.includes("<body")) {
-        return {
-            language: "html",
-            code: markdown.trim(),
-            isComplete: true,
-        };
-    }
-
-    return null;
+  const files = extractVibeCodingFiles(markdown);
+  const mainFile = files.find((f) => f.path.includes("page.") || f.path.endsWith(".html")) || files[0];
+  if (mainFile) {
+    return {
+      language: mainFile.language,
+      code: mainFile.content,
+      isComplete: mainFile.isComplete,
+    };
+  }
+  return null;
 }

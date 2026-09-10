@@ -17,7 +17,6 @@ import { useNavigation } from "@/hooks/use-navigation";
 import { useModelEngine } from "@/hooks/use-ai-model";
 import "@/lib/litert-log-filter";
 import { ModeToggle } from "@/components/custom/toggle-mode";
-import { DesignerModeToggle } from "@/components/custom/designer/designer-mode-toggle";
 
 export default function BuddhiAILayout({ children }: { children: React.ReactNode }) {
 
@@ -25,7 +24,7 @@ export default function BuddhiAILayout({ children }: { children: React.ReactNode
   useModelEngine();
 
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={false}>
       <AppSidebar />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 justify-between">
@@ -46,7 +45,6 @@ export default function BuddhiAILayout({ children }: { children: React.ReactNode
             </Breadcrumb>
           </div>
           <div className="flex items-center gap-2 px-4">
-            <DesignerModeToggle />
             <ModeToggle />
           </div>
         </header>
