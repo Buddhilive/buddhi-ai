@@ -32,6 +32,21 @@
 import { DEFAULT_SYSTEM_PROMPT } from "@/const/system-prompt";
 import { applyMemoryContext } from "@/lib/memory";
 import { useMemoryStore } from "@/stores/memory-store";
+import { useSandboxStore } from "@/stores/sandbox-store";
+import {
+    SANDBOX_TOOLS,
+    REACT_AGENT_SYSTEM_INSTRUCTIONS,
+    executeSandboxTool,
+} from "@/lib/sandbox-tools";
+import {
+    serializeToolDeclaration,
+    serializeToolResponse,
+} from "@/lib/buddhi-ai-core/chat-template-generator";
+import {
+    GemmaChannelStreamParser,
+    parseGemmaToolArguments,
+    type ToolCallPayload,
+} from "@/lib/buddhi-ai-core/gemma-channel-parser";
 import type { BuddhiAIChatTemplate, BuddhiAIMessage, GemmaTemplateVersion } from "@/types/messages";
 import type { Engine, Message } from "@litert-lm/core";
 import {
@@ -152,6 +167,12 @@ async function uiMessagesToBuddhiMessages(
             for (const part of msg.parts) {
                 if (part.type === "text") {
                     contentParts.push({ type: "text", text: part.text });
+                } else if (part.type === "dynamic-tool" || (part as { type: string }).type?.startsWith?.("tool-")) {
+                    const toolPart = part as { toolName?: string; input?: unknown; output?: unknown; errorText?: string };
+                    if (toolPart.toolName) {
+                        const repr = `[Tool: ${toolPart.toolName} args: ${JSON.stringify(toolPart.input || {})} result: ${JSON.stringify(toolPart.output ?? toolPart.errorText ?? {})}]`;
+                        contentParts.push({ type: "text", text: repr });
+                    }
                 } else if (part.type === "file") {
                     const filePart = part as FileUIPart;
                     const mediaType = filePart.mediaType ?? "";
@@ -326,9 +347,13 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                 // Partition messages into preface (prior turns) and the active user prompt
                 const prefaceMessages: Message[] = [];
                 if (this.systemPrompt) {
+                    const toolDeclarations = SANDBOX_TOOLS.map(
+                        (t) => `<|channel>declaration:${t.name}${serializeToolDeclaration(t)}<channel|>`
+                    ).join("\n");
+                    const fullSystem = `${this.systemPrompt}\n\n${REACT_AGENT_SYSTEM_INSTRUCTIONS}\n\n${toolDeclarations}`;
                     prefaceMessages.push({
                         role: "system",
-                        content: this.isReasoningOn ? `${this.systemPrompt}\n<|think|>` : this.systemPrompt,
+                        content: this.isReasoningOn ? `${fullSystem}\n<|think|>` : fullSystem,
                     });
                 }
 
@@ -354,6 +379,14 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                     conversation = await this.engine.createConversation({
                         preface: {
                             messages: prefaceMessages,
+                            tools: SANDBOX_TOOLS.map((t) => ({
+                                type: "function" as const,
+                                function: {
+                                    name: t.name,
+                                    description: t.description,
+                                    parameters: t.parameters,
+                                },
+                            })),
                         },
                     });
                 } catch (err) {
@@ -383,31 +416,11 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                 // Open assistant message
                 const messageId = nanoid();
                 const reasoningPartId = nanoid();
-                const textPartId = nanoid();
+                let textPartId = nanoid();
 
                 writer.write({ type: "start", messageId });
 
-                if (!this.isReasoningOn) {
-                    writer.write({ type: "text-start", id: textPartId });
-                }
-
-                const THINKING_HEADER = "<|channel>thought\n";
-                const THINKING_HEADER_LEN = THINKING_HEADER.length;   // 18
-                const THINKING_END = "<channel|>";
-                const THINKING_END_LEN = THINKING_END.length;       // 10
-                const THINKING_TAIL = 12;
-                const TEXT_TAIL = 20;
-
-                type StreamMode = "think-pre" | "thinking" | "detecting" | "streaming" | "buffering";
-
                 let settled = false;
-                let accumulated = "";
-                let mode: StreamMode = this.isReasoningOn ? "think-pre" : "detecting";
-
-                let reasoningWrittenUpTo = THINKING_HEADER_LEN;
-                let textOffset = 0;
-                let textEmitted = 0;
-
                 const onAbort = () => {
                     try {
                         conversation.cancel();
@@ -418,160 +431,158 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                 }
 
                 try {
-                    const responseStream = conversation.sendMessageStreaming(userPrompt);
-                    const reader = responseStream.getReader();
+                    let currentPrompt: Message | string = userPrompt;
+                    let loopCount = 0;
+                    const MAX_REACT_TURNS = 6;
 
-                    try {
-                        while (true) {
-                            const { done, value: chunk } = await reader.read();
-                            if (done || !chunk || settled) break;
+                    while (loopCount < MAX_REACT_TURNS && !settled && !abortSignal?.aborted) {
+                        loopCount++;
+                        const pendingToolCalls: ToolCallPayload[] = [];
+                        let textStartedForTurn = false;
 
-                            if (abortSignal?.aborted) {
-                                writer.write({
-                                    type: "abort",
-                                    reason: "User stopped generation.",
-                                });
-                                settled = true;
-                                break;
-                            }
-
-                        // Extract text chunk from LiteRT Message
-                        let partial = "";
-                        if (typeof chunk.content === "string") {
-                            partial = chunk.content;
-                        } else if (Array.isArray(chunk.content)) {
-                            for (const p of chunk.content) {
-                                if (p.type === "text" && p.text) {
-                                    partial += p.text;
-                                }
-                            }
-                        }
-
-                        // Check channels if present
-                        if (chunk.channels?.thought && !partial) {
-                            partial = `${THINKING_HEADER}${chunk.channels.thought}${THINKING_END}\n`;
-                        }
-
-                        if (!partial) continue;
-                        accumulated += partial;
-
-                        // "think-pre": detect thinking block
-                        if (mode === "think-pre") {
-                            if (accumulated.length >= THINKING_HEADER_LEN) {
-                                if (accumulated.startsWith(THINKING_HEADER)) {
-                                    mode = "thinking";
+                        const parser = new GemmaChannelStreamParser(
+                            {
+                                onReasoningStart: () => {
                                     writer.write({ type: "reasoning-start", id: reasoningPartId });
-                                } else {
-                                    textOffset = 0;
-                                    textEmitted = 0;
-                                    mode = "detecting";
-                                    writer.write({ type: "text-start", id: textPartId });
-                                }
-                            } else {
-                                continue;
-                            }
-                        }
+                                },
+                                onReasoningDelta: (delta: string) => {
+                                    writer.write({ type: "reasoning-delta", id: reasoningPartId, delta });
+                                },
+                                onReasoningEnd: () => {
+                                    writer.write({ type: "reasoning-end", id: reasoningPartId });
+                                },
+                                onTextStart: () => {
+                                    if (!textStartedForTurn) {
+                                        writer.write({ type: "text-start", id: textPartId });
+                                        textStartedForTurn = true;
+                                    }
+                                },
+                                onTextDelta: (delta: string) => {
+                                    writer.write({ type: "text-delta", id: textPartId, delta });
+                                },
+                                onTextEnd: () => {
+                                    if (textStartedForTurn) {
+                                        writer.write({ type: "text-end", id: textPartId });
+                                        textStartedForTurn = false;
+                                        textPartId = nanoid();
+                                    }
+                                },
+                                onToolCall: (call: ToolCallPayload) => {
+                                    pendingToolCalls.push(call);
+                                },
+                            },
+                            this.isReasoningOn
+                        );
 
-                        // "thinking": stream reasoning, watch for end marker
-                        if (mode === "thinking") {
-                            const endIdx = accumulated.indexOf(THINKING_END, THINKING_HEADER_LEN);
+                        const responseStream = conversation.sendMessageStreaming(currentPrompt as unknown as string);
+                        const reader = responseStream.getReader();
 
-                            if (endIdx !== -1) {
-                                const rawThinking = accumulated.slice(THINKING_HEADER_LEN, endIdx);
-                                const cleanThinking = rawThinking.endsWith("\n")
-                                    ? rawThinking.slice(0, -1)
-                                    : rawThinking;
-                                const thinkingRemain = cleanThinking.slice(
-                                    reasoningWrittenUpTo - THINKING_HEADER_LEN
-                                );
-                                if (thinkingRemain) {
+                        try {
+                            while (true) {
+                                const { done, value: chunk } = await reader.read();
+                                if (done || !chunk || settled) break;
+
+                                if (abortSignal?.aborted) {
                                     writer.write({
-                                        type: "reasoning-delta",
-                                        id: reasoningPartId,
-                                        delta: thinkingRemain,
+                                        type: "abort",
+                                        reason: "User stopped generation.",
                                     });
+                                    settled = true;
+                                    break;
                                 }
-                                writer.write({ type: "reasoning-end", id: reasoningPartId });
 
-                                textOffset = endIdx + THINKING_END_LEN;
-                                while (
-                                    textOffset < accumulated.length &&
-                                    accumulated[textOffset] === "\n"
-                                ) textOffset++;
-                                textEmitted = textOffset;
-
-                                mode = "detecting";
-                                writer.write({ type: "text-start", id: textPartId });
-                            } else {
-                                const safeEnd = accumulated.length - THINKING_TAIL;
-                                if (safeEnd > reasoningWrittenUpTo) {
-                                    writer.write({
-                                        type: "reasoning-delta",
-                                        id: reasoningPartId,
-                                        delta: accumulated.slice(reasoningWrittenUpTo, safeEnd),
-                                    });
-                                    reasoningWrittenUpTo = safeEnd;
+                                // If LiteRT parsed native tool calls, extract them
+                                if (chunk.tool_calls && chunk.tool_calls.length > 0) {
+                                    for (const tc of chunk.tool_calls) {
+                                        const name = tc.function?.name || (tc as any).name;
+                                        const rawArgs = tc.function?.arguments || (tc as any).arguments || {};
+                                        pendingToolCalls.push({
+                                            name,
+                                            args: typeof rawArgs === "string" ? parseGemmaToolArguments(rawArgs) : (rawArgs as Record<string, unknown>),
+                                            raw: JSON.stringify(tc),
+                                        });
+                                    }
                                 }
-                                continue;
-                            }
-                        }
 
-                        // "detecting": code-fence detection
-                        if (mode === "detecting") {
-                            const textContent = accumulated.slice(textOffset);
-                            if (textContent.length >= 3 && !textContent.startsWith("```")) {
-                                mode = "streaming";
-                            } else if (textContent.startsWith("```")) {
-                                const nl = textContent.indexOf("\n");
-                                if (nl !== -1) {
-                                    const firstLine = textContent.slice(0, nl);
-                                    mode = isPlainTextCodeFence(firstLine) ? "buffering" : "streaming";
+                                let partial = "";
+                                if (typeof chunk.content === "string") {
+                                    partial = chunk.content;
+                                } else if (Array.isArray(chunk.content)) {
+                                    for (const p of chunk.content) {
+                                        if (p.type === "text" && p.text) {
+                                            partial += p.text;
+                                        }
+                                    }
+                                }
+
+                                if (chunk.channels?.thought && !partial) {
+                                    partial = `<|channel>thought\n${chunk.channels.thought}<channel|>\n`;
+                                }
+
+                                if (partial) {
+                                    parser.push(partial);
                                 }
                             }
+                        } finally {
+                            reader.releaseLock();
                         }
 
-                        // "streaming": emit text with tail hold-back
-                        if (mode === "streaming") {
-                            const safeEnd = accumulated.length - TEXT_TAIL;
-                            if (safeEnd > textEmitted) {
-                                writer.write({
-                                    type: "text-delta",
-                                    id: textPartId,
-                                    delta: accumulated.slice(textEmitted, safeEnd),
-                                });
-                                textEmitted = safeEnd;
-                            }
-                        }
-                    }
-                    } finally {
-                        reader.releaseLock();
-                    }
+                        parser.flush();
 
-                    // Done generation
-                    if (!settled) {
-                        let finalText = accumulated.slice(textOffset);
-
-                        if (mode === "buffering") {
-                            const nl = finalText.indexOf("\n");
-                            const firstLine = nl !== -1 ? finalText.slice(0, nl) : finalText;
-                            if (isPlainTextCodeFence(firstLine)) {
-                                finalText = stripOuterCodeFence(finalText);
-                            }
+                        if (settled || abortSignal?.aborted || pendingToolCalls.length === 0) {
+                            break;
                         }
 
-                        finalText = stripTrailingTemplateTokens(finalText);
+                        // Execute pending tool calls and prepare next prompt
+                        const toolResponses: Array<{ type: "tool_response"; name: string; response: Record<string, unknown> }> = [];
 
-                        const alreadyEmitted = textEmitted - textOffset;
-                        const remaining = finalText.slice(alreadyEmitted);
-                        if (remaining) {
+                        for (const call of pendingToolCalls) {
+                            const toolCallId = nanoid();
                             writer.write({
-                                type: "text-delta",
-                                id: textPartId,
-                                delta: remaining,
+                                type: "tool-input-available",
+                                toolCallId,
+                                toolName: call.name,
+                                input: call.args,
+                                dynamic: true,
+                            });
+
+                            const bridge = useSandboxStore.getState().bridge;
+                            const execResult = await executeSandboxTool(call.name, call.args, bridge);
+
+                            const resultObj = (execResult.success
+                                ? (execResult.result ?? { success: true })
+                                : { error: execResult.error || "Tool execution failed." }) as Record<string, unknown>;
+
+                            if (execResult.success) {
+                                writer.write({
+                                    type: "tool-output-available",
+                                    toolCallId,
+                                    output: execResult.result,
+                                    dynamic: true,
+                                });
+                            } else {
+                                writer.write({
+                                    type: "tool-output-error",
+                                    toolCallId,
+                                    errorText: execResult.error || "Tool execution failed.",
+                                    dynamic: true,
+                                });
+                            }
+
+                            toolResponses.push({
+                                type: "tool_response",
+                                name: call.name,
+                                response: resultObj,
                             });
                         }
 
-                        writer.write({ type: "text-end", id: textPartId });
+                        currentPrompt = {
+                            role: "tool",
+                            content: toolResponses,
+                        } as unknown as Message;
+                    }
+
+                    if (!settled) {
                         writer.write({ type: "finish", finishReason: "stop" });
                         settled = true;
                     }
@@ -588,7 +599,6 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                 }
 
                 if (!settled) {
-                    writer.write({ type: "text-end", id: textPartId });
                     writer.write({ type: "finish", finishReason: "stop" });
                 }
             },

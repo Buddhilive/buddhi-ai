@@ -23,17 +23,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { SandboxPreview } from "@/components/custom/sandbox/sandbox-preview";
 import { extractVibeCodingFiles } from "@/lib/code-extractor";
 import { VibeCodingFile } from "@/types/sandbox";
-import { MessageSquare, Monitor, Sparkles } from "lucide-react";
+import { MessageSquare, Monitor } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-
-export const suggestions = [
-  "Build a full-stack SaaS task manager with SQLite todos",
-  "Create a modern markdown documentation wiki with dark mode",
-  "Build a responsive Kanban board with column drag-and-drop",
-  "Create an interactive analytics dashboard with metrics cards",
-  "Build a personal portfolio with project showcase and contact form",
-];
 
 export function ChatSession({
   instance,
@@ -248,27 +240,6 @@ export function ChatSession({
             mobileTab === "preview" ? "hidden lg:flex" : "flex"
           } w-full lg:w-[440px] xl:w-[500px] shrink-0`}
         >
-          {/* Empty state suggestions */}
-          {messages.length === 0 && (
-            <div className="p-4 space-y-3 bg-muted/10 border-b border-border/40">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground/80">
-                <Sparkles className="size-3.5 text-primary" />
-                <span>Next.js Vibe Coding Prompts</span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {suggestions.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => setText(item)}
-                    className="px-2.5 py-1 text-[11px] rounded-full border border-border/60 bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground text-left transition-colors"
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           <ChatMessages
             messages={messages}

@@ -88,6 +88,15 @@ interface BuddhiAIMessage {
     thinking?: string;
 }
 
+export type GemmaChannelType = "thought" | "call" | "return" | "text";
+
+export interface GemmaChannelPart {
+    channel: GemmaChannelType;
+    content: string;
+    toolName?: string;
+    raw?: string;
+}
+
 export type {
     BuddhiAIMessage,
     BuddhiAIChatRole,

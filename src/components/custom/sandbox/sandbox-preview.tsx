@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Sandbox, ProcessHandle } from "@buddhilive/sandbox";
-import { VibeCodingFile } from "@/types/sandbox";
+import { VibeCodingFile, SandboxBridge } from "@/types/sandbox";
 import { useSandboxStore } from "@/stores/sandbox-store";
 import { NEXTJS_STARTER_FILES, DEV_SERVER_SCRIPT } from "@/const/nextjs-starter-template";
 import {
@@ -57,6 +57,7 @@ export function SandboxPreview({
     setFiles: setStoreFiles,
     setActiveTab,
     setErrorMessage,
+    setBridge,
   } = useSandboxStore();
 
   const [hasSab, setHasSab] = useState<boolean>(true);
@@ -530,6 +531,53 @@ export function SandboxPreview({
       sandboxRef.current = sb;
       appendLog("✓ WebAssembly Sandbox kernel online.");
 
+      // Register SandboxBridge for ReAct coding agent
+      const bridge: SandboxBridge = {
+        writeFile: async (relPath: string, content: string) => {
+          const targetPath = `/workspace/${relPath}`.replace(/\/+/g, "/");
+          await writeSafeFile(sb, targetPath, content);
+          lastWrittenFilesRef.current.set(relPath, content);
+          await refreshVfsTree();
+          triggerAutoSave();
+          return {
+            success: true,
+            bytesWritten: new TextEncoder().encode(content).length,
+            path: relPath,
+          };
+        },
+        readFile: async (relPath: string) => {
+          const targetPath = `/workspace/${relPath}`.replace(/\/+/g, "/");
+          const content = await sb.fs.readFile(targetPath, "utf-8");
+          return { success: true, content, path: relPath };
+        },
+        listFiles: async (subDir?: string) => {
+          const filesMap = await scanWorkspaceFiles(sb);
+          let paths = Object.keys(filesMap);
+          if (subDir) {
+            paths = paths.filter((p) => p.startsWith(subDir));
+          }
+          return { success: true, files: paths };
+        },
+        runCommand: async (cmd: string) => {
+          appendLog(`$ ${cmd}`);
+          try {
+            const result = await sb.process.exec(cmd);
+            if (result.stdout) appendLog(result.stdout);
+            if (result.stderr) appendLog(result.stderr);
+            return {
+              exitCode: result.exitCode,
+              stdout: result.stdout,
+              stderr: result.stderr,
+            };
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            appendLog(`❌ Command failed: ${msg}`);
+            return { exitCode: 1, stdout: "", stderr: msg };
+          }
+        },
+      };
+      setBridge(bridge);
+
       // Initialize project workspace
       await initializeWorkspace(sb);
 
@@ -691,8 +739,9 @@ export function SandboxPreview({
         sandboxRef.current.dispose().catch(() => {});
         sandboxRef.current = null;
       }
+      setBridge(null);
     };
-  }, []);
+  }, [setBridge]);
 
   if (!hasSab) {
     return (

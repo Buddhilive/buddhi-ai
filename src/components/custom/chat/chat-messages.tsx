@@ -18,11 +18,18 @@ import {
     ReasoningContent,
     ReasoningTrigger,
 } from "@/components/ai-elements/reasoning";
+import {
+    Tool,
+    ToolHeader,
+    ToolContent,
+    ToolInput,
+    ToolOutput,
+} from "@/components/ai-elements/tool";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { CheckIcon, CopyIcon, PencilIcon, RefreshCcwIcon, TriangleAlert, XIcon } from "lucide-react";
-import type { UIMessage } from "ai";
+import type { UIMessage, DynamicToolUIPart } from "ai";
 import type { FileUIPart } from "ai";
 import {
     Attachment,
@@ -112,46 +119,78 @@ export function ChatMessages({
                                         </div>
                                     </div>
                                 ) : (
-                                    <Message from={message.role}>
-                                        <MessageContent>
-                                            {message.parts.map((part: any, partIndex: number) => {
-                                                if (part.type === "reasoning") {
-                                                    const isThisMessageStreaming =
-                                                        status === "streaming" &&
-                                                        message.id === messages[messages.length - 1]?.id;
-                                                    return (
-                                                        <Reasoning key={partIndex} isStreaming={isThisMessageStreaming}>
+                                    (() => {
+                                        const isThisMessageStreaming =
+                                            status === "streaming" &&
+                                            message.id === messages[messages.length - 1]?.id;
+
+                                        // Consolidate any reasoning parts so only ONE Reasoning component is rendered per message
+                                        const reasoningParts = message.parts.filter((p: any) => p.type === "reasoning");
+                                        const combinedReasoningText = reasoningParts
+                                            .map((p: any) => p.text || "")
+                                            .join("")
+                                            .trimStart();
+
+                                        const nonReasoningParts = message.parts.filter((p: any) => p.type !== "reasoning");
+
+                                        return (
+                                            <Message from={message.role}>
+                                                <MessageContent>
+                                                    {combinedReasoningText ? (
+                                                        <Reasoning isStreaming={isThisMessageStreaming} defaultOpen={false}>
                                                             <ReasoningTrigger />
-                                                            <ReasoningContent>{part.text}</ReasoningContent>
+                                                            <ReasoningContent>{combinedReasoningText}</ReasoningContent>
                                                         </Reasoning>
-                                                    );
-                                                }
-                                                if (part.type === "text") {
-                                                    return (
-                                                        <MessageResponse key={partIndex}>
-                                                            {part.text}
-                                                        </MessageResponse>
-                                                    );
-                                                }
-                                                if (part.type === "file") {
-                                                    const filePart = part as FileUIPart;
-                                                    const attachmentData: AttachmentData = {
-                                                        ...filePart,
-                                                        id: `${message.id}-${partIndex}`,
-                                                    };
-                                                    return (
-                                                        <Attachments key={partIndex} variant="inline">
-                                                            <Attachment data={attachmentData}>
-                                                                <AttachmentPreview />
-                                                                <AttachmentInfo />
-                                                            </Attachment>
-                                                        </Attachments>
-                                                    );
-                                                }
-                                                return null;
-                                            })}
-                                        </MessageContent>
-                                    </Message>
+                                                    ) : null}
+                                                    {nonReasoningParts.map((part: any, partIndex: number) => {
+                                                        if (part.type === "text") {
+                                                            if (!part.text) return null;
+                                                            return (
+                                                                <MessageResponse key={partIndex}>
+                                                                    {part.text}
+                                                                </MessageResponse>
+                                                            );
+                                                        }
+                                                        if (part.type === "file") {
+                                                            const filePart = part as FileUIPart;
+                                                            const attachmentData: AttachmentData = {
+                                                                ...filePart,
+                                                                id: `${message.id}-${partIndex}`,
+                                                            };
+                                                            return (
+                                                                <Attachments key={partIndex} variant="inline">
+                                                                    <Attachment data={attachmentData}>
+                                                                        <AttachmentPreview />
+                                                                        <AttachmentInfo />
+                                                                    </Attachment>
+                                                                </Attachments>
+                                                            );
+                                                        }
+                                                        if (part.type === "dynamic-tool" || (part as { type: string }).type?.startsWith?.("tool-")) {
+                                                            const toolPart = part as DynamicToolUIPart;
+                                                            return (
+                                                                <Tool key={partIndex} defaultOpen={false}>
+                                                                    <ToolHeader
+                                                                        type="dynamic-tool"
+                                                                        toolName={toolPart.toolName}
+                                                                        state={toolPart.state}
+                                                                    />
+                                                                    <ToolContent>
+                                                                        <ToolInput input={toolPart.input} />
+                                                                        <ToolOutput
+                                                                            output={toolPart.output}
+                                                                            errorText={(toolPart as unknown as { errorText?: string }).errorText}
+                                                                        />
+                                                                    </ToolContent>
+                                                                </Tool>
+                                                            );
+                                                        }
+                                                        return null;
+                                                    })}
+                                                </MessageContent>
+                                            </Message>
+                                        );
+                                    })()
                                 )}
                             </MessageBranchContent>
 

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { SandboxStatus, SandboxInitStage } from "@/types/sandbox";
+import { SandboxStatus, SandboxInitStage, SandboxBridge } from "@/types/sandbox";
 
 interface SandboxState {
   status: SandboxStatus;
@@ -11,6 +11,7 @@ interface SandboxState {
   files: string[];
   errorMessage: string | null;
   activeTab: "preview" | "terminal" | "files";
+  bridge: SandboxBridge | null;
 
   // Actions
   setStatus: (status: SandboxStatus) => void;
@@ -22,6 +23,7 @@ interface SandboxState {
   setFiles: (files: string[]) => void;
   setActiveTab: (tab: "preview" | "terminal" | "files") => void;
   setErrorMessage: (msg: string | null) => void;
+  setBridge: (bridge: SandboxBridge | null) => void;
   reset: () => void;
 }
 
@@ -37,6 +39,7 @@ export const useSandboxStore = create<SandboxState>()((set) => ({
   files: [],
   errorMessage: null,
   activeTab: "preview",
+  bridge: null,
 
   setStatus: (status) => set({ status }),
   setInitStage: (initStage, progressText) =>
@@ -58,6 +61,7 @@ export const useSandboxStore = create<SandboxState>()((set) => ({
   setFiles: (files) => set({ files }),
   setActiveTab: (activeTab) => set({ activeTab }),
   setErrorMessage: (errorMessage) => set({ errorMessage }),
+  setBridge: (bridge) => set({ bridge }),
   reset: () =>
     set({
       status: "idle",
@@ -69,5 +73,6 @@ export const useSandboxStore = create<SandboxState>()((set) => ({
       files: [],
       errorMessage: null,
       activeTab: "preview",
+      bridge: null,
     }),
 }));
