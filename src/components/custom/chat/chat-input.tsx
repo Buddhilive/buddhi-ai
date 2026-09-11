@@ -28,6 +28,7 @@ interface ChatInputProps {
   handleTextChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
   handleSubmit: (message: PromptInputMessage) => Promise<void>;
   isSubmitDisabled: boolean;
+  isInitializing?: boolean;
   stop: () => void;
   status: any;
   isReasoningOn: boolean;
@@ -41,6 +42,7 @@ export function ChatInput({
   handleTextChange,
   handleSubmit,
   isSubmitDisabled,
+  isInitializing = false,
   stop,
   status,
   isReasoningOn,
@@ -60,7 +62,12 @@ export function ChatInput({
             <PromptInputTextarea
               onChange={handleTextChange}
               value={text}
-              placeholder="Describe the Next.js app you want to build (e.g. 'Build a modern personal portfolio with contact form and dark mode')..."
+              disabled={isInitializing}
+              placeholder={
+                isInitializing
+                  ? "Initializing Next.js environment, please wait..."
+                  : "Describe the Next.js app you want to build (e.g. 'Build a modern personal portfolio with contact form and dark mode')..."
+              }
             />
           </PromptInputBody>
           <PromptInputFooter>

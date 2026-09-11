@@ -16,6 +16,7 @@ import { useSkillStore } from "@/stores/skill-store";
 import { composeSkillSystemPrompt } from "@/lib/skills/skill-injector";
 import { useChatStorage } from "@/hooks/chat/use-chat-storage";
 import { useChatStore } from "@/stores/chat-store";
+import { useSandboxStore } from "@/stores/sandbox-store";
 import { ChatMessages } from "./chat-messages";
 import { ChatInput } from "./chat-input";
 import { Spinner } from "@/components/ui/spinner";
@@ -140,7 +141,15 @@ export function ChatSession({
     currentChatIdRef,
   });
 
-  const isSubmitDisabled = !text.trim() || status === "streaming" || status === "submitted" || isSummarizing;
+  const sandboxInitStage = useSandboxStore((s) => s.initStage);
+  const isSandboxInitializing = sandboxInitStage !== "ready" && sandboxInitStage !== "error";
+
+  const isSubmitDisabled =
+    !text.trim() ||
+    status === "streaming" ||
+    status === "submitted" ||
+    isSummarizing ||
+    isSandboxInitializing;
 
   const handleSubmit = useCallback(
     async (message: PromptInputMessage) => {
@@ -282,6 +291,7 @@ export function ChatSession({
             handleTextChange={handleTextChange}
             handleSubmit={handleSubmit}
             isSubmitDisabled={isSubmitDisabled}
+            isInitializing={isSandboxInitializing}
             stop={stop}
             status={status}
             isReasoningOn={isReasoningOn}

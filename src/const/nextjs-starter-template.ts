@@ -288,4 +288,137 @@ dist/
 .DS_Store
 `,
   },
+  {
+    path: "dev-server.js",
+    content: `const http = require("http");
+const fs = require("fs");
+const path = require("path");
+
+const PORT = parseInt(process.env.PORT || "3000", 10);
+
+function readSafe(p) {
+  try {
+    return fs.readFileSync(p, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function renderHtml(urlPath) {
+  let subRoute = urlPath.split("?")[0].replace(/^\\/+/, "").replace(/\\/+$/, "");
+  let targetFile = subRoute ? \`/workspace/app/\${subRoute}/page.tsx\` : "/workspace/app/page.tsx";
+
+  let pageCode = readSafe(targetFile);
+  if (!pageCode) {
+    pageCode = readSafe("/workspace/app/page.tsx") || "export default function Page() { return <div>Not Found</div>; }";
+  }
+
+  let globalsCss = (readSafe("/workspace/app/globals.css") || "").replace(/@import\s+["']tailwindcss["'];?/g, "");
+
+  // Sanitize JSX: remove Next.js server directives and local utility imports
+  let cleanCode = pageCode.replace(/["']use client["'];?/g, "");
+  cleanCode = cleanCode.replace(/import\\s+type\\s+[^;]+;/g, "");
+  cleanCode = cleanCode.replace(/from\\s+["']@\\/lib\\/utils["']/g, 'from "https://esm.sh/clsx"');
+  cleanCode = cleanCode.replace(/from\\s+["']@\\/components\\/ui\\/([^"']+)["']/g, 'from "https://esm.sh/@radix-ui/react-$1"');
+  cleanCode = cleanCode.replace(/export\\s+default\\s+function\\s+([A-Za-z0-9_$]+)/g, 'function $1');
+  cleanCode = cleanCode.replace(/export\\s+default\\s+/g, 'const __DefaultExport = ');
+
+  return \`<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Buddhi AI - Next.js Vibe App</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.24.4/babel.min.js"></script>
+  <style>
+    \${globalsCss}
+    body { background-color: #09090b; color: #f4f4f5; font-family: system-ui, -apple-system, sans-serif; }
+  </style>
+</head>
+<body class="min-h-screen bg-zinc-950 text-zinc-100 antialiased">
+  <div id="root"></div>
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@19",
+        "react/jsx-runtime": "https://esm.sh/react@19/jsx-runtime",
+        "react-dom": "https://esm.sh/react-dom@19",
+        "react-dom/client": "https://esm.sh/react-dom@19/client",
+        "lucide-react": "https://esm.sh/lucide-react?external=react",
+        "clsx": "https://esm.sh/clsx",
+        "tailwind-merge": "https://esm.sh/tailwind-merge"
+      }
+    }
+  </script>
+  <script type="text/babel" data-type="module" data-presets="react,typescript">
+    import React from 'react';
+    import { createRoot } from 'react-dom/client';
+
+    \${cleanCode}
+
+    try {
+      const AppToMount = typeof __DefaultExport !== 'undefined'
+        ? __DefaultExport
+        : typeof HomePage !== 'undefined'
+        ? HomePage
+        : typeof Page !== 'undefined'
+        ? Page
+        : typeof App !== 'undefined'
+        ? App
+        : null;
+
+      if (AppToMount) {
+        createRoot(document.getElementById('root')).render(React.createElement(AppToMount));
+      } else {
+        createRoot(document.getElementById('root')).render(
+          React.createElement('div', { className: 'p-6 text-zinc-400' }, 'No default component found in app/page.tsx')
+        );
+      }
+    } catch (err) {
+      console.error('[Preview Runtime Error]', err);
+      document.getElementById('root').innerHTML = '<div style="padding:24px;color:#ef4444;font-family:monospace"><h3>Runtime Error</h3><pre>' + (err.stack || err.message) + '</pre></div>';
+    }
+  </script>
+</body>
+</html>\`;
+}
+
+const server = http.createServer((req, res) => {
+  const url = req.url || "/";
+  console.log(\`[dev-server] \${req.method} \${url}\`);
+
+  if (!url.includes(".") || url.endsWith(".html")) {
+    const html = renderHtml(url);
+    res.writeHead(200, {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp",
+    });
+    res.end(html);
+    return;
+  }
+
+  // Handle static assets
+  const staticPath = path.join("/workspace", url.split("?")[0]);
+  try {
+    if (fs.existsSync(staticPath) && fs.statSync(staticPath).isFile()) {
+      const data = fs.readFileSync(staticPath);
+      res.writeHead(200);
+      res.end(data);
+      return;
+    }
+  } catch {}
+
+  res.writeHead(404, { "Content-Type": "text/plain" });
+  res.end("Not Found");
+});
+
+server.listen(PORT, () => {
+  console.log(\`✓ Next.js dev server listening on virtual port \${PORT}\`);
+});
+`,
+  },
 ];
+
+export const DEV_SERVER_SCRIPT = NEXTJS_STARTER_FILES.find((f) => f.path === "dev-server.js")!.content;

@@ -25,10 +25,10 @@ class C {
     return Array.from(this.ports.keys());
   }
 }
-const h = new C();
-async function v(e, t, r) {
-  const n = h.get(e);
-  if (!n)
+const a = new C();
+async function E(e, t, r) {
+  const s = a.get(e);
+  if (!s)
     return new Response(
       `<html><body><h2>503 Service Unavailable</h2><p>No virtual HTTP server listening on port ${e}.</p></body></html>`,
       {
@@ -41,70 +41,70 @@ async function v(e, t, r) {
         }
       }
     );
-  if (n.messagePort) {
-    const i = new MessageChannel(), f = {};
-    t.headers.forEach((d, a) => {
-      f[a] = d;
+  if (s.messagePort) {
+    const o = new MessageChannel(), f = {};
+    t.headers.forEach((l, i) => {
+      f[i] = l;
     });
     const m = t.method !== "GET" && t.method !== "HEAD" ? await t.arrayBuffer() : null;
-    return new Promise((d) => {
-      let a = null, o = !1, c = 200, y = "OK";
-      const u = new Headers({
+    return new Promise((l) => {
+      let i = null, p = !1, h = 200, y = "OK";
+      const c = new Headers({
         "Cross-Origin-Opener-Policy": "same-origin",
         "Cross-Origin-Embedder-Policy": "require-corp"
       }), w = setTimeout(() => {
-        o || (o = !0, d(
+        p || (p = !0, l(
           new Response(
             `<html><body><h2>504 Gateway Timeout</h2><p>Port ${e} timed out responding.</p></body></html>`,
             { status: 504, headers: { "Content-Type": "text/html" } }
           )
         ));
       }, 15e3);
-      i.port1.onmessage = (b) => {
+      o.port1.onmessage = (b) => {
         clearTimeout(w);
-        const s = b.data;
-        if (s.type === "headers") {
-          if (c = s.status || 200, y = s.statusText || "OK", s.headers)
-            for (const [p, l] of Object.entries(s.headers))
-              u.set(p, String(l));
+        const n = b.data;
+        if (n.type === "headers") {
+          if (h = n.status || 200, y = n.statusText || "OK", n.headers)
+            for (const [u, d] of Object.entries(n.headers))
+              c.set(u, String(d));
           return;
         }
-        if (s.type === "chunk") {
-          if (o)
-            a && a.enqueue(new Uint8Array(s.data));
+        if (n.type === "chunk") {
+          if (p)
+            i && i.enqueue(new Uint8Array(n.data));
           else {
-            o = !0;
-            const p = new ReadableStream({
-              start(l) {
-                a = l, l.enqueue(new Uint8Array(s.data));
+            p = !0;
+            const u = new ReadableStream({
+              start(d) {
+                i = d, d.enqueue(new Uint8Array(n.data));
               }
             });
-            d(
-              new Response(p, {
-                status: c,
+            l(
+              new Response(u, {
+                status: h,
                 statusText: y,
-                headers: u
+                headers: c
               })
             );
           }
           return;
         }
-        if (s.type === "end" || !s.type) {
-          if (a)
-            s.body && s.body.byteLength > 0 && a.enqueue(new Uint8Array(s.body)), a.close();
-          else if (!o) {
-            if (o = !0, s.headers)
-              for (const [l, P] of Object.entries(s.headers))
-                u.set(l, String(P));
-            const p = new Response(s.body || null, {
-              status: s.status || c,
-              statusText: s.statusText || y,
-              headers: u
+        if (n.type === "end" || !n.type) {
+          if (i)
+            n.body && n.body.byteLength > 0 && i.enqueue(new Uint8Array(n.body)), i.close();
+          else if (!p) {
+            if (p = !0, n.headers)
+              for (const [d, P] of Object.entries(n.headers))
+                c.set(d, String(P));
+            const u = new Response(n.body || null, {
+              status: n.status || h,
+              statusText: n.statusText || y,
+              headers: c
             });
-            d(p);
+            l(u);
           }
         }
-      }, n.messagePort.postMessage(
+      }, s.messagePort.postMessage(
         {
           type: "http:request",
           port: e,
@@ -112,9 +112,9 @@ async function v(e, t, r) {
           method: t.method,
           headers: f,
           body: m,
-          replyPort: i.port2
+          replyPort: o.port2
         },
-        [i.port2]
+        [o.port2]
       );
     });
   }
@@ -134,16 +134,25 @@ function R() {
   if (typeof BroadcastChannel > "u") return;
   const e = new BroadcastChannel("buddhilive-sandbox-sw");
   e.onmessage = (t) => {
-    const { type: r, port: n } = t.data;
-    r === "port:register" && typeof n == "number" ? (h.register(n), e.postMessage({ type: "port:registered", port: n })) : r === "port:unregister" && typeof n == "number" ? h.unregister(n) : r === "sw:ping" && e.postMessage({
+    const { type: r, port: s } = t.data;
+    r === "port:register" && typeof s == "number" ? (a.register(s), e.postMessage({ type: "port:registered", port: s })) : r === "port:unregister" && typeof s == "number" ? a.unregister(s) : r === "sw:ping" && e.postMessage({
       type: "sw:pong",
-      ports: h.list()
+      ports: a.list()
     });
   }, e.postMessage({
     type: "sw:ready",
-    ports: h.list()
+    ports: a.list()
   });
 }
+self.addEventListener("message", (e) => {
+  const t = e.data;
+  if (!t || typeof t != "object") return;
+  const { type: r, port: s } = t;
+  if (r === "port:register" && typeof s == "number") {
+    const o = e.ports && e.ports[0];
+    a.register(s, o), e.source && "postMessage" in e.source && e.source.postMessage({ type: "port:registered", port: s });
+  } else r === "port:unregister" && typeof s == "number" && a.unregister(s);
+});
 self.addEventListener("install", (e) => {
   e.waitUntil(self.skipWaiting());
 });
@@ -157,17 +166,17 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const t = new URL(e.request.url), r = t.pathname.match(/^\/__preview\/(\d+)(.*)/);
   if (r) {
-    const n = parseInt(r[1], 10), i = r[2] || "/";
-    e.respondWith(v(n, e.request, i));
+    const s = parseInt(r[1], 10), o = r[2] || "/";
+    e.respondWith(E(s, e.request, o));
     return;
   }
   t.origin === self.location.origin && e.respondWith(
     (async () => {
-      const n = await fetch(e.request), i = new Headers(n.headers);
-      return i.set("Cross-Origin-Opener-Policy", "same-origin"), i.set("Cross-Origin-Embedder-Policy", "require-corp"), new Response(n.body, {
-        status: n.status,
-        statusText: n.statusText,
-        headers: i
+      const s = await fetch(e.request), o = new Headers(s.headers);
+      return o.set("Cross-Origin-Opener-Policy", "same-origin"), o.set("Cross-Origin-Embedder-Policy", "require-corp"), new Response(s.body, {
+        status: s.status,
+        statusText: s.statusText,
+        headers: o
       });
     })()
   );

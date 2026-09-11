@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Sandbox, ProcessHandle } from "@buddhilive/sandbox";
 import { VibeCodingFile } from "@/types/sandbox";
 import { useSandboxStore } from "@/stores/sandbox-store";
-import { NEXTJS_STARTER_FILES } from "@/const/nextjs-starter-template";
+import { NEXTJS_STARTER_FILES, DEV_SERVER_SCRIPT } from "@/const/nextjs-starter-template";
 import {
   saveSandboxFiles,
   loadSandboxFiles,
@@ -298,10 +298,13 @@ export function SandboxPreview({
           procRef.current = null;
         }
 
-        setInitStage("starting", "Booting Next.js dev server (next dev --port 3000)...");
-        appendLog("🚀 Starting Next.js development server (next dev --port 3000)...");
+        setInitStage("starting", "Booting Next.js dev server on port 3000...");
+        appendLog("🚀 Starting Next.js development server (port 3000)...");
 
-        const proc = await sb.process.spawn("next", ["dev", "--port", "3000"], {
+        // Ensure dev-server.js is written into /workspace
+        await writeSafeFile(sb, "/workspace/dev-server.js", DEV_SERVER_SCRIPT);
+
+        const proc = await sb.process.spawn("node", ["/workspace/dev-server.js"], {
           cwd: "/workspace",
           env: {
             NODE_ENV: "development",
@@ -347,11 +350,11 @@ export function SandboxPreview({
 
         // Wait for process exit
         proc.exit.then((code) => {
-          appendLog(`ℹ Next.js process exited with code ${code}`);
-          if (code !== 0 && status !== "running") {
+          appendLog(`ℹ Dev server process exited with code ${code}`);
+          if (useSandboxStore.getState().status !== "running") {
             setStatus("error");
-            setInitStage("error", `Process exited with code ${code}`);
-            setErrorMessage(`Process exited with code ${code}`);
+            setInitStage("error", `Dev server process exited prematurely with code ${code}`);
+            setErrorMessage(`Dev server process exited with code ${code}`);
           }
         });
       } catch (err: any) {
@@ -447,9 +450,59 @@ export function SandboxPreview({
       sb.ports.on("listen", ({ port, url }) => {
         appendLog(`✓ Server listening on virtual port ${port} -> ${url}`);
         setActivePort(port);
-        setPreviewUrl(url);
         setStatus("running");
-        setInitStage("ready", "Next.js dev server ready");
+
+        // Register virtual port with @buddhilive/sandbox-sw so iframe requests route to sandbox HTTP server
+        const registerWithServiceWorker = () => {
+          if (typeof navigator === "undefined" || !navigator.serviceWorker) {
+            setPreviewUrl(url);
+            setInitStage("ready", "Next.js dev server ready");
+            return;
+          }
+
+          const sw = navigator.serviceWorker.controller;
+          if (!sw) {
+            navigator.serviceWorker.addEventListener(
+              "controllerchange",
+              () => registerWithServiceWorker(),
+              { once: true }
+            );
+            return;
+          }
+
+          const channel = new MessageChannel();
+
+          // Wait for confirmation from SW before mounting iframe to prevent 503 race condition
+          let confirmed = false;
+          const onSwMessage = (e: MessageEvent) => {
+            if (e.data?.type === "port:registered" && e.data?.port === port) {
+              confirmed = true;
+              navigator.serviceWorker.removeEventListener("message", onSwMessage);
+              setPreviewUrl(url);
+              setInitStage("ready", "Next.js dev server ready");
+            }
+          };
+          navigator.serviceWorker.addEventListener("message", onSwMessage);
+
+          sw.postMessage({ type: "port:register", port }, [channel.port1]);
+
+          // Fallback timeout in case service worker does not echo back
+          setTimeout(() => {
+            if (!confirmed) {
+              setPreviewUrl(url);
+              setInitStage("ready", "Next.js dev server ready");
+            }
+          }, 150);
+
+          channel.port2.onmessage = (event) => {
+            const msg = event.data;
+            if (msg && msg.type === "http:request") {
+              (sb as any).bridge?.postMessage(msg, [msg.replyPort]);
+            }
+          };
+        };
+
+        registerWithServiceWorker();
       });
 
       sb.ports.on("close", ({ port }) => {
@@ -457,6 +510,12 @@ export function SandboxPreview({
         if (activePort === port) {
           setActivePort(null);
           setPreviewUrl(null);
+        }
+        if (typeof navigator !== "undefined" && navigator.serviceWorker?.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: "port:unregister",
+            port,
+          });
         }
       });
 

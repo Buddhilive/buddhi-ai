@@ -15,8 +15,8 @@ importers:
         specifier: 0.1.0-beta.3
         version: 0.1.0-beta.3
       '@buddhilive/sandbox-sw':
-        specifier: 0.1.0-beta.2
-        version: 0.1.0-beta.2
+        specifier: 0.1.0-beta.4
+        version: 0.1.0-beta.4
       '@litert-lm/core':
         specifier: ^0.17.0
         version: 0.17.0
@@ -317,8 +317,8 @@ packages:
   '@braintree/sanitize-url@7.1.2':
     resolution: {integrity: sha512-jigsZK+sMF/cuiB7sERuo9V7N9jx+dhmHHnQyDSVdpZwVutaBu7WvNYqMDLSgFgfB30n452TP3vjDAvFC973mA==}
 
-  '@buddhilive/sandbox-sw@0.1.0-beta.2':
-    resolution: {integrity: sha512-shYF6ZVNZkDM2BFiKu2GaI+tE0V4GQAl6FWIpXZeMaUUZvvo51SGRIGWGx5Zz8EVmtb9jL1tRSX+4NYYvDrMsA==}
+  '@buddhilive/sandbox-sw@0.1.0-beta.4':
+    resolution: {integrity: sha512-HuPwHgFEcmajl2wyAOigQTPOZ6AWLWko7LNhRvhFHOstYsBcr8Ny7JCSoSxwfao9vHvLJIxHkQXDjPKPX2mvAw==}
 
   '@buddhilive/sandbox@0.1.0-beta.3':
     resolution: {integrity: sha512-/06d016Qykmy2A/TF5okCWTc8lGyZ+aGyCUeW6nHhStBMiyTVuhDot2ZtL+M8471F+tkK0osnUkZ8CXOc5/pwQ==}
@@ -5265,7 +5265,7 @@ snapshots:
 
   '@braintree/sanitize-url@7.1.2': {}
 
-  '@buddhilive/sandbox-sw@0.1.0-beta.2': {}
+  '@buddhilive/sandbox-sw@0.1.0-beta.4': {}
 
   '@buddhilive/sandbox@0.1.0-beta.3':
     dependencies:
