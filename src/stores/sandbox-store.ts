@@ -1,8 +1,10 @@
 import { create } from "zustand";
-import { SandboxStatus } from "@/types/sandbox";
+import { SandboxStatus, SandboxInitStage } from "@/types/sandbox";
 
 interface SandboxState {
   status: SandboxStatus;
+  initStage: SandboxInitStage;
+  initProgressText: string;
   previewUrl: string | null;
   activePort: number | null;
   logs: string[];
@@ -12,6 +14,7 @@ interface SandboxState {
 
   // Actions
   setStatus: (status: SandboxStatus) => void;
+  setInitStage: (stage: SandboxInitStage, progressText?: string) => void;
   setPreviewUrl: (url: string | null) => void;
   setActivePort: (port: number | null) => void;
   appendLog: (line: string) => void;
@@ -22,10 +25,12 @@ interface SandboxState {
   reset: () => void;
 }
 
-const MAX_LOGS = 500;
+const MAX_LOGS = 1000;
 
 export const useSandboxStore = create<SandboxState>()((set) => ({
   status: "idle",
+  initStage: "booting",
+  initProgressText: "Booting WebAssembly Sandbox...",
   previewUrl: null,
   activePort: null,
   logs: [],
@@ -34,6 +39,11 @@ export const useSandboxStore = create<SandboxState>()((set) => ({
   activeTab: "preview",
 
   setStatus: (status) => set({ status }),
+  setInitStage: (initStage, progressText) =>
+    set((state) => ({
+      initStage,
+      initProgressText: progressText ?? state.initProgressText,
+    })),
   setPreviewUrl: (previewUrl) => set({ previewUrl }),
   setActivePort: (activePort) => set({ activePort }),
   appendLog: (line) =>
@@ -51,6 +61,8 @@ export const useSandboxStore = create<SandboxState>()((set) => ({
   reset: () =>
     set({
       status: "idle",
+      initStage: "booting",
+      initProgressText: "Booting WebAssembly Sandbox...",
       previewUrl: null,
       activePort: null,
       logs: [],

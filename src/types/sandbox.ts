@@ -5,7 +5,22 @@ export interface VibeCodingFile {
   isComplete: boolean;
 }
 
-export type SandboxStatus = 'idle' | 'booting' | 'running' | 'error';
+export type SandboxStatus =
+  | 'idle'
+  | 'booting'
+  | 'scaffolding'
+  | 'installing'
+  | 'starting'
+  | 'running'
+  | 'error';
+
+export type SandboxInitStage =
+  | 'booting'
+  | 'scaffolding'
+  | 'installing'
+  | 'starting'
+  | 'ready'
+  | 'error';
 
 export interface SandboxLogEntry {
   id: string;

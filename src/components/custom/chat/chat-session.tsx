@@ -15,6 +15,7 @@ import { useChatActions } from "@/hooks/chat/use-chat-actions";
 import { useSkillStore } from "@/stores/skill-store";
 import { composeSkillSystemPrompt } from "@/lib/skills/skill-injector";
 import { useChatStorage } from "@/hooks/chat/use-chat-storage";
+import { useChatStore } from "@/stores/chat-store";
 import { ChatMessages } from "./chat-messages";
 import { ChatInput } from "./chat-input";
 import { Spinner } from "@/components/ui/spinner";
@@ -64,6 +65,9 @@ export function ChatSession({
   const activeModel = MODELS.find((m) => m.id === loadedModelId);
   const templateVersion: GemmaTemplateVersion = activeModel?.chatTemplateVersion ?? "gemma4";
   const supportsVision: boolean = activeModel?.supportsVision ?? false;
+
+  const storeChatId = useChatStore((s) => s.currentChatId);
+  const activeChatId = storeChatId ?? chatId;
 
   const currentChatIdRef = useRef<string | null>(chatId);
 
@@ -293,7 +297,11 @@ export function ChatSession({
             mobileTab === "chat" ? "hidden lg:flex" : "flex"
           }`}
         >
-          <SandboxPreview files={vibeFiles} className="w-full h-full" />
+          <SandboxPreview
+            files={vibeFiles}
+            chatId={activeChatId}
+            className="w-full h-full"
+          />
         </div>
       </div>
     </div>

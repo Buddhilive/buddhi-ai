@@ -4,6 +4,13 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Sandbox, ProcessHandle } from "@buddhilive/sandbox";
 import { VibeCodingFile } from "@/types/sandbox";
 import { useSandboxStore } from "@/stores/sandbox-store";
+import { NEXTJS_STARTER_FILES } from "@/const/nextjs-starter-template";
+import {
+  saveSandboxFiles,
+  loadSandboxFiles,
+  isIgnoredPath,
+} from "@/lib/sandbox-storage";
+import { SandboxLoading } from "./sandbox-loading";
 import {
   Terminal as TerminalIcon,
   Play,
@@ -23,18 +30,26 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface SandboxPreviewProps {
   files: VibeCodingFile[];
+  chatId?: string | null;
   className?: string;
 }
 
-export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
+export function SandboxPreview({
+  files,
+  chatId = null,
+  className = "",
+}: SandboxPreviewProps) {
   const {
     status,
+    initStage,
+    initProgressText,
     previewUrl,
     activePort,
     logs,
     activeTab,
     errorMessage,
     setStatus,
+    setInitStage,
     setPreviewUrl,
     setActivePort,
     appendLog,
@@ -46,7 +61,10 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
 
   const [hasSab, setHasSab] = useState<boolean>(true);
   const [vfsTree, setVfsTree] = useState<string[]>([]);
-  const [selectedFileContent, setSelectedFileContent] = useState<{ path: string; content: string } | null>(null);
+  const [selectedFileContent, setSelectedFileContent] = useState<{
+    path: string;
+    content: string;
+  } | null>(null);
   const [iframeKey, setIframeKey] = useState<number>(0);
 
   const sandboxRef = useRef<Sandbox | null>(null);
@@ -54,6 +72,15 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
   const terminalEndRef = useRef<HTMLDivElement | null>(null);
   const isInitializingRef = useRef<boolean>(false);
   const lastWrittenFilesRef = useRef<Map<string, string>>(new Map());
+  const currentChatIdRef = useRef<string | null>(chatId);
+  const prevChatIdRef = useRef<string | null>(chatId);
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const unsubscribeFsRef = useRef<(() => void) | null>(null);
+
+  // Sync currentChatIdRef
+  useEffect(() => {
+    currentChatIdRef.current = chatId;
+  }, [chatId]);
 
   // Check SharedArrayBuffer availability
   useEffect(() => {
@@ -61,7 +88,9 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
       const sabAvailable = typeof window.SharedArrayBuffer !== "undefined";
       setHasSab(sabAvailable);
       if (!sabAvailable) {
-        setErrorMessage("SharedArrayBuffer is not available. Please ensure COOP/COEP headers are set.");
+        setErrorMessage(
+          "SharedArrayBuffer is not available. Please ensure COOP/COEP headers are set."
+        );
       }
     }
   }, [setErrorMessage]);
@@ -73,51 +102,90 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
     }
   }, [logs, activeTab]);
 
-  // Initialize Sandbox instance once
-  const ensureSandbox = useCallback(async (): Promise<Sandbox | null> => {
-    if (sandboxRef.current) return sandboxRef.current;
-    if (isInitializingRef.current) return null;
-
-    try {
-      isInitializingRef.current = true;
-      setStatus("booting");
-      appendLog("⚡ Initializing WebAssembly POSIX Sandbox (1024MB Quota)...");
-
-      const sb = await Sandbox.create({
-        maxMemoryMb: 1024,
-        commandTimeoutMs: 60000,
-      });
-
-      // Listen to virtual HTTP port events
-      sb.ports.on("listen", ({ port, url }) => {
-        appendLog(`✓ Server listening on virtual port ${port} -> ${url}`);
-        setActivePort(port);
-        setPreviewUrl(url);
-        setStatus("running");
-      });
-
-      sb.ports.on("close", ({ port }) => {
-        appendLog(`ℹ Port ${port} closed`);
-        if (activePort === port) {
-          setActivePort(null);
-          setPreviewUrl(null);
-        }
-      });
-
-      sandboxRef.current = sb;
-      appendLog("✓ WebAssembly Sandbox kernel online.");
-      return sb;
-    } catch (err: any) {
-      console.error("[Sandbox] Failed to initialize:", err);
-      const msg = err?.message || String(err);
-      setStatus("error");
-      setErrorMessage(`Sandbox Init Error: ${msg}`);
-      appendLog(`❌ Initialization error: ${msg}`);
-      return null;
-    } finally {
-      isInitializingRef.current = false;
+  // Write file safely creating parent directories
+  const writeSafeFile = async (
+    sb: Sandbox,
+    targetPath: string,
+    content: string
+  ) => {
+    const parts = targetPath.split("/").slice(0, -1);
+    let currentDir = "";
+    for (const part of parts) {
+      if (!part) continue;
+      currentDir += `/${part}`;
+      try {
+        await sb.fs.mkdir(currentDir, { recursive: true });
+      } catch {
+        // Directory may already exist
+      }
     }
-  }, [appendLog, setActivePort, setPreviewUrl, setStatus, setErrorMessage, activePort]);
+    await sb.fs.writeFile(targetPath, content);
+  };
+
+  // Scan workspace files excluding ignored directories
+  const scanWorkspaceFiles = useCallback(
+    async (sb: Sandbox): Promise<Record<string, string>> => {
+      const result: Record<string, string> = {};
+
+      const scan = async (dir: string) => {
+        try {
+          const entries = await sb.fs.readdir(dir);
+          for (const item of entries) {
+            if (item === "." || item === "..") continue;
+            const full = `${dir}/${item}`.replace(/\/+/g, "/");
+            const relative = full.replace(/^\/workspace\/?/, "");
+
+            if (isIgnoredPath(relative)) {
+              continue;
+            }
+
+            try {
+              const stat = await sb.fs.stat(full);
+              if (stat.isDirectory) {
+                await scan(full);
+              } else {
+                const content = await sb.fs.readFile(full, "utf-8");
+                result[relative] = content;
+              }
+            } catch {
+              // Skip unreadable files
+            }
+          }
+        } catch (err) {
+          console.warn("[Sandbox] Readdir error in", dir, err);
+        }
+      };
+
+      await scan("/workspace");
+      return result;
+    },
+    []
+  );
+
+  // Trigger debounced auto-save to IndexedDB
+  const triggerAutoSave = useCallback(() => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    autoSaveTimerRef.current = setTimeout(async () => {
+      const sb = sandboxRef.current;
+      const targetId = currentChatIdRef.current;
+      if (!sb || !targetId) return;
+
+      try {
+        const filesMap = await scanWorkspaceFiles(sb);
+        if (Object.keys(filesMap).length > 0) {
+          await saveSandboxFiles(targetId, filesMap);
+          appendLog(
+            `💾 Auto-saved ${Object.keys(filesMap).length} source files to IndexedDB`
+          );
+        }
+      } catch (err) {
+        console.warn("[Sandbox] Auto-save error:", err);
+      }
+    }, 800);
+  }, [appendLog, scanWorkspaceFiles]);
 
   // Refresh VFS file list
   const refreshVfsTree = useCallback(async () => {
@@ -131,6 +199,12 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
         for (const item of entries) {
           if (item === "." || item === "..") continue;
           const full = `${dir}/${item}`.replace(/\/+/g, "/");
+          const relative = full.replace(/^\/workspace\/?/, "");
+
+          if (isIgnoredPath(relative)) {
+            continue;
+          }
+
           try {
             const stat = await sb.fs.stat(full);
             if (stat.isDirectory) {
@@ -155,81 +229,292 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
     }
   }, [setStoreFiles]);
 
+  // Run npm install inside sandbox
+  const runNpmInstall = useCallback(
+    async (sb: Sandbox): Promise<boolean> => {
+      setInitStage("installing", "Installing dependencies (npm install)...");
+      appendLog("📦 Executing: npm install");
+
+      try {
+        const proc = await sb.process.spawn("npm", ["install"], {
+          cwd: "/workspace",
+          env: {
+            NODE_ENV: "development",
+          },
+        });
+
+        // Pipe stdout
+        (async () => {
+          const reader = proc.stdout.getReader();
+          const decoder = new TextDecoder();
+          try {
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              if (value) {
+                const text = decoder.decode(value);
+                const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
+                lines.forEach((l) => appendLog(`[stdout] ${l}`));
+              }
+            }
+          } catch {}
+        })();
+
+        // Pipe stderr
+        (async () => {
+          const reader = proc.stderr.getReader();
+          const decoder = new TextDecoder();
+          try {
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              if (value) {
+                const text = decoder.decode(value);
+                const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
+                lines.forEach((l) => appendLog(`[stderr] ${l}`));
+              }
+            }
+          } catch {}
+        })();
+
+        const code = await proc.exit;
+        appendLog(`ℹ npm install finished with code ${code}`);
+        return true;
+      } catch (err: any) {
+        appendLog(`❌ npm install process error: ${err?.message || err}`);
+        return false;
+      }
+    },
+    [appendLog, setInitStage]
+  );
+
   // Spawn Next.js server inside sandbox
-  const runNextDev = useCallback(async (sb: Sandbox) => {
+  const runNextDev = useCallback(
+    async (sb: Sandbox) => {
+      try {
+        if (procRef.current) {
+          appendLog("🔄 Terminating previous server process...");
+          await procRef.current.kill();
+          procRef.current = null;
+        }
+
+        setInitStage("starting", "Booting Next.js dev server (next dev --port 3000)...");
+        appendLog("🚀 Starting Next.js development server (next dev --port 3000)...");
+
+        const proc = await sb.process.spawn("next", ["dev", "--port", "3000"], {
+          cwd: "/workspace",
+          env: {
+            NODE_ENV: "development",
+            PORT: "3000",
+          },
+        });
+
+        procRef.current = proc;
+
+        // Pipe stdout
+        (async () => {
+          const reader = proc.stdout.getReader();
+          const decoder = new TextDecoder();
+          try {
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              if (value) {
+                const text = decoder.decode(value);
+                const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
+                lines.forEach((l) => appendLog(`[stdout] ${l}`));
+              }
+            }
+          } catch {}
+        })();
+
+        // Pipe stderr
+        (async () => {
+          const reader = proc.stderr.getReader();
+          const decoder = new TextDecoder();
+          try {
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              if (value) {
+                const text = decoder.decode(value);
+                const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
+                lines.forEach((l) => appendLog(`[stderr] ${l}`));
+              }
+            }
+          } catch {}
+        })();
+
+        // Wait for process exit
+        proc.exit.then((code) => {
+          appendLog(`ℹ Next.js process exited with code ${code}`);
+          if (code !== 0 && status !== "running") {
+            setStatus("error");
+            setInitStage("error", `Process exited with code ${code}`);
+            setErrorMessage(`Process exited with code ${code}`);
+          }
+        });
+      } catch (err: any) {
+        console.error("[Sandbox] Error spawning next dev:", err);
+        setStatus("error");
+        setInitStage("error", err?.message || "Failed to start Next.js dev server");
+        setErrorMessage(err?.message || "Failed to start Next.js dev server");
+        appendLog(`❌ Spawn error: ${err?.message || err}`);
+      }
+    },
+    [appendLog, setInitStage, setStatus, setErrorMessage, status]
+  );
+
+  // Initialize sandbox and workspace project
+  const initializeWorkspace = useCallback(
+    async (sb: Sandbox) => {
+      try {
+        const targetId = currentChatIdRef.current;
+        let savedFiles: Record<string, string> | null = null;
+
+        if (targetId) {
+          setInitStage("scaffolding", "Checking IndexedDB for saved files...");
+          savedFiles = await loadSandboxFiles(targetId);
+        }
+
+        if (savedFiles && Object.keys(savedFiles).length > 0) {
+          const count = Object.keys(savedFiles).length;
+          setInitStage("scaffolding", `Restoring ${count} files from IndexedDB...`);
+          appendLog(
+            `📂 Restoring ${count} saved files from IndexedDB for chat "${targetId}"...`
+          );
+
+          for (const [relPath, content] of Object.entries(savedFiles)) {
+            await writeSafeFile(sb, `/workspace/${relPath}`, content);
+            lastWrittenFilesRef.current.set(relPath, content);
+          }
+        } else {
+          setInitStage(
+            "scaffolding",
+            "Scaffolding Next.js 16 App Router starter files..."
+          );
+          appendLog("✨ Scaffolding Next.js App Router starter into /workspace...");
+
+          for (const file of NEXTJS_STARTER_FILES) {
+            await writeSafeFile(sb, `/workspace/${file.path}`, file.content);
+            lastWrittenFilesRef.current.set(file.path, file.content);
+          }
+        }
+
+        await refreshVfsTree();
+
+        // Run npm install
+        await runNpmInstall(sb);
+
+        // Run next dev
+        await runNextDev(sb);
+      } catch (err: any) {
+        console.error("[Sandbox] Workspace init error:", err);
+        setInitStage("error", err?.message || "Workspace initialization failed");
+        setStatus("error");
+        setErrorMessage(err?.message || "Failed to initialize workspace");
+        appendLog(`❌ Initialization error: ${err?.message || err}`);
+      }
+    },
+    [
+      appendLog,
+      refreshVfsTree,
+      runNextDev,
+      runNpmInstall,
+      setErrorMessage,
+      setInitStage,
+      setStatus,
+    ]
+  );
+
+  // Initialize Sandbox instance once
+  const ensureSandbox = useCallback(async (): Promise<Sandbox | null> => {
+    if (sandboxRef.current) return sandboxRef.current;
+    if (isInitializingRef.current) return null;
+
     try {
-      if (procRef.current) {
-        appendLog("🔄 Terminating previous server process...");
-        await procRef.current.kill();
-        procRef.current = null;
+      isInitializingRef.current = true;
+      setStatus("booting");
+      setInitStage("booting", "Booting WebAssembly POSIX Sandbox (1024MB Quota)...");
+      appendLog("⚡ Initializing WebAssembly POSIX Sandbox (1024MB Quota)...");
+
+      const sb = await Sandbox.create({
+        maxMemoryMb: 1024,
+        commandTimeoutMs: 120000,
+      });
+
+      // Listen to virtual HTTP port events
+      sb.ports.on("listen", ({ port, url }) => {
+        appendLog(`✓ Server listening on virtual port ${port} -> ${url}`);
+        setActivePort(port);
+        setPreviewUrl(url);
+        setStatus("running");
+        setInitStage("ready", "Next.js dev server ready");
+      });
+
+      sb.ports.on("close", ({ port }) => {
+        appendLog(`ℹ Port ${port} closed`);
+        if (activePort === port) {
+          setActivePort(null);
+          setPreviewUrl(null);
+        }
+      });
+
+      // Subscribe to sandbox filesystem changes
+      if (typeof sb.fs.on === "function") {
+        unsubscribeFsRef.current = sb.fs.on("change", () => {
+          triggerAutoSave();
+        });
+        appendLog("✓ Registered real-time filesystem change listener.");
       }
 
-      setStatus("booting");
-      appendLog("🚀 Starting Next.js development server (next dev --port 3000)...");
+      sandboxRef.current = sb;
+      appendLog("✓ WebAssembly Sandbox kernel online.");
 
-      const proc = await sb.process.spawn("next", ["dev", "--port", "3000"], {
-        cwd: "/workspace",
-        env: {
-          NODE_ENV: "development",
-          PORT: "3000",
-        },
-      });
+      // Initialize project workspace
+      await initializeWorkspace(sb);
 
-      procRef.current = proc;
-
-      // Pipe stdout
-      (async () => {
-        const reader = proc.stdout.getReader();
-        const decoder = new TextDecoder();
-        try {
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            if (value) {
-              const text = decoder.decode(value);
-              const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
-              lines.forEach((l) => appendLog(`[stdout] ${l}`));
-            }
-          }
-        } catch {
-          // stream closed
-        }
-      })();
-
-      // Pipe stderr
-      (async () => {
-        const reader = proc.stderr.getReader();
-        const decoder = new TextDecoder();
-        try {
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            if (value) {
-              const text = decoder.decode(value);
-              const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
-              lines.forEach((l) => appendLog(`[stderr] ${l}`));
-            }
-          }
-        } catch {
-          // stream closed
-        }
-      })();
-
-      // Wait for process exit
-      proc.exit.then((code) => {
-        appendLog(`ℹ Next.js process exited with code ${code}`);
-        if (code !== 0 && status !== "running") {
-          setStatus("error");
-          setErrorMessage(`Process exited with code ${code}`);
-        }
-      });
+      return sb;
     } catch (err: any) {
-      console.error("[Sandbox] Error spawning next dev:", err);
+      console.error("[Sandbox] Failed to initialize:", err);
+      const msg = err?.message || String(err);
       setStatus("error");
-      setErrorMessage(err?.message || "Failed to start Next.js dev server");
-      appendLog(`❌ Spawn error: ${err?.message || err}`);
+      setInitStage("error", msg);
+      setErrorMessage(`Sandbox Init Error: ${msg}`);
+      appendLog(`❌ Initialization error: ${msg}`);
+      return null;
+    } finally {
+      isInitializingRef.current = false;
     }
-  }, [appendLog, setStatus, setErrorMessage, status]);
+  }, [
+    activePort,
+    appendLog,
+    initializeWorkspace,
+    setActivePort,
+    setErrorMessage,
+    setInitStage,
+    setPreviewUrl,
+    setStatus,
+    triggerAutoSave,
+  ]);
+
+  // Initial mount trigger
+  useEffect(() => {
+    if (hasSab && !sandboxRef.current && !isInitializingRef.current) {
+      ensureSandbox();
+    }
+  }, [ensureSandbox, hasSab]);
+
+  // Handle chatId transition (e.g. from null to newly created chatId on first prompt save)
+  useEffect(() => {
+    if (chatId && chatId !== prevChatIdRef.current) {
+      prevChatIdRef.current = chatId;
+      currentChatIdRef.current = chatId;
+      if (sandboxRef.current) {
+        triggerAutoSave();
+      }
+    }
+  }, [chatId, triggerAutoSave]);
 
   // Handle incoming files from AI stream
   useEffect(() => {
@@ -260,25 +545,12 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
 
       for (const file of completeFiles) {
         const targetPath = `/workspace/${file.path}`.replace(/\/+/g, "/");
-
-        // Ensure parent directories exist
-        const parts = targetPath.split("/").slice(0, -1);
-        let currentDir = "";
-        for (const part of parts) {
-          if (!part) continue;
-          currentDir += `/${part}`;
-          try {
-            await sb.fs.mkdir(currentDir, { recursive: true });
-          } catch {
-            // directory might already exist
-          }
-        }
-
-        await sb.fs.writeFile(targetPath, file.content);
+        await writeSafeFile(sb, targetPath, file.content);
         lastWrittenFilesRef.current.set(file.path, file.content);
       }
 
       await refreshVfsTree();
+      triggerAutoSave();
 
       // If server is not yet running, start it
       if (!procRef.current) {
@@ -291,7 +563,15 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
     return () => {
       isMounted = false;
     };
-  }, [files, hasSab, ensureSandbox, appendLog, refreshVfsTree, runNextDev]);
+  }, [
+    files,
+    hasSab,
+    ensureSandbox,
+    appendLog,
+    refreshVfsTree,
+    runNextDev,
+    triggerAutoSave,
+  ]);
 
   // Restart server manually
   const handleRestartServer = async () => {
@@ -299,6 +579,18 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
     if (sb) {
       clearLogs();
       await runNextDev(sb);
+    }
+  };
+
+  // Retry initialization on error
+  const handleRetryInit = async () => {
+    clearLogs();
+    setStatus("booting");
+    setInitStage("booting", "Retrying initialization...");
+    if (sandboxRef.current) {
+      await initializeWorkspace(sandboxRef.current);
+    } else {
+      await ensureSandbox();
     }
   };
 
@@ -327,6 +619,12 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
   // Cleanup sandbox on unmount
   useEffect(() => {
     return () => {
+      if (unsubscribeFsRef.current) {
+        unsubscribeFsRef.current();
+      }
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
       if (procRef.current) {
         procRef.current.kill().catch(() => {});
       }
@@ -343,46 +641,62 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
         <AlertCircle className="size-12 text-destructive" />
         <h3 className="text-lg font-semibold">SharedArrayBuffer Not Available</h3>
         <p className="text-sm text-muted-foreground max-w-md">
-          Buddhi Vibe Sandbox requires <code>SharedArrayBuffer</code> support for in-browser POSIX ring buffer streaming.
-          Ensure Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy headers are configured properly.
+          Buddhi Vibe Sandbox requires <code>SharedArrayBuffer</code> support for
+          in-browser POSIX ring buffer streaming. Ensure
+          Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy headers are
+          configured properly.
         </p>
       </div>
     );
   }
 
+  const isInitializing = initStage !== "ready" || !previewUrl;
+
   return (
-    <div className={`flex flex-col h-full bg-background border-l border-border ${className}`}>
+    <div
+      className={`flex flex-col h-full bg-background border-l border-border ${className}`}
+    >
       {/* Top Controls Bar */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/40 shrink-0 gap-2">
         <div className="flex items-center gap-2">
           {/* Status Indicator */}
-          {status === "booting" && (
-            <Badge variant="outline" className="flex items-center gap-1.5 py-0.5 text-amber-400 border-amber-400/40 bg-amber-400/10">
+          {status === "booting" || initStage !== "ready" ? (
+            <Badge
+              variant="outline"
+              className="flex items-center gap-1.5 py-0.5 text-amber-400 border-amber-400/40 bg-amber-400/10 font-mono text-xs"
+            >
               <Loader2 className="size-3 animate-spin" />
-              <span>Booting...</span>
+              <span className="capitalize">{initStage}...</span>
             </Badge>
-          )}
-          {status === "running" && (
-            <Badge variant="outline" className="flex items-center gap-1.5 py-0.5 text-emerald-400 border-emerald-400/40 bg-emerald-400/10">
+          ) : status === "running" ? (
+            <Badge
+              variant="outline"
+              className="flex items-center gap-1.5 py-0.5 text-emerald-400 border-emerald-400/40 bg-emerald-400/10 font-mono text-xs"
+            >
               <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
               <span>{activePort ? `Port ${activePort}` : "Running"}</span>
             </Badge>
-          )}
-          {status === "error" && (
-            <Badge variant="destructive" className="flex items-center gap-1.5 py-0.5">
+          ) : status === "error" ? (
+            <Badge variant="destructive" className="flex items-center gap-1.5 py-0.5 text-xs">
               <AlertCircle className="size-3" />
               <span>Error</span>
             </Badge>
-          )}
-          {status === "idle" && (
-            <Badge variant="secondary" className="flex items-center gap-1.5 py-0.5 text-muted-foreground">
+          ) : (
+            <Badge
+              variant="secondary"
+              className="flex items-center gap-1.5 py-0.5 text-muted-foreground text-xs"
+            >
               <span>Ready</span>
             </Badge>
           )}
         </div>
 
         {/* View Switcher Tabs */}
-        <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="w-auto">
+        <Tabs
+          value={activeTab}
+          onValueChange={(val) => setActiveTab(val as any)}
+          className="w-auto"
+        >
           <TabsList className="h-8 p-0.5 bg-muted/60">
             <TabsTrigger value="preview" className="h-7 text-xs px-2.5 gap-1.5">
               <Eye className="size-3.5" />
@@ -391,12 +705,20 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
             <TabsTrigger value="terminal" className="h-7 text-xs px-2.5 gap-1.5">
               <TerminalIcon className="size-3.5" />
               <span>Terminal</span>
-              {logs.length > 0 && <span className="text-[10px] text-muted-foreground ml-1">({logs.length})</span>}
+              {logs.length > 0 && (
+                <span className="text-[10px] text-muted-foreground ml-1">
+                  ({logs.length})
+                </span>
+              )}
             </TabsTrigger>
             <TabsTrigger value="files" className="h-7 text-xs px-2.5 gap-1.5">
               <FolderTree className="size-3.5" />
               <span>Files</span>
-              {vfsTree.length > 0 && <span className="text-[10px] text-muted-foreground ml-1">({vfsTree.length})</span>}
+              {vfsTree.length > 0 && (
+                <span className="text-[10px] text-muted-foreground ml-1">
+                  ({vfsTree.length})
+                </span>
+              )}
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -419,6 +741,7 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
             className="size-7"
             onClick={handleRestartServer}
             title="Restart Next.js Server"
+            disabled={isInitializing}
           >
             <Play className="size-3.5" />
           </Button>
@@ -443,7 +766,16 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
         {/* Preview Tab */}
         {activeTab === "preview" && (
           <div className="relative w-full h-full">
-            {previewUrl ? (
+            {isInitializing ? (
+              <SandboxLoading
+                stage={initStage}
+                progressText={initProgressText}
+                logs={logs}
+                errorMessage={errorMessage}
+                onRetry={handleRetryInit}
+                onClearLogs={clearLogs}
+              />
+            ) : previewUrl ? (
               <iframe
                 key={iframeKey}
                 src={previewUrl}
@@ -453,36 +785,13 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
               />
             ) : (
               <div className="flex flex-col items-center justify-center h-full p-6 text-center space-y-4">
-                {status === "booting" ? (
-                  <>
-                    <Loader2 className="size-10 text-primary animate-spin" />
-                    <div className="space-y-1">
-                      <h4 className="font-medium text-foreground">Compiling Next.js Project...</h4>
-                      <p className="text-xs text-muted-foreground">Transpiling React Server Components & booting dev server in WebAssembly.</p>
-                    </div>
-                  </>
-                ) : status === "error" ? (
-                  <>
-                    <AlertCircle className="size-10 text-destructive" />
-                    <div className="space-y-1">
-                      <h4 className="font-medium text-destructive">Server Failed to Start</h4>
-                      <p className="text-xs text-muted-foreground max-w-sm">{errorMessage || "Check the Terminal tab for error logs."}</p>
-                    </div>
-                    <Button size="sm" variant="outline" onClick={() => setActiveTab("terminal")}>
-                      View Terminal Logs
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <FileCode className="size-10 text-muted-foreground/60" />
-                    <div className="space-y-1">
-                      <h4 className="font-medium text-foreground">Waiting for Vibe Code...</h4>
-                      <p className="text-xs text-muted-foreground max-w-sm">
-                        Ask the AI to build a Next.js 16 app. The project will compile and run here live.
-                      </p>
-                    </div>
-                  </>
-                )}
+                <FileCode className="size-10 text-muted-foreground/60" />
+                <div className="space-y-1">
+                  <h4 className="font-medium text-foreground">Waiting for Vibe Code...</h4>
+                  <p className="text-xs text-muted-foreground max-w-sm">
+                    Prompt the AI to build components or pages. The project runs live here.
+                  </p>
+                </div>
               </div>
             )}
           </div>
@@ -513,7 +822,7 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
                         ? "text-red-400"
                         : log.includes("✓") || log.includes("🚀")
                         ? "text-emerald-400"
-                        : log.includes("⚡") || log.includes("📦")
+                        : log.includes("⚡") || log.includes("📦") || log.includes("💾")
                         ? "text-sky-400"
                         : "text-zinc-300"
                     }`}
@@ -522,7 +831,9 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
                   </div>
                 ))}
                 {logs.length === 0 && (
-                  <div className="text-zinc-600 italic">No output yet. Server logs will appear here when spawned.</div>
+                  <div className="text-zinc-600 italic">
+                    No output yet. Server logs will appear here when spawned.
+                  </div>
                 )}
                 <div ref={terminalEndRef} />
               </div>
@@ -537,7 +848,9 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
             <div className="w-1/3 min-w-[180px] h-full flex flex-col bg-zinc-900/50">
               <div className="px-3 py-1.5 border-b border-zinc-800 text-xs font-semibold text-zinc-400 flex items-center justify-between">
                 <span>/workspace</span>
-                <Badge variant="outline" className="text-[10px] py-0">{vfsTree.length} files</Badge>
+                <Badge variant="outline" className="text-[10px] py-0">
+                  {vfsTree.length} files
+                </Badge>
               </div>
               <ScrollArea className="flex-1 p-2">
                 <div className="space-y-0.5">
@@ -556,7 +869,9 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
                     </button>
                   ))}
                   {vfsTree.length === 0 && (
-                    <div className="p-3 text-xs text-zinc-500 italic">VirtualFS is empty.</div>
+                    <div className="p-3 text-xs text-zinc-500 italic">
+                      VirtualFS is empty.
+                    </div>
                   )}
                 </div>
               </ScrollArea>
@@ -568,7 +883,7 @@ export function SandboxPreview({ files, className = "" }: SandboxPreviewProps) {
                 <>
                   <div className="px-3 py-1.5 border-b border-zinc-800 text-xs font-mono text-zinc-400 flex items-center justify-between">
                     <span>{selectedFileContent.path}</span>
-                    <span className="text-[10px] text-zinc-500">Read-only VFS</span>
+                    <span className="text-[10px] text-zinc-500">VirtualFS</span>
                   </div>
                   <ScrollArea className="flex-1 p-3">
                     <pre className="font-mono text-xs text-zinc-200 whitespace-pre-wrap">

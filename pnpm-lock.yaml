@@ -12,8 +12,8 @@ importers:
         specifier: ^3.0.160
         version: 3.0.160(react@19.2.8)(zod@4.3.6)
       '@buddhilive/sandbox':
-        specifier: 0.1.0-beta.1
-        version: 0.1.0-beta.1
+        specifier: 0.1.0-beta.3
+        version: 0.1.0-beta.3
       '@buddhilive/sandbox-sw':
         specifier: 0.1.0-beta.2
         version: 0.1.0-beta.2
@@ -320,8 +320,8 @@ packages:
   '@buddhilive/sandbox-sw@0.1.0-beta.2':
     resolution: {integrity: sha512-shYF6ZVNZkDM2BFiKu2GaI+tE0V4GQAl6FWIpXZeMaUUZvvo51SGRIGWGx5Zz8EVmtb9jL1tRSX+4NYYvDrMsA==}
 
-  '@buddhilive/sandbox@0.1.0-beta.1':
-    resolution: {integrity: sha512-jLxGK00FIRqzARNsWd70QTaLJnq+5i7qlW1P6ME9t9rBJ5mTBkocyf8pIA7KYmZand4P9WaBS0cmCclzOkwpQw==}
+  '@buddhilive/sandbox@0.1.0-beta.3':
+    resolution: {integrity: sha512-/06d016Qykmy2A/TF5okCWTc8lGyZ+aGyCUeW6nHhStBMiyTVuhDot2ZtL+M8471F+tkK0osnUkZ8CXOc5/pwQ==}
 
   '@chevrotain/cst-dts-gen@11.1.2':
     resolution: {integrity: sha512-XTsjvDVB5nDZBQB8o0o/0ozNelQtn2KrUVteIHSlPd2VAV2utEb6JzyCJaJ8tGxACR4RiBNWy5uYUHX2eji88Q==}
@@ -5267,7 +5267,7 @@ snapshots:
 
   '@buddhilive/sandbox-sw@0.1.0-beta.2': {}
 
-  '@buddhilive/sandbox@0.1.0-beta.1':
+  '@buddhilive/sandbox@0.1.0-beta.3':
     dependencies:
       fflate: 0.8.3
 
