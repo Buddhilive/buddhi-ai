@@ -40,19 +40,20 @@ export function ChatSession({
   const [mobileTab, setMobileTab] = useState<"chat" | "preview">("chat");
 
   // Progressive Disclosure Skill Store
-  const { corePrompt, processUserPrompt, loadIndex } = useSkillStore();
+  const { corePrompt, domainPrompt, processUserPrompt, loadIndex } = useSkillStore();
 
   useEffect(() => {
     loadIndex();
   }, [loadIndex]);
 
-  // System prompt composed with nextjs-vibe-coder skill
+  // System prompt composed with nextjs-vibe-coder skill and active domain skill
   const systemPrompt = useMemo(() => {
     return composeSkillSystemPrompt({
       basePrompt: DEFAULT_SYSTEM_PROMPT,
       coreSkillPrompt: corePrompt,
+      domainSkillPrompt: domainPrompt,
     });
-  }, [corePrompt]);
+  }, [corePrompt, domainPrompt]);
 
   const loadedModelId = useLiteRTModelStore((s) => s.liteRTModelModel);
   const activeModel = MODELS.find((m) => m.id === loadedModelId);

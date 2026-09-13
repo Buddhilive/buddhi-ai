@@ -7,6 +7,7 @@ interface SkillState {
   index: SkillsIndex | null;
   activeSkill: SkillManifestEntry | null;
   corePrompt: string | null;
+  domainPrompt: string | null;
   isLoading: boolean;
   error: string | null;
 
@@ -20,6 +21,7 @@ export const useSkillStore = create<SkillState>()(
     index: null,
     activeSkill: null,
     corePrompt: null,
+    domainPrompt: null,
     isLoading: false,
     error: null,
 
@@ -29,7 +31,7 @@ export const useSkillStore = create<SkillState>()(
         const index = await skillManager.fetchIndex();
         set({ index, isLoading: false });
 
-        // Auto-activate nextjs-vibe-coder skill by default
+        // Auto-load core nextjs-vibe-coder skill by default
         await get().activateSkill("nextjs-vibe-coder");
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Failed to load skills";
@@ -43,10 +45,18 @@ export const useSkillStore = create<SkillState>()(
       const skill = index?.skills.find((s) => s.id === skillId);
       if (!skill) return;
 
-      set({ isLoading: true, activeSkill: skill });
+      set({ isLoading: true });
       try {
-        const corePrompt = await skillManager.fetchFile(skill.entryPoint);
-        set({ corePrompt, isLoading: false });
+        const promptContent = await skillManager.fetchFile(skill.entryPoint);
+        if (skillId === "nextjs-vibe-coder") {
+          set({ corePrompt: promptContent, isLoading: false });
+        } else {
+          set({
+            activeSkill: skill,
+            domainPrompt: promptContent,
+            isLoading: false,
+          });
+        }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Failed to load skill";
         console.error(`[SkillStore.activateSkill] Failed to load ${skill.entryPoint}:`, err);
@@ -55,16 +65,12 @@ export const useSkillStore = create<SkillState>()(
     },
 
     processUserPrompt: async (prompt: string) => {
-      const { index, activeSkill } = get();
+      const { index } = get();
       if (!index) return;
 
-      if (!activeSkill) {
-        const matchedSkill = skillManager.matchSkill(prompt, index);
-        if (matchedSkill) {
-          await get().activateSkill(matchedSkill.id);
-        } else {
-          await get().activateSkill("nextjs-vibe-coder");
-        }
+      const matchedSkill = skillManager.matchSkill(prompt, index);
+      if (matchedSkill && matchedSkill.id !== "nextjs-vibe-coder") {
+        await get().activateSkill(matchedSkill.id);
       }
     },
   }))

@@ -1,37 +1,134 @@
 ---
 name: nextjs-vibe-coder
-description: "Next.js 16 App Router design principles and best practices for on-device vibe coding."
+description: "Next.js 16 App Router design principles and canonical opinionated stack for on-device vibe coding."
 ---
 
 # Next.js 16 Vibe Coder Guidelines
 
+## Approved Canonical Stack (Strict)
+- **Framework**: Next.js 16 App Router (RSC + Client Components)
+- **Styling**: TailwindCSS v4 (`@import "tailwindcss"`, `@theme` blocks)
+- **Components**: Shadcn UI (`components/ui/`, `@radix-ui/*`, `lucide-react`, `lib/utils.ts`)
+- **AI UI**: AI Elements (`ai-elements` npm package: `Thread`, `Message`, `MarkdownText`)
+- **State**: Zustand v5 (`create()` hooks in `store/`)
+- **Database & ORM**: Drizzle ORM (`drizzle-orm`) with SQLite WASM (`@libsql/client/wasm` or `@libsql/client`)
+- **Authentication**: BetterAuth (`better-auth` with Drizzle SQLite adapter)
+- **AI Streaming**: Vercel AI SDK v6 (`ai`, `@ai-sdk/openai`, `streamText`, `useChat`)
+
+PROHIBITED: Never use Prisma, Clerk, NextAuth, Redux, or native `better-sqlite3`.
+
 ## Server & Client Boundaries
 - Default to React Server Components (RSC) for static content, server data fetching, and layouts.
-- Add `'use client'` ONLY at the top of components requiring client hooks (`useState`, `useEffect`, `useRef`, `useCallback`), browser APIs, or interactive event listeners (`onClick`, `onChange`).
+- Add `'use client'` ONLY at the top of components requiring client hooks (`useState`, `useEffect`, `useRef`, `useCallback`, Zustand store hooks), browser APIs, or interactive event listeners (`onClick`, `onChange`).
 - Keep Client Components small and leaf-level in the component hierarchy.
 
-## App Router Structure
-- `package.json`: Dependencies on `"next": "^16.0.0"`, `"react": "^19.0.0"`, `"react-dom": "^19.0.0"`.
-- `next.config.js`: `module.exports = { reactStrictMode: true };`.
-- `app/layout.tsx`: RootLayout wrapping all views. Must contain `<html>` and `<body>`.
-- `app/page.tsx`: Main route entry point for `/`.
-- `app/globals.css`: Tailwind directives and theme variables.
-- `app/api/[...]/route.ts`: API Route Handlers exporting HTTP verbs (`export async function GET(request: Request) { return Response.json(...); }`).
-
-## Modern Next.js 15/16 Conventions
-- Dynamic route APIs: `params` and `searchParams` in page props are Promises: `const { id } = await params;`.
-- Use standard Web APIs (`Request`, `Response`, `Headers`, `fetch`).
-
-## SQLite & Persistence
-- The sandbox includes native `better-sqlite3` shims backed by WebAssembly SQLite.
-- In Route Handlers (`app/api/.../route.ts`):
+## SQLite Persistence with Drizzle ORM
+In `db/schema.ts`:
 ```ts
-import Database from 'better-sqlite3';
-const db = new Database('/workspace/app.db');
-db.exec('CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, done INTEGER DEFAULT 0)');
+import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+
+export const items = sqliteTable('items', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  done: integer('done', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+});
 ```
 
-## UI & Styling
-- Use Tailwind CSS modern dark tokens (`bg-zinc-950`, `text-zinc-100`, `border-zinc-800`, `rounded-xl`).
-- Add glassmorphism (`backdrop-blur-md bg-zinc-900/80`), subtle hover effects, and clean typography.
-- Ensure accessible focus rings and mobile-friendly touch targets.
+In `db/index.ts`:
+```ts
+import { createClient } from '@libsql/client/wasm';
+import { drizzle } from 'drizzle-orm/libsql';
+import * as schema from './schema';
+
+const client = createClient({ url: process.env.DATABASE_URL || 'file:sqlite.db' });
+export const db = drizzle(client, { schema });
+```
+
+In API Route Handlers (`app/api/items/route.ts`):
+```ts
+import { NextResponse } from 'next/server';
+import { db } from '@/db';
+import { items } from '@/db/schema';
+
+export async function GET() {
+  const allItems = await db.select().from(items);
+  return NextResponse.json({ items: allItems });
+}
+```
+
+## Authentication with BetterAuth
+In `auth.ts`:
+```ts
+import { betterAuth } from 'better-auth';
+import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { db } from '@/db';
+
+export const auth = betterAuth({
+  database: drizzleAdapter(db, { provider: 'sqlite' }),
+  emailAndPassword: { enabled: true },
+});
+```
+
+In `app/api/auth/[...all]/route.ts`:
+```ts
+import { auth } from '@/auth';
+import { toNextJsHandler } from 'better-auth/next-js';
+export const { GET, POST } = toNextJsHandler(auth);
+```
+
+## State Management with Zustand v5
+In `store/use-app-store.ts`:
+```ts
+import { create } from 'zustand';
+
+interface State {
+  count: number;
+  increment: () => void;
+}
+
+export const useAppStore = create<State>((set) => ({
+  count: 0,
+  increment: () => set((s) => ({ count: s.count + 1 })),
+}));
+```
+
+## AI Streaming with Vercel AI SDK & AI Elements
+In `app/api/chat/route.ts`:
+```ts
+import { openai } from '@ai-sdk/openai';
+import { streamText } from 'ai';
+
+export const maxDuration = 30;
+
+export async function POST(req: Request) {
+  const { messages } = await req.json();
+  const result = streamText({
+    model: openai('gpt-4o-mini'),
+    messages,
+  });
+  return result.toDataStreamResponse();
+}
+```
+
+In Client UI (`app/components/chat.tsx`):
+```tsx
+'use client';
+import { useChat } from 'ai/react';
+import { Thread, Message, MarkdownText } from 'ai-elements';
+
+export function Chat() {
+  const { messages, input, handleInputChange, handleSubmit } = useChat({ api: '/api/chat' });
+  return (
+    <div className="flex flex-col h-96 border rounded-lg p-4">
+      <Thread>
+        {messages.map((m) => (
+          <Message key={m.id} role={m.role}>
+            <MarkdownText content={m.content} />
+          </Message>
+        ))}
+      </Thread>
+    </div>
+  );
+}
+```

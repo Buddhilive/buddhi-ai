@@ -3,9 +3,10 @@ import { DEFAULT_SYSTEM_PROMPT, VIBE_CODER_SYSTEM_PROMPT } from "@/const/system-
 export interface SkillPromptOptions {
   basePrompt?: string;
   coreSkillPrompt?: string | null;
+  domainSkillPrompt?: string | null;
 }
 
-export const MAX_SKILL_TOKEN_BUDGET = 1200;
+export const MAX_SKILL_TOKEN_BUDGET = 2500;
 
 /**
  * Estimates token count based on standard ~4 characters per token heuristic.
@@ -16,15 +17,19 @@ export function estimateTokenCount(text: string): number {
 }
 
 /**
- * Composes the system prompt for on-device Gemma with optional Next.js vibe coding skill overlay.
+ * Composes the system prompt for on-device Gemma/remote LLM with Next.js vibe coding core + domain skill overlay.
  */
 export function composeSkillSystemPrompt(options: SkillPromptOptions): string {
-  const { basePrompt, coreSkillPrompt } = options;
+  const { basePrompt, coreSkillPrompt, domainSkillPrompt } = options;
 
   let composed = basePrompt || VIBE_CODER_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT;
 
   if (coreSkillPrompt) {
     composed += `\n\n---\n## Next.js Best Practices & Architecture\n${coreSkillPrompt}`;
+  }
+
+  if (domainSkillPrompt && domainSkillPrompt !== coreSkillPrompt) {
+    composed += `\n\n---\n## Active Domain Skill\n${domainSkillPrompt}`;
   }
 
   // Safety check on token budget

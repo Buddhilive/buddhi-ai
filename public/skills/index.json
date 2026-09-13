@@ -1,12 +1,12 @@
 {
-  "version": "2.0.0",
-  "updatedAt": "2026-09-10",
+  "version": "2.1.0",
+  "updatedAt": "2026-09-13",
   "skills": [
     {
       "id": "nextjs-vibe-coder",
       "name": "Next.js 16 Vibe Coder",
-      "version": "1.0.0",
-      "description": "Architect and generate complete, interactive Next.js 16 App Router applications with React Server Components, client state, Tailwind styling, and client-side SQLite persistence.",
+      "version": "1.1.0",
+      "description": "Architect and generate complete, interactive Next.js 16 App Router applications with the canonical opinionated stack (Tailwind v4, Shadcn, Zustand, Drizzle, SQLite, BetterAuth, Vercel AI SDK).",
       "category": "vibe-coding",
       "entryPoint": "nextjs-vibe-coder/SKILL.md",
       "triggers": [
@@ -23,9 +23,144 @@
         "full-stack",
         "todo",
         "kanban",
-        "saas",
+        "saas"
+      ]
+    },
+    {
+      "id": "drizzle-sqlite",
+      "name": "Drizzle ORM & SQLite WASM",
+      "version": "1.0.0",
+      "description": "Schema design, migrations, and async database persistence using Drizzle ORM and @libsql/client/wasm SQLite driver.",
+      "category": "database",
+      "entryPoint": "drizzle-sqlite/SKILL.md",
+      "triggers": [
+        "drizzle",
         "sqlite",
-        "database"
+        "database",
+        "db",
+        "orm",
+        "schema",
+        "migration",
+        "persist",
+        "sql",
+        "query",
+        "table",
+        "tables"
+      ]
+    },
+    {
+      "id": "better-auth",
+      "name": "BetterAuth Authentication",
+      "version": "1.0.0",
+      "description": "Client-side and server-side authentication using BetterAuth with Drizzle SQLite adapter.",
+      "category": "auth",
+      "entryPoint": "better-auth/SKILL.md",
+      "triggers": [
+        "auth",
+        "login",
+        "signin",
+        "signup",
+        "register",
+        "user",
+        "users",
+        "session",
+        "sessions",
+        "password",
+        "betterauth",
+        "better-auth"
+      ]
+    },
+    {
+      "id": "vercel-ai-sdk",
+      "name": "Vercel AI SDK v6",
+      "version": "1.0.0",
+      "description": "Streaming AI responses, route handlers, and useChat hook integration using Vercel AI SDK v6.",
+      "category": "ai",
+      "entryPoint": "vercel-ai-sdk/SKILL.md",
+      "triggers": [
+        "ai",
+        "chat",
+        "stream",
+        "streaming",
+        "openai",
+        "llm",
+        "assistant",
+        "usechat",
+        "streamtext"
+      ]
+    },
+    {
+      "id": "ai-elements",
+      "name": "AI Elements UI Primitives",
+      "version": "1.0.0",
+      "description": "Conversational UI components (Thread, Message, MarkdownText, Loader) from the ai-elements package.",
+      "category": "ai-ui",
+      "entryPoint": "ai-elements/SKILL.md",
+      "triggers": [
+        "ai-elements",
+        "elements",
+        "thread",
+        "message",
+        "chat ui",
+        "markdowntext",
+        "loader",
+        "chat panel"
+      ]
+    },
+    {
+      "id": "zustand",
+      "name": "Zustand v5 State Management",
+      "version": "1.0.0",
+      "description": "Lightweight client state management with Zustand v5 store hooks and devtools/persist middleware.",
+      "category": "state",
+      "entryPoint": "zustand/SKILL.md",
+      "triggers": [
+        "zustand",
+        "state",
+        "store",
+        "global state",
+        "cart",
+        "settings",
+        "persist",
+        "actions"
+      ]
+    },
+    {
+      "id": "shadcn-ui",
+      "name": "Shadcn UI Primitives",
+      "version": "1.0.0",
+      "description": "Accessible component primitives (button, input, card, dialog) with Tailwind and Radix UI.",
+      "category": "components",
+      "entryPoint": "shadcn-ui/SKILL.md",
+      "triggers": [
+        "shadcn",
+        "components",
+        "button",
+        "input",
+        "dialog",
+        "modal",
+        "card",
+        "radix",
+        "lucide"
+      ]
+    },
+    {
+      "id": "tailwindcss",
+      "name": "TailwindCSS v4 Styling",
+      "version": "1.0.0",
+      "description": "CSS-first theming, @theme directives, and responsive dark mode with TailwindCSS v4.",
+      "category": "styling",
+      "entryPoint": "tailwindcss/SKILL.md",
+      "triggers": [
+        "tailwind",
+        "tailwindcss",
+        "css",
+        "styling",
+        "theme",
+        "@theme",
+        "dark mode",
+        "colors",
+        "styles"
       ]
     }
   ]
