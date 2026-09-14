@@ -1,4 +1,4 @@
-import { DEFAULT_SYSTEM_PROMPT, VIBE_CODER_SYSTEM_PROMPT } from "@/const/system-prompt";
+import { DEFAULT_SYSTEM_PROMPT } from "@/const/system-prompt";
 
 export interface SkillPromptOptions {
   basePrompt?: string;
@@ -17,15 +17,15 @@ export function estimateTokenCount(text: string): number {
 }
 
 /**
- * Composes the system prompt for on-device Gemma/remote LLM with Next.js vibe coding core + domain skill overlay.
+ * Composes the system prompt for on-device Gemma/remote LLM with optional skill overlay.
  */
 export function composeSkillSystemPrompt(options: SkillPromptOptions): string {
   const { basePrompt, coreSkillPrompt, domainSkillPrompt } = options;
 
-  let composed = basePrompt || VIBE_CODER_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT;
+  let composed = basePrompt || DEFAULT_SYSTEM_PROMPT;
 
   if (coreSkillPrompt) {
-    composed += `\n\n---\n## Next.js Best Practices & Architecture\n${coreSkillPrompt}`;
+    composed += `\n\n---\n## Core Skill Context\n${coreSkillPrompt}`;
   }
 
   if (domainSkillPrompt && domainSkillPrompt !== coreSkillPrompt) {

@@ -4,7 +4,19 @@ import Image from "next/image";
 import Link from "next/link";
 import { motion, useScroll, useTransform, useSpring, useMotionValue } from "motion/react";
 import React, { useRef } from "react";
-import { Cpu, ShieldCheck, Zap, ServerOff, ArrowRight, BrainCircuit, Sparkles, Layers, Terminal, Database, Play } from "lucide-react";
+import {
+  BookOpen,
+  GraduationCap,
+  FileText,
+  Search,
+  ShieldCheck,
+  Zap,
+  ArrowRight,
+  BrainCircuit,
+  Sparkles,
+  Layers,
+  Cpu,
+} from "lucide-react";
 
 // Tilt Card Component for the 3D hover magnetic effect
 function TiltCard({ children, className }: { children: React.ReactNode; className?: string }) {
@@ -107,7 +119,7 @@ export default function Home() {
   const scale = useTransform(smoothProgress, [0, 0.5], [1, 0.8]);
   const opacity = useTransform(smoothProgress, [0, 0.3, 1], [1, 0, 0]);
 
-  const titleWords = "Vibe Code Full-Stack Next.js On-Device".split(" ");
+  const titleWords = "Read, Understand, and Write Academic Papers On-Device".split(" ");
 
   return (
     <div ref={containerRef} className="relative min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-50 overflow-hidden font-sans selection:bg-[#e05d38] selection:text-white">
@@ -146,18 +158,18 @@ export default function Home() {
             transition={{ duration: 0.8, type: "spring", bounce: 0.4 }}
             className="mb-8 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#e05d38]/10 text-[#e05d38] border border-[#e05d38]/20 backdrop-blur-md text-sm font-semibold tracking-wide shadow-[0_0_20px_rgba(224,93,56,0.15)]"
           >
-            <Zap className="w-4 h-4 animate-pulse" /> Client-Side Next.js 16 WebAssembly Sandbox
+            <GraduationCap className="w-4 h-4 animate-pulse" /> AI-Powered Academic Research Platform
           </motion.div>
 
-          <h1 className="text-5xl md:text-7xl lg:text-[7rem] font-bold tracking-tighter max-w-6xl leading-[1.05] overflow-hidden py-4">
+          <h1 className="text-4xl md:text-6xl lg:text-[5.8rem] font-bold tracking-tighter max-w-6xl leading-[1.08] overflow-hidden py-4">
             {titleWords.map((word, i) => (
               <motion.span
                 key={i}
                 initial={{ opacity: 0, y: 100, rotate: 10 }}
                 animate={{ opacity: 1, y: 0, rotate: 0 }}
-                transition={{ duration: 0.8, delay: i * 0.08, type: "spring", bounce: 0.2 }}
-                className={`inline-block mr-3 md:mr-5 ${
-                  word.includes("Next.js") || word.includes("On-Device") || word.includes("Vibe")
+                transition={{ duration: 0.8, delay: i * 0.06, type: "spring", bounce: 0.2 }}
+                className={`inline-block mr-3 md:mr-4 ${
+                  word.includes("Academic") || word.includes("Papers") || word.includes("On-Device")
                     ? "text-transparent bg-clip-text bg-gradient-to-r from-[#e05d38] to-[#f2ccbf] dark:from-[#e05d38] dark:to-[#eaab95]"
                     : ""
                 }`}
@@ -173,7 +185,7 @@ export default function Home() {
             transition={{ duration: 1, delay: 0.5 }}
             className="mt-8 text-xl md:text-2xl text-zinc-600 dark:text-zinc-400 max-w-3xl leading-relaxed font-medium"
           >
-            Describe what you want in natural language. Local Gemma AI builds, compiles, and runs complete Next.js App Router applications with embedded SQLite in your browser. Zero backend servers, zero API costs, 100% private.
+            Empower your research workflow. Read complex scientific papers with instant AI explanations, synthesize literature reviews, extract methodology insights, and draft scholarly work — 100% privately in your browser.
           </motion.p>
 
           <motion.div
@@ -190,7 +202,7 @@ export default function Home() {
               >
                 <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
                 <span className="relative z-10 flex items-center gap-2">
-                  Start Vibe Coding
+                  Start Researching
                   <ArrowRight className="w-6 h-6 group-hover:translate-x-2 transition-transform duration-300" />
                 </span>
               </motion.button>
@@ -205,7 +217,7 @@ export default function Home() {
             transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
             className="w-20 h-20 rounded-2xl bg-white/60 dark:bg-zinc-900/60 border border-zinc-200/50 dark:border-white/10 shadow-[0_20px_40px_-10px_rgba(224,93,56,0.15)] backdrop-blur-2xl flex items-center justify-center text-[#e05d38]"
           >
-            <Cpu className="w-10 h-10" />
+            <BookOpen className="w-10 h-10" />
           </motion.div>
         </motion.div>
 
@@ -225,19 +237,19 @@ export default function Home() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
           {[
             {
-              icon: ServerOff,
-              title: "Zero Backend Infrastructure",
-              desc: "No Docker containers, Firecracker VMs, or remote servers. BuddhiLive Sandbox executes 100% inside dedicated Web Workers with an in-memory POSIX VirtualFS.",
+              icon: BookOpen,
+              title: "Interactive Paper Reading",
+              desc: "Deconstruct complex academic papers effortlessly. Ask questions in natural language, explain mathematical proofs, and generate concise section summaries.",
             },
             {
               icon: ShieldCheck,
-              title: "Uncompromising Privacy",
-              desc: "Every line of generated code, every SQLite transaction, and every AI token stays strictly within your browser. There is no telemetry, cloud logger, or server middleman.",
+              title: "100% Confidential & Private",
+              desc: "Unpublished manuscripts and proprietary datasets never leave your device. All inference runs directly in your browser with zero remote server logging.",
             },
             {
-              icon: Database,
-              title: "Full-Stack with SQLite",
-              desc: "Build real apps with persistent data. Virtual Node.js intercepts better-sqlite3 using WebAssembly SQLite, enabling full CRUD route handlers in your browser.",
+              icon: FileText,
+              title: "Literature Synthesis & Drafting",
+              desc: "Synthesize findings across research domains, outline conference submissions, draft literature reviews, and format citations conforming to academic standards.",
             },
           ].map((feature, i) => (
             <motion.div
@@ -265,7 +277,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Sandbox Spotlight Section */}
+      {/* Research Spotlight Section */}
       <section className="relative py-32 px-6 bg-zinc-100/50 dark:bg-zinc-900/10 overflow-hidden z-20 border-y border-zinc-200 dark:border-zinc-900">
         <div className="absolute top-0 left-0 w-[500px] h-[500px] rounded-full bg-[#e05d38]/5 blur-[120px] pointer-events-none" />
         <div className="max-w-7xl mx-auto relative z-10">
@@ -279,7 +291,7 @@ export default function Home() {
                 transition={{ duration: 0.6 }}
                 className="mb-6 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#e05d38]/10 text-[#e05d38] border border-[#e05d38]/20 text-xs font-bold tracking-wider uppercase"
               >
-                <Sparkles className="w-3.5 h-3.5" /> Next-Gen Architecture
+                <Sparkles className="w-3.5 h-3.5" /> Scholarly Intelligence
               </motion.div>
 
               <motion.h2
@@ -289,9 +301,9 @@ export default function Home() {
                 transition={{ duration: 0.6, delay: 0.1 }}
                 className="text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight mb-6 text-zinc-900 dark:text-zinc-50 leading-tight"
               >
-                Client-Side <br className="hidden md:inline" />
+                Intelligent <br className="hidden md:inline" />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#e05d38] to-[#f2ccbf] dark:from-[#e05d38] dark:to-[#eaab95]">
-                  Next.js Sandbox
+                  Academic Assistant
                 </span>
               </motion.h2>
 
@@ -302,25 +314,25 @@ export default function Home() {
                 transition={{ duration: 0.6, delay: 0.2 }}
                 className="text-lg md:text-xl text-zinc-600 dark:text-zinc-400 mb-8 leading-relaxed font-medium"
               >
-                Powered by <strong>@buddhilive/sandbox</strong>. Full Node.js built-ins, transparent SWC compilation via <code>esbuild-wasm</code>, and real-time streaming preview through Service Worker port interception.
+                Designed for scholars, graduate students, and independent researchers. Accelerated paper comprehension, critical review, and thesis writing assistance right in your browser.
               </motion.p>
 
               <div className="space-y-6 mb-10 w-full">
                 {[
                   {
-                    title: "React Server Components & App Router",
-                    desc: "Full layout and routing semantics supported. Stream chunked responses and live component trees in browser.",
+                    title: "Deep Methodology Critique",
+                    desc: "Analyze experimental setups, sample size validity, statistical hypotheses, and potential methodological biases.",
+                    icon: Search,
+                  },
+                  {
+                    title: "Literature Matrix Synthesis",
+                    desc: "Compare core findings across multiple publications, construct literature review matrices, and spot research gaps.",
                     icon: Layers,
                   },
                   {
-                    title: "Live Terminal & Real-Time I/O",
-                    desc: "Single-producer single-consumer (SPSC) ring buffers built on SharedArrayBuffer and Atomics stream stdout/stderr without frame drops.",
-                    icon: Terminal,
-                  },
-                  {
-                    title: "Zero Setup, Instant Export",
-                    desc: "Generated code conforms to standard Next.js 16 file layouts. Export your files directly into production repos or Vercel.",
-                    icon: Play,
+                    title: "Academic Drafting & Citations",
+                    desc: "Refine scholarly tone, structure abstracts, draft introduction sections, and format references in APA, IEEE, and ACM formats.",
+                    icon: FileText,
                   },
                 ].map((item, idx) => (
                   <div key={idx} className="flex gap-4 items-start">
@@ -347,14 +359,14 @@ export default function Home() {
                     whileTap={{ scale: 0.95 }}
                     className="group flex items-center justify-center gap-2 h-14 px-8 rounded-full bg-[#e05d38] text-white font-bold text-md shadow-[0_0_30px_-15px_#e05d38] transition-all font-sans cursor-pointer"
                   >
-                    Launch Vibe Workspace
+                    Launch Research Workspace
                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </motion.button>
                 </Link>
               </motion.div>
             </div>
 
-            {/* Right side: Mockup */}
+            {/* Right side: Academic Mockup */}
             <div className="lg:col-span-7 w-full flex justify-center">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -372,15 +384,15 @@ export default function Home() {
                   </div>
                   <div className="px-3 py-0.5 rounded-md bg-zinc-950/60 text-[9px] text-emerald-400 font-mono tracking-wider flex items-center gap-1.5">
                     <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    SANDBOX: NEXT.JS 16 DEV (PORT 3000)
+                    RESEARCH: ON-DEVICE INFERENCE ENGINE
                   </div>
                 </div>
 
                 {/* Input Area */}
                 <div className="mb-6 space-y-2">
-                  <span className="text-[10px] text-[#e05d38] font-bold font-mono tracking-wider block">1. NATURAL LANGUAGE PROMPT</span>
+                  <span className="text-[10px] text-[#e05d38] font-bold font-mono tracking-wider block">1. RESEARCH INQUIRY</span>
                   <div className="p-4 rounded-xl bg-zinc-950/80 border border-zinc-800 text-zinc-300 font-mono text-xs leading-relaxed relative overflow-hidden">
-                    <span className="relative z-10">&quot;Build a full-stack SaaS task board with SQLite todos and dark mode&quot;</span>
+                    <span className="relative z-10">&quot;Analyze the methodology and sample limitations of the paper on self-attention mechanisms in natural language processing&quot;</span>
                     <span className="w-1 h-3.5 bg-zinc-300 inline-block align-middle ml-1 animate-pulse" />
                   </div>
                 </div>
@@ -402,16 +414,15 @@ export default function Home() {
                 {/* Output Area */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-emerald-400 font-bold font-mono tracking-wider block">2. NEXT.JS 16 APP ROUTER GENERATED</span>
-                    <span className="text-[9px] text-zinc-500 font-mono">Live in POSIX VFS</span>
+                    <span className="text-[10px] text-emerald-400 font-bold font-mono tracking-wider block">2. SCHOLARLY SYNTHESIS & CRITIQUE</span>
+                    <span className="text-[9px] text-zinc-500 font-mono">Private Local Analysis</span>
                   </div>
 
                   <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-300 font-mono text-[11px] leading-relaxed space-y-2">
-                    <div className="text-zinc-400 font-semibold">📁 /workspace/</div>
-                    <div className="pl-4 text-emerald-400">├── app/layout.tsx <span className="text-zinc-600">(RootLayout)</span></div>
-                    <div className="pl-4 text-emerald-400">├── app/page.tsx <span className="text-zinc-600">(&apos;use client&apos; BoardView)</span></div>
-                    <div className="pl-4 text-sky-400">├── app/api/todos/route.ts <span className="text-zinc-600">(better-sqlite3 CRUD)</span></div>
-                    <div className="pl-4 text-zinc-400">└── package.json <span className="text-zinc-600">(next 16, react 19)</span></div>
+                    <div className="text-zinc-400 font-semibold">📋 Methodology Evaluation</div>
+                    <div className="pl-4 text-emerald-400">✓ Evaluated on WMT 2014 English-to-German (4.5M sentence pairs) and English-to-French.</div>
+                    <div className="pl-4 text-sky-400">⚠ Quadratic computational complexity O(n²) with respect to sequence length n.</div>
+                    <div className="pl-4 text-zinc-300">💡 Key insight: Replaces recurrent layers entirely with multi-head dot-product attention.</div>
                   </div>
                 </div>
               </motion.div>
@@ -430,24 +441,24 @@ export default function Home() {
             className="text-center mb-24"
           >
             <h2 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 text-zinc-900 dark:text-zinc-50">How It Works</h2>
-            <p className="text-2xl text-zinc-600 dark:text-zinc-400">Three simple steps to on-device vibe coding.</p>
+            <p className="text-2xl text-zinc-600 dark:text-zinc-400">Three streamlined steps to faster academic insight.</p>
           </motion.div>
 
           <div className="space-y-32">
             {[
               {
-                title: "Prompt Your Vision",
-                desc: "Describe your app idea in plain English. Ask for databases, API routes, interactive state, and beautiful Tailwind styles.",
+                title: "Inquire or Upload Research",
+                desc: "Paste academic abstracts, discuss complex theories, or explore cross-disciplinary topics in natural language.",
                 icon: "01",
               },
               {
-                title: "On-Device Code Generation",
-                desc: "Local Gemma AI emits clean, modular Next.js 16 App Router files with strict path annotations, grounded in official agent conventions.",
+                title: "On-Device Paper Analysis",
+                desc: "Local Gemma AI analyzes text, highlights methodology caveats, checks mathematical arguments, and identifies key insights.",
                 icon: "02",
               },
               {
-                title: "Instant WebAssembly Execution",
-                desc: "BuddhiLive Sandbox compiles TypeScript and JSX on the fly via esbuild-wasm, mounts SQLite, and renders a live preview at /__preview/3000/.",
+                title: "Draft & Synthesize with Citations",
+                desc: "Generate literature review outlines, formulate research questions, and compose publication-ready drafts with proper academic rigor.",
                 icon: "03",
               },
             ].map((step, idx) => (
@@ -502,7 +513,7 @@ export default function Home() {
           </div>
 
           <h2 className="text-5xl md:text-7xl font-black tracking-tight mb-10 text-zinc-900 dark:text-zinc-50">
-            Build full-stack apps at the speed of thought.
+            Supercharge your academic research today.
           </h2>
 
           <Link href="/chat">
@@ -511,7 +522,7 @@ export default function Home() {
               whileTap={{ scale: 0.95 }}
               className="flex items-center justify-center gap-3 h-16 px-12 rounded-full bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 font-bold text-xl hover:bg-zinc-800 dark:hover:bg-zinc-100 transition-colors shadow-2xl cursor-pointer"
             >
-              Start Vibe Coding Now
+              Launch Research Workspace
               <ArrowRight className="w-6 h-6" />
             </motion.button>
           </Link>

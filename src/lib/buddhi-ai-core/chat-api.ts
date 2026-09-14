@@ -32,16 +32,6 @@
 import { DEFAULT_SYSTEM_PROMPT } from "@/const/system-prompt";
 import { applyMemoryContext } from "@/lib/memory";
 import { useMemoryStore } from "@/stores/memory-store";
-import { useSandboxStore } from "@/stores/sandbox-store";
-import {
-    SANDBOX_TOOLS,
-    REACT_AGENT_SYSTEM_INSTRUCTIONS,
-    executeSandboxTool,
-} from "@/lib/sandbox-tools";
-import {
-    serializeToolDeclaration,
-    serializeToolResponse,
-} from "@/lib/buddhi-ai-core/chat-template-generator";
 import {
     GemmaChannelStreamParser,
     parseGemmaToolArguments,
@@ -347,10 +337,7 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                 // Partition messages into preface (prior turns) and the active user prompt
                 const prefaceMessages: Message[] = [];
                 if (this.systemPrompt) {
-                    const toolDeclarations = SANDBOX_TOOLS.map(
-                        (t) => `<|channel>declaration:${t.name}${serializeToolDeclaration(t)}<channel|>`
-                    ).join("\n");
-                    const fullSystem = `${this.systemPrompt}\n\n${REACT_AGENT_SYSTEM_INSTRUCTIONS}\n\n${toolDeclarations}`;
+                    const fullSystem = this.systemPrompt;
                     prefaceMessages.push({
                         role: "system",
                         content: this.isReasoningOn ? `${fullSystem}\n<|think|>` : fullSystem,
@@ -379,14 +366,6 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                     conversation = await this.engine.createConversation({
                         preface: {
                             messages: prefaceMessages,
-                            tools: SANDBOX_TOOLS.map((t) => ({
-                                type: "function" as const,
-                                function: {
-                                    name: t.name,
-                                    description: t.description,
-                                    parameters: t.parameters,
-                                },
-                            })),
                         },
                     });
                 } catch (err) {
@@ -546,33 +525,17 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                                 dynamic: true,
                             });
 
-                            const bridge = useSandboxStore.getState().bridge;
-                            const execResult = await executeSandboxTool(call.name, call.args, bridge);
-
-                            const resultObj = (execResult.success
-                                ? (execResult.result ?? { success: true })
-                                : { error: execResult.error || "Tool execution failed." }) as Record<string, unknown>;
-
-                            if (execResult.success) {
-                                writer.write({
-                                    type: "tool-output-available",
-                                    toolCallId,
-                                    output: execResult.result,
-                                    dynamic: true,
-                                });
-                            } else {
-                                writer.write({
-                                    type: "tool-output-error",
-                                    toolCallId,
-                                    errorText: execResult.error || "Tool execution failed.",
-                                    dynamic: true,
-                                });
-                            }
+                            writer.write({
+                                type: "tool-output-error",
+                                toolCallId,
+                                errorText: "Tool execution is not supported in pure chat mode.",
+                                dynamic: true,
+                            });
 
                             toolResponses.push({
                                 type: "tool_response",
                                 name: call.name,
-                                response: resultObj,
+                                response: { error: "Tool execution is not supported in pure chat mode." },
                             });
                         }
 

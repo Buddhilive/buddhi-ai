@@ -17,24 +17,23 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Buddhi Vibe — On-Device Next.js Vibe Coding",
-    template: "%s | Buddhi Vibe",
+    default: "Buddhi AI — Academic Research Platform",
+    template: "%s | Buddhi AI",
   },
   description:
-    "Vibe code complete full-stack Next.js 16 App Router applications on-device. Zero backend servers, client-side WebAssembly execution, live preview, and embedded SQLite.",
+    "AI-powered research platform designed to help students, academics, and researchers read, critique, and write academic papers more efficiently. 100% on-device and private.",
   keywords: [
-    "vibe coding",
-    "next.js on device",
-    "client-side nextjs",
-    "webassembly sandbox",
-    "browser nodejs sandbox",
-    "ai code generator",
-    "local ai coding",
-    "gemma on-device",
-    "private ai coding",
-    "app router builder",
-    "sqlite browser",
-    "zero server ai"
+    "academic research",
+    "paper reader",
+    "scispace alternative",
+    "literature review",
+    "academic writing",
+    "research assistant",
+    "local ai",
+    "on-device ai",
+    "private ai research",
+    "citation assistant",
+    "scholarly writing"
   ],
   authors: [{ name: "Buddhi Kavindra" }],
   creator: "Buddhilive Labs",
@@ -44,11 +43,11 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   openGraph: {
-    title: "Buddhi Vibe — On-Device Next.js Vibe Coding",
+    title: "Buddhi AI — Academic Research Platform",
     description:
-      "Develop and preview full-stack Next.js applications directly in your browser with zero backend and absolute privacy.",
+      "Read, understand, and write academic papers with an intelligent on-device AI assistant. Completely private, running in your browser.",
     url: "https://ai.buddhilive.com",
-    siteName: "Buddhi Vibe",
+    siteName: "Buddhi AI",
     type: "website",
     locale: "en_US",
     images: [
@@ -56,15 +55,15 @@ export const metadata: Metadata = {
         url: "images/buddhi-ai-screenshot.png",
         width: 1200,
         height: 630,
-        alt: "Buddhi Vibe — On-Device Next.js Coding",
+        alt: "Buddhi AI — Academic Research Platform",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Buddhi Vibe — On-Device Next.js Vibe Coding",
+    title: "Buddhi AI — Academic Research Platform",
     description:
-      "Develop and preview full-stack Next.js applications directly in your browser with zero backend and absolute privacy.",
+      "Read, understand, and write academic papers with an intelligent on-device AI assistant.",
     images: ["images/buddhi-ai-screenshot.png"],
     creator: "@buddhilive",
   },
@@ -79,8 +78,8 @@ export const metadata: Metadata = {
       "max-snippet": -1,
     },
   },
-  category: "Technology",
-  classification: "AI Tools",
+  category: "Education",
+  classification: "Academic Research Tools",
 };
 
 export default function RootLayout({

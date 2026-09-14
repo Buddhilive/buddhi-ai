@@ -15,17 +15,9 @@ import { useChatActions } from "@/hooks/chat/use-chat-actions";
 import { useSkillStore } from "@/stores/skill-store";
 import { composeSkillSystemPrompt } from "@/lib/skills/skill-injector";
 import { useChatStorage } from "@/hooks/chat/use-chat-storage";
-import { useChatStore } from "@/stores/chat-store";
-import { useSandboxStore } from "@/stores/sandbox-store";
 import { ChatMessages } from "./chat-messages";
 import { ChatInput } from "./chat-input";
 import { Spinner } from "@/components/ui/spinner";
-import { SandboxPreview } from "@/components/custom/sandbox/sandbox-preview";
-import { extractVibeCodingFiles } from "@/lib/code-extractor";
-import { VibeCodingFile } from "@/types/sandbox";
-import { MessageSquare, Monitor } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 
 export function ChatSession({
   instance,
@@ -36,8 +28,6 @@ export function ChatSession({
 }) {
   const [text, setText] = useState<string>("");
   const [isReasoningOn, setIsReasoningOn] = useState<boolean>(true);
-  const [vibeFiles, setVibeFiles] = useState<VibeCodingFile[]>([]);
-  const [mobileTab, setMobileTab] = useState<"chat" | "preview">("chat");
 
   // Progressive Disclosure Skill Store
   const { corePrompt, domainPrompt, processUserPrompt, loadIndex } = useSkillStore();
@@ -46,7 +36,6 @@ export function ChatSession({
     loadIndex();
   }, [loadIndex]);
 
-  // System prompt composed with nextjs-vibe-coder skill and active domain skill
   const systemPrompt = useMemo(() => {
     return composeSkillSystemPrompt({
       basePrompt: DEFAULT_SYSTEM_PROMPT,
@@ -59,9 +48,6 @@ export function ChatSession({
   const activeModel = MODELS.find((m) => m.id === loadedModelId);
   const templateVersion: GemmaTemplateVersion = activeModel?.chatTemplateVersion ?? "gemma4";
   const supportsVision: boolean = activeModel?.supportsVision ?? false;
-
-  const storeChatId = useChatStore((s) => s.currentChatId);
-  const activeChatId = storeChatId ?? chatId;
 
   const currentChatIdRef = useRef<string | null>(chatId);
 
@@ -80,23 +66,6 @@ export function ChatSession({
   const { messages, setMessages, sendMessage, stop, status } = useChat({
     transport,
   });
-
-  // Extract multi-file code blocks from AI messages
-  useEffect(() => {
-    if (!messages.length) return;
-    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-    if (lastAssistant) {
-      const messageText = lastAssistant.parts
-        ?.filter((p: any) => p.type === "text")
-        .map((p: any) => (p as { text: string }).text)
-        .join("\n") || "";
-
-      const extracted = extractVibeCodingFiles(messageText);
-      if (extracted.length > 0) {
-        setVibeFiles(extracted);
-      }
-    }
-  }, [messages]);
 
   const {
     tokenCount,
@@ -134,15 +103,11 @@ export function ChatSession({
     currentChatIdRef,
   });
 
-  const sandboxInitStage = useSandboxStore((s) => s.initStage);
-  const isSandboxInitializing = sandboxInitStage !== "ready" && sandboxInitStage !== "error";
-
   const isSubmitDisabled =
     !text.trim() ||
     status === "streaming" ||
     status === "submitted" ||
-    isSummarizing ||
-    isSandboxInitializing;
+    isSummarizing;
 
   const handleSubmit = useCallback(
     async (message: PromptInputMessage) => {
@@ -205,87 +170,36 @@ export function ChatSession({
   }
 
   return (
-    <div className="relative flex flex-col h-[calc(100vh-64px)] w-full overflow-hidden">
-      {/* Mobile Tab Switcher (< lg) */}
-      <div className="lg:hidden flex items-center justify-center gap-2 p-1.5 bg-muted/60 border-b border-border shrink-0">
-        <Button
-          size="sm"
-          variant={mobileTab === "chat" ? "default" : "ghost"}
-          className="h-8 text-xs gap-1.5"
-          onClick={() => setMobileTab("chat")}
-        >
-          <MessageSquare className="size-3.5" />
-          <span>Chat</span>
-        </Button>
-        <Button
-          size="sm"
-          variant={mobileTab === "preview" ? "default" : "ghost"}
-          className="h-8 text-xs gap-1.5 relative"
-          onClick={() => setMobileTab("preview")}
-        >
-          <Monitor className="size-3.5" />
-          <span>Preview</span>
-          {vibeFiles.length > 0 && (
-            <Badge variant="secondary" className="text-[9px] py-0 px-1 ml-1 h-4">
-              {vibeFiles.length}
-            </Badge>
-          )}
-        </Button>
-      </div>
+    <div className="relative flex flex-col h-[calc(100vh-64px)] w-full overflow-hidden divide-y">
+      <ChatMessages
+        messages={messages}
+        status={status}
+        isSummarizing={isSummarizing}
+        editingMessageId={editingMessageId}
+        editText={editText}
+        setEditText={setEditText}
+        handleEditCancel={handleEditCancel}
+        handleEditDone={handleEditDone}
+        handleEditStart={handleEditStart}
+        handleCopy={handleCopy}
+        copiedMessageId={copiedMessageId}
+        handleRegenerate={handleRegenerate}
+        sendMessage={sendMessage}
+      />
 
-      {/* Main Split Layout */}
-      <div className="relative flex-1 flex h-full w-full overflow-hidden">
-        {/* Left: Chat Panel */}
-        <div
-          className={`flex flex-col h-full overflow-hidden divide-y transition-all duration-200 ${
-            mobileTab === "preview" ? "hidden lg:flex" : "flex"
-          } w-full lg:w-[440px] xl:w-[500px] shrink-0`}
-        >
-
-          <ChatMessages
-            messages={messages}
-            status={status}
-            isSummarizing={isSummarizing}
-            editingMessageId={editingMessageId}
-            editText={editText}
-            setEditText={setEditText}
-            handleEditCancel={handleEditCancel}
-            handleEditDone={handleEditDone}
-            handleEditStart={handleEditStart}
-            handleCopy={handleCopy}
-            copiedMessageId={copiedMessageId}
-            handleRegenerate={handleRegenerate}
-            sendMessage={sendMessage}
-          />
-
-          <ChatInput
-            text={text}
-            handleTextChange={handleTextChange}
-            handleSubmit={handleSubmit}
-            isSubmitDisabled={isSubmitDisabled}
-            isInitializing={isSandboxInitializing}
-            stop={stop}
-            status={status}
-            isReasoningOn={isReasoningOn}
-            toggleReasoning={toggleReasoning}
-            handleTranscriptionChange={handleTranscriptionChange}
-            tokenCount={tokenCount}
-          />
-        </div>
-
-        {/* Right: Next.js Sandbox Preview Panel */}
-        <div
-          className={`flex-1 h-full overflow-hidden ${
-            mobileTab === "chat" ? "hidden lg:flex" : "flex"
-          }`}
-        >
-          <SandboxPreview
-            files={vibeFiles}
-            chatId={activeChatId}
-            className="w-full h-full"
-          />
-        </div>
-      </div>
+      <ChatInput
+        text={text}
+        handleTextChange={handleTextChange}
+        handleSubmit={handleSubmit}
+        isSubmitDisabled={isSubmitDisabled}
+        stop={stop}
+        status={status}
+        isReasoningOn={isReasoningOn}
+        toggleReasoning={toggleReasoning}
+        handleTranscriptionChange={handleTranscriptionChange}
+        tokenCount={tokenCount}
+      />
     </div>
   );
 }
+

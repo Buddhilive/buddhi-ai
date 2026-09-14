@@ -30,9 +30,6 @@ export const useSkillStore = create<SkillState>()(
       try {
         const index = await skillManager.fetchIndex();
         set({ index, isLoading: false });
-
-        // Auto-load core nextjs-vibe-coder skill by default
-        await get().activateSkill("nextjs-vibe-coder");
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Failed to load skills";
         console.error("[SkillStore.loadIndex] Error:", err);
@@ -48,15 +45,11 @@ export const useSkillStore = create<SkillState>()(
       set({ isLoading: true });
       try {
         const promptContent = await skillManager.fetchFile(skill.entryPoint);
-        if (skillId === "nextjs-vibe-coder") {
-          set({ corePrompt: promptContent, isLoading: false });
-        } else {
-          set({
-            activeSkill: skill,
-            domainPrompt: promptContent,
-            isLoading: false,
-          });
-        }
+        set({
+          activeSkill: skill,
+          domainPrompt: promptContent,
+          isLoading: false,
+        });
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Failed to load skill";
         console.error(`[SkillStore.activateSkill] Failed to load ${skill.entryPoint}:`, err);
@@ -69,7 +62,7 @@ export const useSkillStore = create<SkillState>()(
       if (!index) return;
 
       const matchedSkill = skillManager.matchSkill(prompt, index);
-      if (matchedSkill && matchedSkill.id !== "nextjs-vibe-coder") {
+      if (matchedSkill) {
         await get().activateSkill(matchedSkill.id);
       }
     },

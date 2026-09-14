@@ -8,9 +8,9 @@ import {
 export const SIDEBAR_DATA = {
     teams: [
         {
-            name: "Buddhi Vibe",
+            name: "Buddhi AI",
             logo: Brain,
-            plan: "Next.js Vibe Coding",
+            plan: "Academic Research Platform",
             url: "/",
         },
         {

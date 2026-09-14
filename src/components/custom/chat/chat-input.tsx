@@ -28,7 +28,6 @@ interface ChatInputProps {
   handleTextChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
   handleSubmit: (message: PromptInputMessage) => Promise<void>;
   isSubmitDisabled: boolean;
-  isInitializing?: boolean;
   stop: () => void;
   status: any;
   isReasoningOn: boolean;
@@ -42,7 +41,6 @@ export function ChatInput({
   handleTextChange,
   handleSubmit,
   isSubmitDisabled,
-  isInitializing = false,
   stop,
   status,
   isReasoningOn,
@@ -62,12 +60,7 @@ export function ChatInput({
             <PromptInputTextarea
               onChange={handleTextChange}
               value={text}
-              disabled={isInitializing}
-              placeholder={
-                isInitializing
-                  ? "Initializing Next.js environment, please wait..."
-                  : "Describe the Next.js app you want to build (e.g. 'Build a modern personal portfolio with contact form and dark mode')..."
-              }
+              placeholder="Ask a research question, summarize a paper, or draft content..."
             />
           </PromptInputBody>
           <PromptInputFooter>
@@ -110,7 +103,7 @@ export function ChatInput({
           </PromptInputFooter>
         </PromptInput>
       </div>
-      <span className="text-xs text-muted-foreground text-center">Buddhi Vibe develops and runs Next.js apps client-side.</span>
+      <span className="text-xs text-muted-foreground text-center">Buddhi AI helps you read, write, and analyze academic research papers.</span>
     </div>
   );
 }
