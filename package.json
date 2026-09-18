@@ -7,13 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "node scripts/copy-sw.js"
+    "postinstall": "node scripts/copy-sw.js && node scripts/copy-litert-wasm.js"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.160",
     "@buddhilive/sandbox": "0.1.0-beta.5",
     "@buddhilive/sandbox-sw": "0.1.0-beta.4",
     "@litert-lm/core": "^0.17.0",
+    "@litertjs/core": "^2.5.3",
     "@radix-ui/react-use-controllable-state": "^1.2.2",
     "@rive-app/react-webgl2": "^4.27.3",
     "@streamdown/cjk": "^1.0.3",
@@ -32,6 +33,7 @@
     "nanoid": "^5.1.7",
     "next": "16.3.4",
     "next-themes": "^0.4.6",
+    "pdfjs-dist": "^6.3.289",
     "radix-ui": "^1.4.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",

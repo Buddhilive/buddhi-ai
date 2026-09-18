@@ -1,62 +1,61 @@
 import {
-    Brain,
-    BrainCircuit,
-    Command,
-    Sparkles,
+  Brain,
+  BrainCircuit,
+  Command,
+  BookOpen,
+  Settings,
+  Sparkles,
 } from "lucide-react";
 
 export const SIDEBAR_DATA = {
-    teams: [
-        {
-            name: "Buddhi AI",
-            logo: Brain,
-            plan: "Academic Research Platform",
-            url: "/",
-        },
-        {
-            name: "Buddhilive",
-            logo: Command,
-            plan: "Return to home",
-            url: "https://buddhilive.com",
-        },
-    ],
-    navMain: [
-        {
-            title: "New Chat",
-            url: "/chat",
-            icon: Sparkles,
-        },
-        {
-            title: "Models",
-            url: "/models",
-            icon: BrainCircuit,
-        },
-    ],
-    navSecondary: [
-        {
-            title: "Models",
-            url: "/models",
-            icon: BrainCircuit,
-        },
-    ],
-    favorites: [
-        {
-            name: "Project Management & Task Tracking",
-            url: "#",
-            emoji: "📊",
-        },
-    ],
-    workspaces: [
-        {
-            name: "Personal Life Management",
-            emoji: "🏠",
-            pages: [
-                {
-                    name: "Daily Journal & Reflection",
-                    url: "#",
-                    emoji: "📔",
-                },
-            ],
-        },
-    ],
-}
+  teams: [
+    {
+      name: "Buddhi AI",
+      logo: Brain,
+      plan: "Academic Research Platform",
+      url: "/library",
+    },
+    {
+      name: "Buddhilive",
+      logo: Command,
+      plan: "Return to home",
+      url: "https://buddhilive.com",
+    },
+  ],
+  navMain: [
+    {
+      title: "New Chat",
+      url: "/chat",
+      icon: Sparkles,
+    },
+    {
+      title: "Library",
+      url: "/library",
+      icon: BookOpen,
+    },
+    {
+      title: "Models",
+      url: "/models",
+      icon: BrainCircuit,
+    },
+    {
+      title: "Settings",
+      url: "/settings",
+      icon: Settings,
+    },
+  ],
+  navSecondary: [
+    {
+      title: "Models",
+      url: "/models",
+      icon: BrainCircuit,
+    },
+    {
+      title: "Settings",
+      url: "/settings",
+      icon: Settings,
+    },
+  ],
+  favorites: [],
+  workspaces: [],
+};

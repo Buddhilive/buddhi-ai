@@ -17,6 +17,8 @@ import { useNavigation } from "@/hooks/use-navigation";
 import { useModelEngine } from "@/hooks/use-ai-model";
 import "@/lib/litert-log-filter";
 import { ModeToggle } from "@/components/custom/toggle-mode";
+import { HardwareStatusBadge } from "@/components/research/hardware-status-badge";
+import { StorageQuotaIndicator } from "@/components/research/storage-quota-indicator";
 
 export default function BuddhiAILayout({ children }: { children: React.ReactNode }) {
 
@@ -44,7 +46,9 @@ export default function BuddhiAILayout({ children }: { children: React.ReactNode
               </BreadcrumbList>
             </Breadcrumb>
           </div>
-          <div className="flex items-center gap-2 px-4">
+          <div className="flex items-center gap-3 px-4">
+            <HardwareStatusBadge />
+            <StorageQuotaIndicator />
             <ModeToggle />
           </div>
         </header>

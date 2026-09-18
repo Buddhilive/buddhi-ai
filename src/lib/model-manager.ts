@@ -2,6 +2,7 @@
 
 import { MODELS, ModelConfig } from "@/const/models";
 import { useModelStore, ModelState } from "@/stores/model-store";
+import { getSetting } from "@/lib/paper-storage";
 import type {
     WorkerRequest,
     WorkerMessage,
@@ -290,6 +291,27 @@ export const modelsApi = {
             throw new Error(`Model "${config.name}" is already downloading.`);
         }
 
+        let token = data.accessToken;
+        if (!token && typeof window !== "undefined") {
+            try {
+                const storedToken = await getSetting("buddhi.hf_token");
+                if (storedToken && storedToken.trim()) {
+                    token = storedToken.trim();
+                }
+            } catch (err) {
+                console.warn("[model-manager] Could not retrieve HF token from settings:", err);
+            }
+        }
+
+        if (config.requiresHFToken && !token) {
+            store.setModel(modelId, {
+                status: "failed",
+                progress: 0,
+                error: "Hugging Face Access Token required. Please configure it in Settings.",
+            });
+            throw new Error(`Model "${config.name}" requires a Hugging Face Access Token. Configure it in Settings.`);
+        }
+
         // Optimistically set store before worker confirms
         store.setModel(modelId, { status: "downloading", progress: 0, error: undefined });
 
@@ -299,7 +321,7 @@ export const modelsApi = {
                 modelId,
                 repoId: config.id,
                 filename: config.modelFile,
-                accessToken: data.accessToken,
+                accessToken: token,
             } satisfies WorkerRequest);
         } catch (err) {
             // Worker creation failed (e.g., unsupported browser)
