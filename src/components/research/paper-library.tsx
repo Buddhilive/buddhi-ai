@@ -11,6 +11,9 @@ import {
   Clock,
   Hash,
   AlertTriangle,
+  Loader2,
+  Database,
+  Layers,
 } from "lucide-react";
 import { usePaperLibrary } from "@/hooks/use-paper-library";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,13 +21,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { Paper } from "@/types/research";
 
 export function PaperLibrary() {
@@ -161,42 +166,59 @@ export function PaperLibrary() {
         </div>
       )}
 
-      {/* Delete confirmation dialog */}
-      <Dialog
+      {/* Delete confirmation alert dialog */}
+      <AlertDialog
         open={Boolean(paperToDelete)}
         onOpenChange={(open) => !open && setPaperToDelete(null)}
       >
-        <DialogContent>
-          <DialogHeader>
+        <AlertDialogContent>
+          <AlertDialogHeader>
             <div className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="h-5 w-5" />
-              <DialogTitle>Delete Paper & Data?</DialogTitle>
+              <AlertDialogTitle>Delete Paper & Vector Data?</AlertDialogTitle>
             </div>
-            <DialogDescription>
-              This will permanently delete &quot;{paperToDelete?.metadata.title}&quot;,
-              its text chunks, and all generated embedding vectors from your browser.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPaperToDelete(null)}
-              disabled={isDeleting}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
+            <AlertDialogDescription className="space-y-2 pt-1 text-left">
+              <span>
+                Are you sure you want to permanently delete{" "}
+                <strong className="text-foreground">
+                  &quot;{paperToDelete?.metadata.title || paperToDelete?.fileName}&quot;
+                </strong>
+                ?
+              </span>
+              <div className="rounded-md border border-border/60 bg-muted/30 p-2.5 space-y-1.5 text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <Layers className="h-3.5 w-3.5 text-primary" />
+                  <span>{paperToDelete?.totalChunks ?? 0} text chunks in IndexedDB</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Database className="h-3.5 w-3.5 text-primary" />
+                  <span>All corresponding embedding vectors in PGlite (pgvector)</span>
+                </div>
+              </div>
+              <span className="block text-[11px] text-muted-foreground/80">
+                This action cannot be undone. All indexed embeddings will be completely cleared.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
               onClick={confirmDelete}
               disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {isDeleting ? "Deleting..." : "Delete Permanently"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Permanently"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

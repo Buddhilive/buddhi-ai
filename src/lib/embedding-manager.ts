@@ -93,11 +93,15 @@ class EmbeddingManager {
           }
         };
 
+        const wasmPath = typeof window !== "undefined"
+          ? new URL("/litert-wasm/", window.location.origin).href
+          : "/litert-wasm/";
+
         worker.addEventListener("message", onReady);
         worker.postMessage({
           type: "load-model",
           modelUrl,
-          wasmPath: "/litert-wasm/",
+          wasmPath,
         } satisfies WorkerInMessage);
       } catch (err) {
         this.initPromise = null;

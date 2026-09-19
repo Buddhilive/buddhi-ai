@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/sidebar"
 import { useNavigation } from "@/hooks/use-navigation";
 import { useModelEngine } from "@/hooks/use-ai-model";
+import { usePipelineGuard } from "@/hooks/use-pipeline-guard";
 import "@/lib/litert-log-filter";
 import { ModeToggle } from "@/components/custom/toggle-mode";
 import { HardwareStatusBadge } from "@/components/research/hardware-status-badge";
@@ -24,6 +25,7 @@ export default function BuddhiAILayout({ children }: { children: React.ReactNode
 
   const { breadcrumbTitle } = useNavigation();
   useModelEngine();
+  usePipelineGuard();
 
   return (
     <SidebarProvider defaultOpen={false}>

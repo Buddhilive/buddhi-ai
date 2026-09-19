@@ -1,12 +1,12 @@
 import {
   initializeDB,
-  addItemToStore,
   getItemByKey,
   getAllFromStore,
   updateItemInStore,
   deleteItemFromStore,
   BuddhiIDBStore,
 } from "./indexeddb";
+import { deletePaperVectors } from "./pglite-vector-store";
 import type { Paper, Chunk, ChunkEmbedding } from "@/types/research";
 
 const DB_NAME = "buddhi_research_db";
@@ -82,12 +82,19 @@ export const deletePaperAndData = async (paperId: string): Promise<void> => {
   const db = await getResearchDB();
   await deleteItemFromStore(db, STORES.PAPERS, paperId);
 
-  // Cascading cleanup of chunks and embeddings
+  // Cascading cleanup of chunks and embeddings in IndexedDB
   const allChunks = await getAllFromStore<Chunk>(db, STORES.CHUNKS);
   const paperChunks = allChunks.filter((c) => c.paperId === paperId);
   for (const chunk of paperChunks) {
     await deleteItemFromStore(db, STORES.CHUNKS, chunk.id);
     await deleteItemFromStore(db, STORES.EMBEDDINGS, chunk.id);
+  }
+
+  // Cascading cleanup of vectors in PGlite
+  try {
+    await deletePaperVectors(paperId);
+  } catch (err) {
+    console.warn(`[paper-storage] Warning: could not delete PGlite vectors for paper ${paperId}:`, err);
   }
 };
 

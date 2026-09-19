@@ -2,6 +2,7 @@
 
 import React from "react";
 import { PaperUploadZone } from "@/components/research/paper-upload-zone";
+import { IngestionPipelineCard } from "@/components/research/ingestion-pipeline-card";
 import { PaperLibrary } from "@/components/research/paper-library";
 
 export default function LibraryPage() {
@@ -15,6 +16,8 @@ export default function LibraryPage() {
       </div>
 
       <PaperUploadZone />
+
+      <IngestionPipelineCard />
 
       <div className="space-y-4 pt-2">
         <h2 className="text-xl font-semibold tracking-tight">Your Papers</h2>

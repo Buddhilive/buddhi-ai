@@ -61,3 +61,46 @@ export interface AssistantMessage {
   citations?: RAGCitation[];
   timestamp: number;
 }
+
+export type PipelineStage =
+  | "idle"
+  | "reading"
+  | "parsing"
+  | "chunking"
+  | "embedding"
+  | "saving"
+  | "completed"
+  | "failed";
+
+export interface IngestionJob {
+  id: string; // paperId
+  fileName: string;
+  fileSize: number;
+  stage: PipelineStage;
+  progress: number; // 0 to 100 percentage
+  currentStep: number; // 1 to 4
+  totalSteps: number; // 4
+  stepLabel: string;
+  currentChunk: number;
+  totalChunks: number;
+  error?: string;
+  paper?: Paper;
+  startTime: number;
+  completedTime?: number;
+}
+
+export interface IngestionQueueState {
+  jobs: IngestionJob[];
+  isProcessing: boolean;
+  activeJobId: string | null;
+}
+
+export interface PGliteVectorRecord {
+  id: string;
+  paper_id: string;
+  chunk_index: number;
+  page_number: number;
+  text: string;
+  embedding: number[];
+}
+

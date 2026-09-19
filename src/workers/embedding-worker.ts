@@ -59,6 +59,15 @@ self.onmessage = async (event: MessageEvent<WorkerInMessage>) => {
 
       try {
         const wasmDir = msg.wasmPath || "/litert-wasm/";
+        // Ensure self.Module is configured so Emscripten knows where to fetch .wasm files in Web Worker
+        const cleanBaseUrl = wasmDir.endsWith("/") ? wasmDir : `${wasmDir}/`;
+        (self as unknown as { Module: Record<string, unknown> }).Module = {
+          ...((self as unknown as { Module?: Record<string, unknown> }).Module || {}),
+          locateFile: (path: string, _scriptDir?: string) => {
+            return `${cleanBaseUrl}${path}`;
+          },
+        };
+
         await loadLiteRt(wasmDir);
         compiledModel = await loadAndCompile(msg.modelUrl);
         isInitializing = false;
@@ -85,15 +94,25 @@ self.onmessage = async (event: MessageEvent<WorkerInMessage>) => {
       }
 
       try {
-        const tokenArray = tokenizeText(msg.text, 256);
-        const inputTensor = new Tensor(tokenArray, [1, 256]);
+        // Query the model's actual input requirements dynamically
+        const inputDetails = compiledModel.getInputDetails();
+        let expectedSeqLen = 2048; // Default to 2048 for embedding models like Gemma
+        let inputShape = [1, 2048];
+
+        if (inputDetails && inputDetails.length > 0 && inputDetails[0].shape) {
+          inputShape = [...inputDetails[0].shape];
+          // Usually shape is [1, seqLen] or [seqLen]
+          expectedSeqLen = inputShape[inputShape.length - 1] || 2048;
+        }
+
+        const tokenArray = tokenizeText(msg.text, expectedSeqLen);
+        const inputTensor = new Tensor(tokenArray, inputShape);
 
         let outputTensors: Tensor[] | Record<string, Tensor>;
         try {
           outputTensors = await compiledModel.run([inputTensor]);
         } catch {
           // If positional input fails, try named input commonly used by LiteRT TFLite models
-          const inputDetails = compiledModel.getInputDetails();
           const inputName = inputDetails[0]?.name || "input_ids";
           outputTensors = await compiledModel.run({ [inputName]: inputTensor });
         }

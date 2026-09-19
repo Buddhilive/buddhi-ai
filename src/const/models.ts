@@ -42,7 +42,7 @@ export const MODELS: ModelConfig[] = [
     type: "embedding",
     device: "webgpu",
     supportsWorker: true,
-    modelFile: "embeddinggemma-300M_seq256_mixed-precision.google.tensor_g4.tflite",
+    modelFile: "embeddinggemma-300M_seq2048_mixed-precision.tflite",
     requiresHFToken: true,
   },
 ];

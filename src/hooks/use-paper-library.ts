@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { getAllPapers, deletePaperAndData } from "@/lib/paper-storage";
+import { useIngestionStore } from "@/stores/ingestion-store";
 import type { Paper } from "@/types/research";
 import { toast } from "sonner";
 
@@ -9,6 +10,7 @@ export function usePaperLibrary() {
   const [papers, setPapers] = useState<Paper[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const jobs = useIngestionStore((state) => state.jobs);
 
   const refreshPapers = useCallback(async () => {
     try {
@@ -26,6 +28,14 @@ export function usePaperLibrary() {
   useEffect(() => {
     refreshPapers();
   }, [refreshPapers]);
+
+  // Automatically refresh papers whenever an ingestion job finishes
+  useEffect(() => {
+    const hasCompleted = jobs.some((j) => j.stage === "completed");
+    if (hasCompleted) {
+      refreshPapers();
+    }
+  }, [jobs, refreshPapers]);
 
   const deletePaper = async (paperId: string): Promise<boolean> => {
     try {

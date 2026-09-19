@@ -1,100 +1,35 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { UploadCloud, FileText, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
-import { nanoid } from "nanoid";
-import { parsePdfDocument } from "@/lib/pdf-parser";
-import { savePaper, saveChunks, getPaperByHash } from "@/lib/paper-storage";
-import { useEmbedding } from "@/hooks/use-embedding";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { toast } from "sonner";
+import { UploadCloud, Loader2, Files, Sparkles } from "lucide-react";
+import { useIngestionPipeline } from "@/hooks/use-ingestion-pipeline";
+import { useIngestionStore } from "@/stores/ingestion-store";
 import type { Paper } from "@/types/research";
 
 interface PaperUploadZoneProps {
   onPaperUploaded?: (paper: Paper) => void;
 }
 
-export function PaperUploadZone({ onPaperUploaded }: PaperUploadZoneProps) {
+export function PaperUploadZone({ onPaperUploaded: _onPaperUploaded }: PaperUploadZoneProps = {}) {
   const [isDragging, setIsDragging] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processingStage, setProcessingStage] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { enqueueFiles } = useIngestionPipeline();
+  const isProcessing = useIngestionStore((state) => state.isProcessing);
 
-  const { embedPaperChunks, isEmbedding, progress } = useEmbedding();
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
 
-  const computeSha256 = async (buffer: ArrayBuffer): Promise<string> => {
-    const digest = await crypto.subtle.digest("SHA-256", buffer);
-    const hashArray = Array.from(new Uint8Array(digest));
-    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      enqueueFiles(e.dataTransfer.files);
+    }
   };
 
-  const handleFile = async (file: File) => {
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
-      toast.error("Please upload a PDF document.");
-      return;
-    }
-
-    try {
-      setIsProcessing(true);
-      setProcessingStage("Reading document bytes...");
-      const arrayBuffer = await file.arrayBuffer();
-
-      setProcessingStage("Verifying document hash...");
-      const hash = await computeSha256(arrayBuffer);
-
-      // Check duplicate
-      const existing = await getPaperByHash(hash);
-      if (existing) {
-        toast.info(`"${existing.metadata.title || existing.fileName}" is already in your library.`);
-        setIsProcessing(false);
-        if (onPaperUploaded) onPaperUploaded(existing);
-        return;
-      }
-
-      setProcessingStage("Extracting text and chunking pages...");
-      const paperId = nanoid();
-      const parsed = await parsePdfDocument(arrayBuffer, paperId, file.name.replace(/\.pdf$/i, ""));
-
-      if (parsed.pages.every((p) => p.text.trim().length === 0)) {
-        toast.error("No extractable text found in this PDF. It may be scanned or image-based.");
-        setIsProcessing(false);
-        return;
-      }
-
-      const newPaper: Paper = {
-        id: paperId,
-        hash,
-        fileName: file.name,
-        fileSize: file.size,
-        uploadedAt: Date.now(),
-        pageCount: parsed.pages.length,
-        metadata: {
-          title: parsed.title,
-          authors: ["Unknown Author"],
-        },
-        embeddingStatus: "idle",
-        totalChunks: parsed.chunks.length,
-        embeddedChunks: 0,
-        rawText: parsed.fullText,
-      };
-
-      await savePaper(newPaper);
-      await saveChunks(parsed.chunks);
-
-      toast.success(`Ingested "${newPaper.metadata.title}" (${parsed.chunks.length} chunks)`);
-      setIsProcessing(false);
-
-      if (onPaperUploaded) {
-        onPaperUploaded(newPaper);
-      }
-
-      // Automatically kick off embedding in background
-      embedPaperChunks(newPaper, parsed.chunks);
-    } catch (err) {
-      console.error("[PaperUploadZone] Upload failed:", err);
-      toast.error("Failed to parse and store PDF document.");
-      setIsProcessing(false);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      enqueueFiles(e.target.files);
+      // Reset input value so same files can be re-uploaded if needed
+      e.target.value = "";
     }
   };
 
@@ -106,77 +41,54 @@ export function PaperUploadZone({ onPaperUploaded }: PaperUploadZoneProps) {
           setIsDragging(true);
         }}
         onDragLeave={() => setIsDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setIsDragging(false);
-          const file = e.dataTransfer.files?.[0];
-          if (file) handleFile(file);
-        }}
+        onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
-        className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+        className={`relative overflow-hidden border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
           isDragging
-            ? "border-primary bg-primary/5 scale-[1.01]"
+            ? "border-primary bg-primary/10 scale-[1.01] shadow-lg ring-4 ring-primary/10"
             : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"
-        }`}
+        } ${isProcessing ? "border-primary/40 bg-primary/5" : ""}`}
       >
         <input
           ref={fileInputRef}
           type="file"
           accept=".pdf"
+          multiple
           className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleFile(file);
-          }}
+          onChange={handleFileChange}
         />
 
         <div className="flex flex-col items-center justify-center gap-3">
-          <div className="p-3 rounded-full bg-primary/10 text-primary">
+          <div className="p-3.5 rounded-full bg-primary/10 text-primary relative">
             {isProcessing ? (
               <Loader2 className="h-8 w-8 animate-spin" />
             ) : (
               <UploadCloud className="h-8 w-8" />
             )}
+            <Sparkles className="h-3.5 w-3.5 text-primary absolute -top-0.5 -right-0.5 animate-pulse" />
           </div>
 
           <div>
-            <h3 className="font-semibold text-base">
-              {isProcessing ? "Processing Paper..." : "Upload Academic Paper"}
+            <h3 className="font-semibold text-base tracking-tight">
+              {isProcessing ? "Processing Academic Papers..." : "Upload Academic Papers"}
             </h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              {isProcessing
-                ? processingStage
-                : "Drag & drop PDF files here, or click to browse"}
+            <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+              Drag & drop up to 5 PDF papers here, or click to browse. Text extraction,
+              hierarchical chunking, and vector embedding will run client-side.
             </p>
           </div>
 
-          {!isProcessing && (
-            <div className="text-xs text-muted-foreground/75 flex items-center gap-2">
-              <span>PDF documents up to 50MB</span>
-              <span>•</span>
-              <span>Private & Client-Side Only</span>
-            </div>
-          )}
+          <div className="text-xs text-muted-foreground/80 flex items-center justify-center gap-3 flex-wrap pt-1">
+            <span className="flex items-center gap-1">
+              <Files className="h-3.5 w-3.5" /> Max 5 files per batch
+            </span>
+            <span>•</span>
+            <span>Up to 25MB per document</span>
+            <span>•</span>
+            <span className="text-primary font-medium">Local-first WASM & PGlite</span>
+          </div>
         </div>
       </div>
-
-      {isEmbedding && (
-        <div className="rounded-lg border p-4 bg-muted/30 space-y-2">
-          <div className="flex items-center justify-between text-xs font-medium">
-            <span className="flex items-center gap-1.5 text-primary">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Generating LiteRT Embeddings...
-            </span>
-            <span className="text-muted-foreground">
-              {progress.current} / {progress.total} chunks
-            </span>
-          </div>
-          <Progress
-            value={(progress.current / (progress.total || 1)) * 100}
-            className="h-2"
-          />
-        </div>
-      )}
     </div>
   );
 }

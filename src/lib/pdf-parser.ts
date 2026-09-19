@@ -1,3 +1,4 @@
+import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import type { Chunk } from "@/types/research";
 
 export interface ParsedPage {
@@ -24,27 +25,33 @@ async function getPdfJs() {
 }
 
 /**
- * Splits text into ~512 token chunks with ~64 token overlap.
- * Uses whitespace/word-based approximation (1 word ~= 1.3 tokens).
+ * Splits extracted pages into semantic chunks using LangChain's RecursiveCharacterTextSplitter.
+ * Preserves page numbers and calculates approximate token counts.
  */
-export function chunkText(
+export async function chunkText(
   pages: ParsedPage[],
   paperId: string,
-  targetTokenLength = 380, // ~500 tokens
-  tokenOverlap = 50 // ~65 tokens
-): Chunk[] {
+  chunkSize = 900,
+  chunkOverlap = 150
+): Promise<Chunk[]> {
+  const splitter = new RecursiveCharacterTextSplitter({
+    chunkSize,
+    chunkOverlap,
+    separators: ["\n\n", "\n", ". ", " ", ""],
+  });
+
   const chunks: Chunk[] = [];
   let chunkIndex = 0;
 
   for (const page of pages) {
-    const words = page.text.trim().split(/\s+/).filter(Boolean);
-    if (words.length === 0) continue;
+    const pageText = page.text.trim();
+    if (!pageText) continue;
 
-    let start = 0;
-    while (start < words.length) {
-      const end = Math.min(start + targetTokenLength, words.length);
-      const chunkWords = words.slice(start, end);
-      const text = chunkWords.join(" ");
+    const splitSegments = await splitter.splitText(pageText);
+
+    for (const segment of splitSegments) {
+      const text = segment.trim();
+      if (!text) continue;
 
       chunks.push({
         id: `${paperId}::${chunkIndex}`,
@@ -52,12 +59,10 @@ export function chunkText(
         chunkIndex,
         pageNumber: page.pageNumber,
         text,
-        tokenCount: Math.round(chunkWords.length * 1.3),
+        tokenCount: Math.round(text.split(/\s+/).length * 1.3),
       });
 
       chunkIndex++;
-      if (end >= words.length) break;
-      start = end - tokenOverlap;
     }
   }
 
@@ -65,7 +70,7 @@ export function chunkText(
 }
 
 /**
- * Parses an ArrayBuffer containing a PDF, extracting pages and text.
+ * Parses an ArrayBuffer containing a PDF, extracting pages, metadata, and semantic chunks.
  */
 export async function parsePdfDocument(
   data: ArrayBuffer,
@@ -105,7 +110,7 @@ export async function parsePdfDocument(
     fullText += pageText + "\n\n";
   }
 
-  const chunks = chunkText(pages, paperId);
+  const chunks = await chunkText(pages, paperId);
 
   return {
     title: extractedTitle,

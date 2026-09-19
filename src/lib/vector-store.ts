@@ -3,6 +3,7 @@ import {
   getAllEmbeddings,
   getChunksByPaperId,
 } from "./paper-storage";
+import { searchVectorChunks } from "./pglite-vector-store";
 import type { Chunk, SearchResultChunk } from "@/types/research";
 
 /**
@@ -28,11 +29,8 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 /**
- * Searches chunks matching a query vector using cosine similarity.
- * @param queryVector Float32Array or number array from embedding model
- * @param paperId Optional filter to restrict search to a specific paper
- * @param topK Number of top results to return (default 5)
- * @param similarityThreshold Minimum similarity cutoff (default 0.3)
+ * Searches chunks matching a query vector using PGlite pgvector cosine distance,
+ * falling back to in-memory IndexedDB search if needed.
  */
 export async function searchChunks(
   queryVector: number[],
@@ -40,6 +38,24 @@ export async function searchChunks(
   topK = 5,
   similarityThreshold = 0.3
 ): Promise<SearchResultChunk[]> {
+  try {
+    const pgResults = await searchVectorChunks(queryVector, paperId, topK);
+    if (pgResults.length > 0) {
+      return pgResults
+        .filter((r) => r.similarity >= similarityThreshold)
+        .map((r) => ({
+          id: r.id,
+          paperId: r.paperId,
+          chunkIndex: r.chunkIndex,
+          pageNumber: r.pageNumber,
+          text: r.text,
+          similarity: r.similarity,
+        }));
+    }
+  } catch (err) {
+    console.warn("[vector-store] PGlite search failed, falling back to IDB scan:", err);
+  }
+
   const embeddings = paperId
     ? await getEmbeddingsByPaperId(paperId)
     : await getAllEmbeddings();
