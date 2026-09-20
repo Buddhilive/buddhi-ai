@@ -5,7 +5,20 @@ import {
   BookOpen,
   Settings,
   Sparkles,
+  type LucideIcon,
 } from "lucide-react";
+
+export interface SidebarSubItem {
+  title: string;
+  url: string;
+}
+
+export interface SidebarProjectItem {
+  name: string;
+  url: string;
+  icon: LucideIcon;
+  items?: SidebarSubItem[];
+}
 
 export const SIDEBAR_DATA = {
   teams: [
@@ -28,18 +41,30 @@ export const SIDEBAR_DATA = {
       url: "/chat",
       icon: Sparkles,
     },
+  ],
+  projects: [
     {
-      title: "Library",
+      name: "My Library",
       url: "/library",
       icon: BookOpen,
+      items: [
+        {
+          title: "Documents",
+          url: "/library",
+        },
+        {
+          title: "Add Document",
+          url: "/add-doc",
+        },
+      ],
     },
     {
-      title: "Models",
+      name: "Models",
       url: "/models",
       icon: BrainCircuit,
     },
     {
-      title: "Settings",
+      name: "Settings",
       url: "/settings",
       icon: Settings,
     },

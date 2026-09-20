@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import {
   FileText,
   CheckCircle2,
@@ -11,6 +12,8 @@ import {
   Layers,
   Sparkles,
   FileSearch,
+  BookOpen,
+  ExternalLink,
 } from "lucide-react";
 import { useIngestionStore } from "@/stores/ingestion-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -222,6 +225,35 @@ export function IngestionPipelineCard() {
               <div className="p-2 rounded bg-destructive/10 border border-destructive/20 text-destructive text-[11px] flex items-start gap-1.5">
                 <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                 <span className="break-all">{job.error}</span>
+              </div>
+            )}
+
+            {/* Completion actions */}
+            {job.stage === "completed" && (
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/40">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  className="h-7 text-[11px] gap-1.5"
+                >
+                  <Link href="/library">
+                    <BookOpen className="h-3.5 w-3.5" />
+                    View in Library
+                  </Link>
+                </Button>
+                {job.paper?.id && (
+                  <Button
+                    size="sm"
+                    asChild
+                    className="h-7 text-[11px] gap-1.5"
+                  >
+                    <Link href={`/reader/${job.paper.id}`}>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Open in Reader
+                    </Link>
+                  </Button>
+                )}
               </div>
             )}
           </div>

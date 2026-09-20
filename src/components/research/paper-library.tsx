@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   FileText,
   Search,
@@ -14,6 +15,7 @@ import {
   Loader2,
   Database,
   Layers,
+  UploadCloud,
 } from "lucide-react";
 import { usePaperLibrary } from "@/hooks/use-paper-library";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -87,8 +89,16 @@ export function PaperLibrary() {
             <p className="text-xs text-muted-foreground">
               {searchQuery
                 ? "Try a different search term or clear the filter."
-                : "Upload a PDF above to begin building your research library."}
+                : "Get started by uploading your first research paper."}
             </p>
+            {!searchQuery && (
+              <Button size="sm" asChild className="mt-3 gap-1.5">
+                <Link href="/add-doc">
+                  <UploadCloud className="h-4 w-4" />
+                  Add Document
+                </Link>
+              </Button>
+            )}
           </div>
         </Card>
       ) : (
