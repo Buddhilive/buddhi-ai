@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -9,19 +9,35 @@ import {
   Trash2,
   BookOpen,
   ArrowRight,
-  Clock,
-  Hash,
   AlertTriangle,
   Loader2,
   Database,
   Layers,
   UploadCloud,
+  X,
 } from "lucide-react";
 import { usePaperLibrary } from "@/hooks/use-paper-library";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from "@/components/ui/table";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationPrevious,
+  PaginationNext,
+  PaginationEllipsis,
+} from "@/components/ui/pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,13 +50,41 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { Paper } from "@/types/research";
 
+const PAGE_SIZE = 10;
+
 export function PaperLibrary() {
   const router = useRouter();
-  const { papers, allPapersCount, isLoading, searchQuery, setSearchQuery, deletePaper } =
-    usePaperLibrary();
+  const {
+    papers,
+    allPapersCount,
+    isLoading,
+    searchQuery,
+    setSearchQuery,
+    deletePaper,
+  } = usePaperLibrary();
 
+  const [currentPage, setCurrentPage] = useState(1);
   const [paperToDelete, setPaperToDelete] = useState<Paper | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Reset to first page when search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(papers.length / PAGE_SIZE));
+
+  // Ensure current page stays within valid bounds if papers change
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedPapers = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return papers.slice(start, start + PAGE_SIZE);
+  }, [papers, currentPage]);
 
   const confirmDelete = async () => {
     if (!paperToDelete) return;
@@ -50,68 +94,221 @@ export function PaperLibrary() {
     setPaperToDelete(null);
   };
 
+  const renderPageNumbers = () => {
+    if (totalPages <= 5) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+        <PaginationItem key={pageNum}>
+          <PaginationLink
+            isActive={currentPage === pageNum}
+            onClick={() => setCurrentPage(pageNum)}
+            className="cursor-pointer"
+          >
+            {pageNum}
+          </PaginationLink>
+        </PaginationItem>
+      ));
+    }
+
+    const items: React.ReactNode[] = [];
+    // Page 1
+    items.push(
+      <PaginationItem key={1}>
+        <PaginationLink
+          isActive={currentPage === 1}
+          onClick={() => setCurrentPage(1)}
+          className="cursor-pointer"
+        >
+          1
+        </PaginationLink>
+      </PaginationItem>
+    );
+
+    if (currentPage > 3) {
+      items.push(
+        <PaginationItem key="ellipsis-start">
+          <PaginationEllipsis />
+        </PaginationItem>
+      );
+    }
+
+    const start = Math.max(2, currentPage - 1);
+    const end = Math.min(totalPages - 1, currentPage + 1);
+
+    for (let i = start; i <= end; i++) {
+      items.push(
+        <PaginationItem key={i}>
+          <PaginationLink
+            isActive={currentPage === i}
+            onClick={() => setCurrentPage(i)}
+            className="cursor-pointer"
+          >
+            {i}
+          </PaginationLink>
+        </PaginationItem>
+      );
+    }
+
+    if (currentPage < totalPages - 2) {
+      items.push(
+        <PaginationItem key="ellipsis-end">
+          <PaginationEllipsis />
+        </PaginationItem>
+      );
+    }
+
+    // Last page
+    items.push(
+      <PaginationItem key={totalPages}>
+        <PaginationLink
+          isActive={currentPage === totalPages}
+          onClick={() => setCurrentPage(totalPages)}
+          className="cursor-pointer"
+        >
+          {totalPages}
+        </PaginationLink>
+      </PaginationItem>
+    );
+
+    return items;
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+    <div className="space-y-4">
+      {/* Search Header Bar */}
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
         <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
-            placeholder="Search by title or author..."
+            placeholder="Search papers by title or author..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 h-9 text-xs"
+            className="pl-9 pr-8 h-9 text-xs"
           />
+          {searchQuery && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-1 top-1 h-7 w-7 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+              <span className="sr-only">Clear search</span>
+            </Button>
+          )}
         </div>
-        <span className="text-xs text-muted-foreground self-end sm:self-center">
-          Showing {papers.length} of {allPapersCount} documents
+        <span className="text-xs text-muted-foreground self-start sm:self-center">
+          Showing{" "}
+          {papers.length === 0
+            ? 0
+            : `${(currentPage - 1) * PAGE_SIZE + 1}–${Math.min(
+                currentPage * PAGE_SIZE,
+                papers.length
+              )}`}{" "}
+          of {papers.length} documents
+          {allPapersCount !== papers.length && ` (filtered from ${allPapersCount})`}
         </span>
       </div>
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
-            <Card key={i} className="animate-pulse opacity-60">
-              <CardHeader>
-                <div className="h-5 w-3/4 rounded bg-muted" />
-                <div className="h-4 w-1/2 rounded bg-muted" />
-              </CardHeader>
-              <CardContent>
-                <div className="h-4 w-full rounded bg-muted" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : papers.length === 0 ? (
-        <Card className="border-dashed p-10 text-center bg-transparent">
-          <div className="flex flex-col items-center justify-center gap-2">
-            <BookOpen className="h-8 w-8 text-muted-foreground/50" />
-            <p className="text-sm font-medium">No matching papers found</p>
-            <p className="text-xs text-muted-foreground">
-              {searchQuery
-                ? "Try a different search term or clear the filter."
-                : "Get started by uploading your first research paper."}
-            </p>
-            {!searchQuery && (
-              <Button size="sm" asChild className="mt-3 gap-1.5">
-                <Link href="/add-doc">
-                  <UploadCloud className="h-4 w-4" />
-                  Add Document
-                </Link>
-              </Button>
-            )}
-          </div>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {papers.map((paper) => (
-            <Card
-              key={paper.id}
-              className="hover:border-primary/50 transition-all flex flex-col justify-between group relative"
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <FileText className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                  <div className="flex items-center gap-1.5">
+      {/* Table Container */}
+      <div className="rounded-lg border border-border/70 bg-card/60 backdrop-blur-sm overflow-hidden shadow-xs">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/40 hover:bg-muted/40">
+              <TableHead className="w-[45%]">Document</TableHead>
+              <TableHead className="w-[15%]">Status</TableHead>
+              <TableHead className="w-[10%] text-center">Chunks</TableHead>
+              <TableHead className="w-[15%]">Uploaded</TableHead>
+              <TableHead className="w-[15%] text-right pr-4">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              Array.from({ length: 5 }).map((_, idx) => (
+                <TableRow key={idx} className="hover:bg-transparent">
+                  <TableCell>
+                    <div className="flex items-center gap-2.5">
+                      <Skeleton className="h-4 w-4 rounded-xs shrink-0" />
+                      <div className="space-y-1.5 flex-1">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-3 w-1/3" />
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-16 rounded-full" />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Skeleton className="h-4 w-8 mx-auto" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-20" />
+                  </TableCell>
+                  <TableCell className="text-right pr-4">
+                    <Skeleton className="h-7 w-16 ml-auto" />
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : papers.length === 0 ? (
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={5} className="h-48 text-center">
+                  <div className="flex flex-col items-center justify-center gap-2 py-4">
+                    {searchQuery ? (
+                      <>
+                        <Search className="h-7 w-7 text-muted-foreground/50" />
+                        <p className="text-sm font-medium">No matching papers found</p>
+                        <p className="text-xs text-muted-foreground max-w-sm">
+                          No papers matched your search for &quot;{searchQuery}&quot;. Try adjusting your keywords or clearing the filter.
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSearchQuery("")}
+                          className="mt-2 text-xs"
+                        >
+                          Clear Search
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <BookOpen className="h-8 w-8 text-muted-foreground/50" />
+                        <p className="text-sm font-medium">No papers in library yet</p>
+                        <p className="text-xs text-muted-foreground">
+                          Upload PDF documents to parse text, build embeddings, and start researching.
+                        </p>
+                        <Button size="sm" asChild className="mt-3 gap-1.5">
+                          <Link href="/add-doc">
+                            <UploadCloud className="h-4 w-4" />
+                            Add Document
+                          </Link>
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : (
+              paginatedPapers.map((paper) => (
+                <TableRow
+                  key={paper.id}
+                  className="cursor-pointer transition-colors hover:bg-muted/40 group"
+                  onClick={() => router.push(`/reader/${paper.id}`)}
+                >
+                  <TableCell className="font-medium">
+                    <div className="flex items-start gap-2.5">
+                      <FileText className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-sm line-clamp-1 group-hover:text-primary transition-colors">
+                          {paper.metadata.title || paper.fileName}
+                        </div>
+                        {paper.metadata.authors && paper.metadata.authors.length > 0 && (
+                          <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                            {paper.metadata.authors.join(", ")}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
                     <Badge
                       variant={
                         paper.embeddingStatus === "completed"
@@ -120,63 +317,81 @@ export function PaperLibrary() {
                           ? "secondary"
                           : "outline"
                       }
-                      className="text-[10px] capitalize"
+                      className="text-[10px] capitalize font-medium"
                     >
                       {paper.embeddingStatus}
                     </Badge>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPaperToDelete(paper);
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-
-                <CardTitle
-                  className="text-base line-clamp-2 mt-2 group-hover:text-primary transition-colors cursor-pointer"
-                  onClick={() => router.push(`/reader/${paper.id}`)}
-                >
-                  {paper.metadata.title || paper.fileName}
-                </CardTitle>
-                <CardDescription className="text-xs line-clamp-1">
-                  {paper.metadata.authors.join(", ")}
-                </CardDescription>
-              </CardHeader>
-
-              <CardContent className="pt-0 text-xs text-muted-foreground space-y-3">
-                <div className="flex items-center justify-between border-t pt-3">
-                  <span className="flex items-center gap-1">
-                    <Hash className="h-3 w-3" />
-                    {paper.totalChunks} chunks
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
+                  </TableCell>
+                  <TableCell className="text-center font-mono text-xs text-muted-foreground">
+                    {paper.totalChunks}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                     {new Date(paper.uploadedAt).toLocaleDateString()}
-                  </span>
-                </div>
+                  </TableCell>
+                  <TableCell className="text-right pr-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground hover:bg-muted"
+                        onClick={() => router.push(`/reader/${paper.id}`)}
+                      >
+                        <span className="hidden sm:inline">Open</span>
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => setPaperToDelete(paper)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        <span className="sr-only">Delete</span>
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-between text-xs group-hover:bg-primary/10 group-hover:text-primary"
-                  onClick={() => router.push(`/reader/${paper.id}`)}
-                >
-                  Open in Reader
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+          <div className="text-xs text-muted-foreground">
+            Page {currentPage} of {totalPages}
+          </div>
+          <Pagination className="mx-0 w-auto">
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className={
+                    currentPage <= 1
+                      ? "pointer-events-none opacity-50"
+                      : "cursor-pointer"
+                  }
+                />
+              </PaginationItem>
+              {renderPageNumbers()}
+              <PaginationItem>
+                <PaginationNext
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className={
+                    currentPage >= totalPages
+                      ? "pointer-events-none opacity-50"
+                      : "cursor-pointer"
+                  }
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
         </div>
       )}
 
-      {/* Delete confirmation alert dialog */}
+      {/* Delete Confirmation Alert Dialog */}
       <AlertDialog
         open={Boolean(paperToDelete)}
         onOpenChange={(open) => !open && setPaperToDelete(null)}
