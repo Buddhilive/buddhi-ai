@@ -104,3 +104,32 @@ export interface PGliteVectorRecord {
   embedding: number[];
 }
 
+/** Hydrated retrieval result with paper metadata — used internally in rag-retrieval.ts */
+export interface RagContext {
+  paperId: string;
+  paperTitle: string;
+  authors: string[];
+  year?: string;
+  pageNumber: number;
+  sectionHeading?: string;
+  textSnippet: string; // full chunk text, used in prompt block
+  similarity: number;
+}
+
+/** Persisted citation reference, attached to UIMessage.metadata.ragCitations[] */
+export interface RagCitationAnnotation {
+  index: number; // matches [cite:N] marker index
+  paperId: string;
+  paperTitle: string;
+  authors?: string[];
+  year?: string;
+  pageNumber: number;
+  sectionHeading?: string;
+  textSnippet: string; // ≤200 chars for hover card display
+}
+
+/** UIMessage metadata shape for Buddhi AI */
+export interface BuddhiMessageMetadata {
+  ragCitations?: RagCitationAnnotation[];
+}
+

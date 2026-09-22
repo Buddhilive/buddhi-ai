@@ -43,10 +43,14 @@ import {
     createUIMessageStream,
     type ChatTransport,
     type FileUIPart,
+    type TextUIPart,
     type UIMessage,
     type UIMessageChunk,
 } from "ai";
 import { nanoid } from "nanoid";
+import { retrieveRagContext } from "@/lib/rag-retrieval";
+import { RAG_MAX_CONTEXT_CHARS, RAG_SNIPPET_MAX_CHARS } from "@/const/rag";
+import type { BuddhiMessageMetadata, RagCitationAnnotation, RagContext } from "@/types/research";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -69,6 +73,36 @@ function isPlainTextCodeFence(line: string): boolean {
         lang === "markdown" ||
         lang === "md"
     );
+}
+
+/**
+ * Formats retrieved RAG contexts into a structured prompt block for the LLM.
+ * Strictly enforces total character budget.
+ */
+function ragContextToPromptBlock(contexts: RagContext[]): string {
+    if (contexts.length === 0) {
+        return "";
+    }
+
+    let totalChars = 0;
+    const lines: string[] = [
+        "[RESEARCH CONTEXT from your uploaded library — use [cite:N] to reference these sources inline:]",
+    ];
+
+    for (let i = 0; i < contexts.length; i++) {
+        const ctx = contexts[i];
+        const authors = ctx.authors.length > 0 ? ctx.authors.join(", ") : "Unknown Authors";
+        const attribution = `[${i}] "${ctx.paperTitle}" — ${authors}${ctx.year ? ` (${ctx.year})` : ""}, Page ${ctx.pageNumber}${ctx.sectionHeading ? `, §${ctx.sectionHeading}` : ""}`;
+        const snippet = ctx.textSnippet;
+        const entry = `${attribution}\n${snippet}`;
+
+        if (totalChars + entry.length > RAG_MAX_CONTEXT_CHARS) break;
+        totalChars += entry.length;
+        lines.push(entry);
+    }
+
+    lines.push("[END RESEARCH CONTEXT]");
+    return lines.join("\n\n");
 }
 
 /**
@@ -353,13 +387,50 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                     });
                 }
 
-                // Active prompt is the last turn
+                // Active prompt is the last turn, augmented with RAG research context
                 const lastTurn = converted[converted.length - 1];
-                const userPrompt = lastTurn
+                const baseUserPrompt = lastTurn
                     ? typeof lastTurn.content === "string"
                         ? lastTurn.content
                         : JSON.stringify(lastTurn.content)
                     : "";
+
+                // Perform library-wide RAG retrieval on the latest user query
+                const lastUserMsg = messages.findLast((m) => m.role === "user");
+                const partsText = lastUserMsg?.parts
+                    ?.filter((p) => p.type === "text")
+                    .map((p) => (p as TextUIPart).text)
+                    .join(" ")
+                    .trim() ?? "";
+                const ragQuery = partsText || baseUserPrompt.trim();
+
+                let ragContexts: RagContext[] = [];
+                let ragAnnotations: RagCitationAnnotation[] = [];
+
+                if (ragQuery) {
+                    try {
+                        ragContexts = await retrieveRagContext(ragQuery);
+                    } catch (err) {
+                        console.warn("[LiteRTChatTransport] RAG retrieval failed:", err);
+                        ragContexts = [];
+                    }
+
+                    ragAnnotations = ragContexts.map((ctx, i) => ({
+                        index: i,
+                        paperId: ctx.paperId,
+                        paperTitle: ctx.paperTitle,
+                        authors: ctx.authors,
+                        year: ctx.year,
+                        pageNumber: ctx.pageNumber,
+                        sectionHeading: ctx.sectionHeading,
+                        textSnippet: ctx.textSnippet.slice(0, RAG_SNIPPET_MAX_CHARS),
+                    }));
+                }
+
+                const ragBlock = ragQuery ? ragContextToPromptBlock(ragContexts) : "";
+                const userPrompt = ragBlock
+                    ? `${ragBlock}\n\n---\n\nUser question: ${baseUserPrompt}`
+                    : baseUserPrompt;
 
                 let conversation;
                 try {
@@ -546,7 +617,12 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                     }
 
                     if (!settled) {
-                        writer.write({ type: "finish", finishReason: "stop" });
+                        const metadata: BuddhiMessageMetadata = { ragCitations: ragAnnotations };
+                        writer.write({
+                            type: "finish",
+                            finishReason: "stop",
+                            messageMetadata: metadata as unknown as Record<string, unknown>,
+                        });
                         settled = true;
                     }
                 } catch (err) {
@@ -562,7 +638,12 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                 }
 
                 if (!settled) {
-                    writer.write({ type: "finish", finishReason: "stop" });
+                    const metadata: BuddhiMessageMetadata = { ragCitations: ragAnnotations };
+                    writer.write({
+                        type: "finish",
+                        finishReason: "stop",
+                        messageMetadata: metadata as unknown as Record<string, unknown>,
+                    });
                 }
             },
 

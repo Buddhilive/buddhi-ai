@@ -39,18 +39,27 @@ export async function searchChunks(
   similarityThreshold = 0.3
 ): Promise<SearchResultChunk[]> {
   try {
-    const pgResults = await searchVectorChunks(queryVector, paperId, topK);
-    if (pgResults.length > 0) {
-      return pgResults
-        .filter((r) => r.similarity >= similarityThreshold)
-        .map((r) => ({
-          id: r.id,
-          paperId: r.paperId,
-          chunkIndex: r.chunkIndex,
-          pageNumber: r.pageNumber,
-          text: r.text,
-          similarity: r.similarity,
-        }));
+    const candidateLimit = Math.max(topK * 3, 15);
+    const pgResults = await searchVectorChunks(queryVector, paperId, candidateLimit);
+    console.info(
+      `[vector-store] PGlite returned ${pgResults.length} chunks. Best similarity: ${
+        pgResults[0]?.similarity.toFixed(3) ?? "N/A"
+      } (threshold: ${similarityThreshold})`
+    );
+
+    const filtered = pgResults
+      .filter((r) => r.similarity >= similarityThreshold)
+      .slice(0, topK);
+
+    if (filtered.length > 0) {
+      return filtered.map((r) => ({
+        id: r.id,
+        paperId: r.paperId,
+        chunkIndex: r.chunkIndex,
+        pageNumber: r.pageNumber,
+        text: r.text,
+        similarity: r.similarity,
+      }));
     }
   } catch (err) {
     console.warn("[vector-store] PGlite search failed, falling back to IDB scan:", err);
@@ -60,7 +69,10 @@ export async function searchChunks(
     ? await getEmbeddingsByPaperId(paperId)
     : await getAllEmbeddings();
 
-  if (embeddings.length === 0) return [];
+  if (embeddings.length === 0) {
+    console.warn("[vector-store] Zero embeddings found in IndexedDB store.");
+    return [];
+  }
 
   // Score each embedding
   const scored = embeddings.map((emb) => ({
@@ -72,6 +84,12 @@ export async function searchChunks(
 
   // Sort descending by similarity
   scored.sort((a, b) => b.similarity - a.similarity);
+
+  console.info(
+    `[vector-store] IDB scan evaluated ${embeddings.length} embeddings. Best similarity: ${
+      scored[0]?.similarity.toFixed(3) ?? "N/A"
+    } (threshold: ${similarityThreshold})`
+  );
 
   // Filter threshold and take topK
   const topMatches = scored

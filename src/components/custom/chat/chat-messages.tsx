@@ -38,6 +38,8 @@ import {
     Attachments,
     type AttachmentData,
 } from "@/components/ai-elements/attachments";
+import { CitationRenderer } from "./citation-renderer";
+import type { BuddhiMessageMetadata } from "@/types/research";
 
 interface ChatMessagesProps {
     messages: UIMessage[];
@@ -145,6 +147,17 @@ export function ChatMessages({
                                                     {nonReasoningParts.map((part: any, partIndex: number) => {
                                                         if (part.type === "text") {
                                                             if (!part.text) return null;
+                                                            if (message.role === "assistant") {
+                                                                const metadata = message.metadata as BuddhiMessageMetadata | undefined;
+                                                                return (
+                                                                    <CitationRenderer
+                                                                        key={partIndex}
+                                                                        text={part.text}
+                                                                        annotations={metadata?.ragCitations}
+                                                                        isAnimating={isThisMessageStreaming}
+                                                                    />
+                                                                );
+                                                            }
                                                             return (
                                                                 <MessageResponse key={partIndex}>
                                                                     {part.text}
