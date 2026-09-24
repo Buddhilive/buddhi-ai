@@ -60,6 +60,7 @@ export interface AssistantMessage {
   content: string;
   citations?: RAGCitation[];
   timestamp: number;
+  rlmMetadata?: RlmMetadata;
 }
 
 export type PipelineStage =
@@ -131,5 +132,33 @@ export interface RagCitationAnnotation {
 /** UIMessage metadata shape for Buddhi AI */
 export interface BuddhiMessageMetadata {
   ragCitations?: RagCitationAnnotation[];
+  rlmMetadata?: RlmMetadata;
+}
+
+/** Execution metrics and results from in-WASM Recursive Language Model */
+export interface RlmMetadata {
+  isRlm: boolean;
+  iterations: number;
+  terminatedBy: string;
+  costEstimateTokens: number;
+  totalChunksAnalyzed: number;
+  paperTitles?: string[];
+}
+
+export interface RlmProgressEvent {
+  iteration: number;
+  phase: string;
+  message: string;
+}
+
+export interface RlmAnalysisOptions {
+  query: string;
+  documentText: string;
+  documentTitle?: string;
+  papers?: { id: string; title: string; text: string }[];
+  maxDepth?: number;
+  chunkSize?: number;
+  signal?: AbortSignal;
+  onProgress?: (progress: RlmProgressEvent) => void;
 }
 

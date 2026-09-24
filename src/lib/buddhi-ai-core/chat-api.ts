@@ -51,6 +51,10 @@ import { nanoid } from "nanoid";
 import { retrieveRagContext } from "@/lib/rag-retrieval";
 import { RAG_MAX_CONTEXT_CHARS, RAG_SNIPPET_MAX_CHARS } from "@/const/rag";
 import type { BuddhiMessageMetadata, RagCitationAnnotation, RagContext } from "@/types/research";
+import { rlmService } from "@/lib/rlm-service";
+import { usePaperStore } from "@/stores/paper-store";
+import { useSettingsStore } from "@/stores/settings-store";
+import { getAllPapers } from "@/lib/paper-storage";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -431,6 +435,127 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                 const userPrompt = ragBlock
                     ? `${ragBlock}\n\n---\n\nUser question: ${baseUserPrompt}`
                     : baseUserPrompt;
+
+                // Check if query should route to in-WASM Extended Context (RLM)
+                const settings = useSettingsStore.getState();
+                const currentPaper = usePaperStore.getState().currentPaper;
+                const isComparativeQuery = /compare|contrast|cross-paper|across papers|all papers|literature review|both papers|synthesize papers/i.test(ragQuery);
+
+                let rlmMultiPapers: { id: string; title: string; text: string }[] | null = null;
+                if (settings.enableExtendedContext && isComparativeQuery) {
+                    try {
+                        const allPapers = await getAllPapers();
+                        const validPapers = allPapers.filter((p) => p.rawText && p.rawText.length > 200);
+                        if (validPapers.length >= 2) {
+                            rlmMultiPapers = validPapers.slice(0, 5).map((p) => ({
+                                id: p.id,
+                                title: p.metadata.title || p.fileName,
+                                text: p.rawText!,
+                            }));
+                        }
+                    } catch (e) {
+                        console.warn("[LiteRTChatTransport] Failed to fetch all papers for multi-paper RLM:", e);
+                    }
+                }
+
+                const shouldRunRlm = Boolean(
+                    settings.enableExtendedContext &&
+                    (
+                        rlmMultiPapers !== null ||
+                        (
+                            currentPaper?.rawText &&
+                            currentPaper.rawText.length > 500 &&
+                            (currentPaper.rawText.length > RAG_MAX_CONTEXT_CHARS ||
+                             /summarize|analysis|entire|whole|all sections|methodology|compare|synthesis/i.test(ragQuery))
+                        )
+                    )
+                );
+
+                if (shouldRunRlm) {
+                    const messageId = nanoid();
+                    const reasoningPartId = nanoid();
+                    const textPartId = nanoid();
+
+                    writer.write({ type: "start", messageId });
+                    writer.write({ type: "reasoning-start", id: reasoningPartId });
+
+                    if (rlmMultiPapers && rlmMultiPapers.length > 0) {
+                        writer.write({
+                            type: "reasoning-delta",
+                            id: reasoningPartId,
+                            delta: `[Extended Context (RLM): Ingesting ${rlmMultiPapers.length} library papers into in-browser WASM linear memory...]\n`,
+                        });
+                    } else if (currentPaper?.rawText) {
+                        writer.write({
+                            type: "reasoning-delta",
+                            id: reasoningPartId,
+                            delta: `[Extended Context (RLM): Ingesting "${currentPaper.fileName}" (~${Math.round(currentPaper.rawText.length / 1024)}KB) into in-browser WASM linear memory...]\n`,
+                        });
+                    }
+
+                    try {
+                        const rlmResponse = await rlmService.analyzeDocument(
+                            rlmMultiPapers
+                                ? {
+                                      query: ragQuery,
+                                      documentText: "",
+                                      papers: rlmMultiPapers,
+                                      maxDepth: 6,
+                                      signal: abortSignal,
+                                      onProgress: (prog) => {
+                                          writer.write({
+                                              type: "reasoning-delta",
+                                              id: reasoningPartId,
+                                              delta: `[RLM Step ${prog.iteration}: ${prog.message}]\n`,
+                                          });
+                                      },
+                                  }
+                                : {
+                                      query: ragQuery,
+                                      documentText: currentPaper!.rawText!,
+                                      documentTitle: currentPaper!.metadata.title || currentPaper!.fileName,
+                                      maxDepth: 5,
+                                      signal: abortSignal,
+                                      onProgress: (prog) => {
+                                          writer.write({
+                                              type: "reasoning-delta",
+                                              id: reasoningPartId,
+                                              delta: `[RLM Step ${prog.iteration}: ${prog.message}]\n`,
+                                          });
+                                      },
+                                  },
+                            this.engine
+                        );
+
+                        writer.write({ type: "reasoning-end", id: reasoningPartId });
+                        writer.write({ type: "text-start", id: textPartId });
+                        writer.write({ type: "text-delta", id: textPartId, delta: rlmResponse.answer });
+                        writer.write({ type: "text-end", id: textPartId });
+
+                        writer.write({
+                            type: "finish",
+                            finishReason: "stop",
+                            messageMetadata: {
+                                rlmMetadata: rlmResponse.metadata,
+                                ragCitations: ragAnnotations,
+                            } as BuddhiMessageMetadata,
+                        });
+                        return;
+                    } catch (rlmErr: any) {
+                        if (abortSignal?.aborted) {
+                            writer.write({ type: "abort", reason: "Analysis aborted." });
+                            return;
+                        }
+                        console.warn("[LiteRTChatTransport] RLM execution fell back to standard RAG:", rlmErr);
+                        writer.write({
+                            type: "reasoning-delta",
+                            id: reasoningPartId,
+                            delta: `\n[RLM fallback: ${rlmErr?.message || "Standard RAG continuing"}]\n`,
+                        });
+                        writer.write({ type: "reasoning-end", id: reasoningPartId });
+                        // Fall back to standard LiteRT conversation flow below
+                    }
+                }
 
                 let conversation;
                 try {

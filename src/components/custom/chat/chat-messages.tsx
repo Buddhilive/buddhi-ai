@@ -39,6 +39,7 @@ import {
     type AttachmentData,
 } from "@/components/ai-elements/attachments";
 import { CitationRenderer } from "./citation-renderer";
+import { ExtendedContextBadge } from "@/components/research/extended-context-badge";
 import type { BuddhiMessageMetadata } from "@/types/research";
 
 interface ChatMessagesProps {
@@ -150,12 +151,16 @@ export function ChatMessages({
                                                             if (message.role === "assistant") {
                                                                 const metadata = message.metadata as BuddhiMessageMetadata | undefined;
                                                                 return (
-                                                                    <CitationRenderer
-                                                                        key={partIndex}
-                                                                        text={part.text}
-                                                                        annotations={metadata?.ragCitations}
-                                                                        isAnimating={isThisMessageStreaming}
-                                                                    />
+                                                                    <div key={partIndex} className="space-y-2">
+                                                                        <CitationRenderer
+                                                                            text={part.text}
+                                                                            annotations={metadata?.ragCitations}
+                                                                            isAnimating={isThisMessageStreaming}
+                                                                        />
+                                                                        {metadata?.rlmMetadata && (
+                                                                            <ExtendedContextBadge metadata={metadata.rlmMetadata} />
+                                                                        )}
+                                                                    </div>
                                                                 );
                                                             }
                                                             return (

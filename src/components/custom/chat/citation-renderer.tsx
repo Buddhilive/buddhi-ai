@@ -32,11 +32,6 @@ export function CitationRenderer({
   annotations = [],
   isAnimating = false,
 }: CitationRendererProps) {
-  // If streaming is active, no annotations exist, or text has no citations, render directly
-  if (isAnimating || !annotations.length || !text.includes("[cite:")) {
-    return <MessageResponse>{text}</MessageResponse>;
-  }
-
   // Pre-index annotations by their zero-based index for O(1) lookup
   const annotationMap = useMemo(() => {
     const map = new Map<number, RagCitationAnnotation>();
@@ -45,6 +40,11 @@ export function CitationRenderer({
     }
     return map;
   }, [annotations]);
+
+  // If streaming is active, no annotations exist, or text has no citations, render directly
+  if (isAnimating || !annotations.length || !text.includes("[cite:")) {
+    return <MessageResponse>{text}</MessageResponse>;
+  }
 
   // Split text by code blocks (``` ... ```) so code contents are never touched
   const codeBlockRegex = /(```[\s\S]*?```)/g;
@@ -137,7 +137,7 @@ export function CitationRenderer({
                               />
                               {annotation.textSnippet ? (
                                 <InlineCitationQuote className="mt-2 text-xs line-clamp-4">
-                                  "{annotation.textSnippet}"
+                                  &ldquo;{annotation.textSnippet}&rdquo;
                                 </InlineCitationQuote>
                               ) : null}
                             </InlineCitationCardBody>
