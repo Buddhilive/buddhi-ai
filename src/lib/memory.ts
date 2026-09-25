@@ -1,7 +1,8 @@
 /**
  * lib/memory.ts
  *
- * Session-based memory management for chat conversations.
+ * Session-based memory management for chat conversations with hybrid compaction:
+ * standard single-pass LiteRT-LM summarization and in-WASM recursive RLM compaction.
  *
  * OVERVIEW
  * --------
@@ -13,40 +14,57 @@
  *   [SUMMARY of middle messages]            ← replaces middle history
  *   [last user] [last assistant]
  *
- * Summarization is triggered when the prompt token count exceeds
- * SUMMARIZATION_THRESHOLD. The summary is stored in sessionStorage (keyed by
- * chatId) so it persists for the browser session but does NOT affect the full
- * history saved to IndexedDB.
+ * Summarization is triggered when the prompt token count reaches or exceeds
+ * the dynamic compaction threshold (default 80% of maxContextTokens).
+ * The summary is stored in sessionStorage (keyed by chatId) so it persists
+ * for the browser session but does NOT affect the full history saved to IndexedDB.
  *
  * IMPORTANT CONSTRAINT
  * --------------------
  * LlmInference.sizeInTokens() and LlmInference.generateResponse() are
  * mutually exclusive — you cannot call sizeInTokens while generateResponse is
- * running. Token counting should only happen when status === "ready".
+ * running. Token counting and compaction only happen when status === "ready".
  */
 
 import type { BuddhiAIMessage, GemmaTemplateVersion } from "@/types/messages";
 import type { Engine } from "@litert-lm/core";
 import type { UIMessage } from "ai";
+import { useSettingsStore, DEFAULT_MAX_CONTEXT_TOKENS } from "@/stores/settings-store";
+import { useMemoryStore, type CompactionStrategy } from "@/stores/memory-store";
+import { rlmService } from "@/lib/rlm-service";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Token threshold that triggers automatic summarization. */
-export const SUMMARIZATION_THRESHOLD = 8192;
+/** Default ratio of active maxContextTokens that triggers automatic compaction. */
+export const DEFAULT_COMPACTION_THRESHOLD_PERCENT = 0.8;
+
+/** Default fallback threshold when settings are uninitialized. */
+export const SUMMARIZATION_THRESHOLD = Math.floor(
+    DEFAULT_MAX_CONTEXT_TOKENS * DEFAULT_COMPACTION_THRESHOLD_PERCENT
+);
 
 /**
- * Maximum context window size for display in the Context component.
- * Reflects the maxTokens value configured in use-ai-model.ts.
+ * Maximum context window size for display in the Context component (fallback).
+ * Active limit dynamically reads from useSettingsStore.maxContextTokens.
  */
-export const MAX_CONTEXT_TOKENS = 124_000;
+export const MAX_CONTEXT_TOKENS = DEFAULT_MAX_CONTEXT_TOKENS;
 
 /**
- * Maximum number of middle-slice messages sent to the summarizer.
+ * Maximum number of middle-slice messages sent to the summarizer in single-pass mode.
  * Guards against summarization prompts that are themselves too large.
  */
 const MAX_MIDDLE_MESSAGES = 60;
+
+/**
+ * Computes the compaction trigger threshold in tokens based on the current
+ * or provided max context window limit.
+ */
+export function getCompactionThreshold(maxTokens?: number): number {
+    const limit = maxTokens ?? useSettingsStore.getState().maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS;
+    return Math.floor(limit * DEFAULT_COMPACTION_THRESHOLD_PERCENT);
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,6 +76,10 @@ export interface MemoryContext {
     summary: string;
     /** Token count of the summary text (informational). */
     summaryTokenCount: number;
+    /** Estimated tokens saved by replacing middle messages with summary. */
+    tokensSaved: number;
+    /** Strategy used to produce this summary. */
+    strategy: CompactionStrategy;
     /** Unix ms timestamp of when this context was created. */
     createdAt: number;
     /** Number of messages in the conversation when summarized. */
@@ -74,6 +96,12 @@ export interface MessageSlice {
     middle: BuddhiAIMessage[];
     /** The last user + assistant pair — always preserved for context continuity. */
     lastTurn: BuddhiAIMessage[];
+}
+
+export interface SummarizationResult {
+    summary: string;
+    tokensSaved: number;
+    strategy: CompactionStrategy;
 }
 
 // ---------------------------------------------------------------------------
@@ -167,9 +195,7 @@ export function sliceMessages(messages: BuddhiAIMessage[]): MessageSlice {
     const body = messages.slice(bodyStart);
 
     // Need at least 6 body messages (3 full turns) for a non-empty middle.
-    // With fewer messages there's nothing meaningful to summarize.
     if (body.length < 6) {
-        // Still split correctly for consistency, even if middle is empty.
         const firstTurn = body.slice(0, Math.min(2, body.length));
         const remaining = body.slice(firstTurn.length);
         const lastTurn = remaining.length >= 2 ? remaining.slice(-2) : remaining;
@@ -199,8 +225,6 @@ export function sliceMessages(messages: BuddhiAIMessage[]): MessageSlice {
  * If a summary exists in sessionStorage for `chatId`, the middle messages are
  * replaced with a single assistant message containing the summary. Otherwise
  * the original messages are returned unchanged.
- *
- * Called from MediaPipeChatTransport.sendMessages() before building the prompt.
  */
 export function applyMemoryContext(
     messages: BuddhiAIMessage[],
@@ -213,7 +237,6 @@ export function applyMemoryContext(
 
     const { middle } = sliceMessages(messages);
     if (middle.length === 0) {
-        // Nothing was summarized yet — history is short enough to pass through.
         return messages;
     }
 
@@ -222,37 +245,64 @@ export function applyMemoryContext(
     const summaryMessage: BuddhiAIMessage = {
         role: "assistant",
         content:
-            `[Conversation summary — ${new Date(ctx.createdAt).toLocaleString()}]\n\n` +
+            `[Conversation summary (${ctx.strategy === "rlm-recursive" ? "in-WASM RLM" : "compacted"}) — ${new Date(ctx.createdAt).toLocaleTimeString()}]\n\n` +
             ctx.summary,
     };
 
     console.debug(
         `[Memory] Applied memory context for chat "${chatId}". ` +
-        `Replaced ${middle.length} middle messages with summary.`
+        `Replaced ${middle.length} middle messages with summary (${ctx.tokensSaved} tokens saved).`
     );
 
     return [...system, ...firstTurn, summaryMessage, ...lastTurn];
 }
 
 // ---------------------------------------------------------------------------
-// Token counting
+// Token counting & Estimation
 // ---------------------------------------------------------------------------
 
 /**
- * Counts the tokens in a BuddhiAIMessage[] by building a Gemma prompt and
- * calling LlmInference.sizeInTokens() on it.
+ * Fast, reliable token estimation for messages based on Gemma's tokenizer ratio
+ * (~3.7 characters per token plus turn delimiter overhead).
+ */
+export function estimateMessageTokens(messages: BuddhiAIMessage[]): number {
+    if (messages.length === 0) return 0;
+    let totalChars = 0;
+    for (const msg of messages) {
+        totalChars += 16; // Message formatting & role delimiters
+        if (typeof msg.content === "string") {
+            totalChars += msg.content.length;
+        } else if (Array.isArray(msg.content)) {
+            for (const part of msg.content) {
+                if (part && part.type === "text" && part.text) {
+                    totalChars += part.text.length;
+                }
+            }
+        }
+    }
+    return Math.max(1, Math.round(totalChars / 3.7));
+}
+
+/**
+ * Counts the tokens in a BuddhiAIMessage[] using LiteRT-LM conversation if within
+ * buffer limits, with immediate fallback to calibrated estimation.
+ * Guaranteed to return an accurate, non-zero token count for non-empty messages.
  *
- * Returns 0 on any error (sizeInTokens returning undefined, template build
- * failure, etc.) so callers can proceed safely without hard errors.
- *
- * ⚠️  Do NOT call this while generateResponse() is active — MediaPipe does not
- * allow concurrent inference and tokenization.
+ * ⚠️ Do NOT call this while inference streaming is active.
  */
 export async function countTokensForMessages(
     instance: Engine,
     messages: BuddhiAIMessage[]
 ): Promise<number> {
     if (messages.length === 0) return 0;
+    const fallbackEstimate = estimateMessageTokens(messages);
+
+    // If message tokens exceed LiteRT-LM's KV cache safety ceiling, use estimate directly
+    // to avoid triggering an engine crash or prefill buffer overflow.
+    if (fallbackEstimate > 3800) {
+        return fallbackEstimate;
+    }
+
     try {
         const prefaceMessages = messages.map((m) => ({
             role: m.role,
@@ -260,17 +310,14 @@ export async function countTokensForMessages(
         }));
         const conversation = await instance.createConversation({
             preface: { messages: prefaceMessages },
+            prefillPrefaceOnInit: true,
         });
         const count = await conversation.getTokenCount();
         await conversation.delete().catch(() => {});
-        return count ?? 0;
+        return count && count > 0 ? count : fallbackEstimate;
     } catch (err) {
-        console.warn("[Memory] Failed to count tokens:", err);
-        const totalChars = messages.reduce(
-            (acc, m) => acc + (typeof m.content === "string" ? m.content.length : 100),
-            0
-        );
-        return Math.round(totalChars / 4);
+        console.warn("[Memory] Engine token count failed or exceeded buffer, using estimate:", err);
+        return fallbackEstimate;
     }
 }
 
@@ -279,13 +326,8 @@ export async function countTokensForMessages(
 // ---------------------------------------------------------------------------
 
 /**
- * Converts a UIMessage[] to BuddhiAIMessage[] extracting only text parts.
- * Media parts (image, audio, file) are intentionally ignored — the summarizer
- * works on conversation text only.
- *
- * Optionally prepends a system message when `systemPrompt` is provided:
- *   - Gemma 4: prepended as role "system"
- *   - Gemma 3n: injected into the first user message (legacy behaviour)
+ * Converts a UIMessage[] to BuddhiAIMessage[] extracting text parts safely,
+ * with full resilience against reasoning parts, tool outputs, and legacy message structures.
  */
 export function extractBuddhiMessages(
     uiMessages: UIMessage[],
@@ -293,10 +335,17 @@ export function extractBuddhiMessages(
     templateVersion: GemmaTemplateVersion,
 ): BuddhiAIMessage[] {
     const converted: BuddhiAIMessage[] = uiMessages.map((msg) => {
-        const text = msg.parts
-            .filter((p) => p.type === "text")
-            .map((p) => (p as { type: "text"; text: string }).text)
-            .join("\n");
+        let text = "";
+        if (Array.isArray(msg.parts)) {
+            text = msg.parts
+                .filter((p) => p && (p.type === "text" || (p as { type: string }).type === "reasoning" || (p as { text?: string }).text))
+                .map((p) => ((p as { text?: string }).text as string) || "")
+                .filter(Boolean)
+                .join("\n");
+        }
+        if (!text && typeof (msg as unknown as { content?: string }).content === "string") {
+            text = (msg as unknown as { content: string }).content;
+        }
 
         return {
             role: msg.role as BuddhiAIMessage["role"],
@@ -341,14 +390,13 @@ function formatMessageForSummary(msg: BuddhiAIMessage): string {
     let text = "";
     if (typeof msg.content === "string") {
         text = msg.content;
-    } else {
+    } else if (Array.isArray(msg.content)) {
         text = msg.content
             .filter((p) => p.type === "text")
             .map((p) => p.text ?? "")
             .join(" ");
     }
 
-    // Include tool calls/responses in the text if present (informational).
     if (msg.toolCalls && msg.toolCalls.length > 0) {
         const tools = msg.toolCalls
             .map((tc) => `[tool call: ${tc.name}(${JSON.stringify(tc.arguments)})]`)
@@ -363,20 +411,10 @@ function formatMessageForSummary(msg: BuddhiAIMessage): string {
  * Runs an LLM summarization over the middle slice of the conversation, stores
  * the result in sessionStorage, and returns the generated summary text.
  *
- * Accepts `UIMessage[]` (from useChat) and `systemPrompt` so it can build the
- * full `BuddhiAIMessage[]` internally without needing the chat transport.
- * Only text parts are used — media is not needed for a text summary.
- *
- * The summarization itself uses a dedicated system prompt and Gemma 4 chat
- * format. `generateResponse` is awaited via a Promise.
- *
- * Throws a descriptive `Error` if:
- *  - The middle slice is empty (nothing to summarize).
- *  - Template generation fails.
- *  - `generateResponse` rejects.
- *
- * The caller (chat-interface.tsx) is responsible for setting `isSummarizing`
- * in useMemoryStore and for showing the "Summarizing…" shimmer.
+ * Supports hybrid execution:
+ *   - When Extended Context (RLM) is active and context is heavy, executes in-WASM
+ *     recursive analysis via rlmService.
+ *   - Otherwise uses standard LiteRT-LM summarization with safe token prompt clamping.
  */
 export async function runSummarization(
     instance: Engine,
@@ -384,7 +422,7 @@ export async function runSummarization(
     systemPrompt: string,
     chatId: string,
     templateVersion: GemmaTemplateVersion,
-): Promise<string> {
+): Promise<SummarizationResult> {
     if (!chatId) {
         throw new Error("[Memory] runSummarization called without a chatId.");
     }
@@ -397,86 +435,148 @@ export async function runSummarization(
             "[Memory] Skipping summarization — middle slice is empty " +
             `(conversation has ${messages.length} messages total).`
         );
-        return "";
+        return { summary: "", tokensSaved: 0, strategy: null };
     }
 
     const conversationText = middle.map(formatMessageForSummary).join("\n\n");
+    const isRlmEnabled = useSettingsStore.getState().enableExtendedContext;
+    const isHeavyContext = conversationText.length > 4000 || /\[cite:|\bpaper\b/i.test(conversationText);
 
-    const conversation = await instance.createConversation({
-        preface: {
-            messages: [
+    let clean = "";
+    let strategy: CompactionStrategy = "litert-standard";
+
+    // Branch A: In-WASM RLM Recursive Compaction
+    if (isRlmEnabled && isHeavyContext) {
+        try {
+            console.debug(
+                `[Memory] Running in-WASM RLM recursive compaction for chat "${chatId}" ` +
+                `(${middle.length} messages, ${Math.round(conversationText.length / 1024)}KB).`
+            );
+            strategy = "rlm-recursive";
+            const rlmResult = await rlmService.analyzeDocument(
                 {
-                    role: "system",
-                    content:
-                        "You are a summarization assistant. Your sole task is to create a " +
-                        "comprehensive yet concise summary of the conversation excerpt provided. " +
-                        "Include: key topics discussed, decisions made, code written or reviewed, " +
-                        "questions asked and answered, any important facts or context established, " +
-                        "and the overall progression of the conversation. " +
-                        "Write the summary in third-person prose. Do not add commentary or preamble — " +
-                        "output only the summary itself.",
+                    query:
+                        "Summarize the key discussion points, user requests, code/technical decisions, " +
+                        "and research citations established in this conversation excerpt. " +
+                        "Produce a comprehensive, structured summary for continuing the conversation.",
+                    documentText: conversationText,
+                    documentTitle: `Chat ${chatId} History Excerpt`,
+                    maxDepth: 4,
                 },
-            ],
-        },
-    });
+                instance
+            );
+            clean = rlmResult.answer.trim();
+        } catch (rlmErr) {
+            console.warn("[Memory] RLM recursive compaction failed, falling back to LiteRT single-pass:", rlmErr);
+            strategy = "litert-standard";
+            clean = "";
+        }
+    }
 
-    const userPrompt =
-        "Please summarize the following conversation excerpt. " +
-        "The summary will be used as working memory to continue the conversation:\n\n" +
-        `<CONVERSATION>\n${conversationText}\n</CONVERSATION>`;
+    // Branch B: Standard LiteRT-LM Conversation Summarization with safe prompt clamping
+    if (!clean) {
+        strategy = "litert-standard";
 
-    console.debug(
-        `[Memory] Running summarization for chat "${chatId}" ` +
-        `(${middle.length} messages in middle slice).`
-    );
+        // Clamp conversation text to ~8,000 characters (~2,000 tokens) so that the
+        // summarization prompt never overflows the model's 4,096 KV-cache limit.
+        let safeConversationText = conversationText;
+        if (safeConversationText.length > 8000) {
+            const head = safeConversationText.slice(0, 3800);
+            const tail = safeConversationText.slice(-3800);
+            safeConversationText = `${head}\n\n[... intermediate conversation turns omitted for context buffer ...]\n\n${tail}`;
+        }
 
-    let accumulated = "";
-    const stream = conversation.sendMessageStreaming(userPrompt);
-    const reader = stream.getReader();
-    try {
-        while (true) {
-            const { done, value: chunk } = await reader.read();
-            if (done) break;
-            if (chunk?.content) {
-                if (typeof chunk.content === "string") {
-                    accumulated += chunk.content;
-                } else if (Array.isArray(chunk.content)) {
-                    for (const part of chunk.content) {
-                        if (part.type === "text" && part.text) {
-                            accumulated += part.text;
+        const conversation = await instance.createConversation({
+            preface: {
+                messages: [
+                    {
+                        role: "system",
+                        content:
+                            "You are a summarization assistant. Your sole task is to create a " +
+                            "comprehensive yet concise summary of the conversation excerpt provided. " +
+                            "Include: key topics discussed, decisions made, code written or reviewed, " +
+                            "questions asked and answered, any important facts or context established, " +
+                            "and the overall progression of the conversation. " +
+                            "Write the summary in third-person prose. Do not add commentary or preamble — " +
+                            "output only the summary itself.",
+                    },
+                ],
+            },
+        });
+
+        const userPrompt =
+            "Please summarize the following conversation excerpt. " +
+            "The summary will be used as working memory to continue the conversation:\n\n" +
+            `<CONVERSATION>\n${safeConversationText}\n</CONVERSATION>`;
+
+        console.debug(
+            `[Memory] Running LiteRT single-pass summarization for chat "${chatId}" ` +
+            `(${middle.length} messages in middle slice).`
+        );
+
+        let accumulated = "";
+        const stream = conversation.sendMessageStreaming(userPrompt);
+        const reader = stream.getReader();
+        try {
+            while (true) {
+                const { done, value: chunk } = await reader.read();
+                if (done) break;
+                if (chunk?.content) {
+                    if (typeof chunk.content === "string") {
+                        accumulated += chunk.content;
+                    } else if (Array.isArray(chunk.content)) {
+                        for (const part of chunk.content) {
+                            if (part.type === "text" && part.text) {
+                                accumulated += part.text;
+                            }
                         }
                     }
                 }
             }
+        } finally {
+            reader.releaseLock();
+            await conversation.delete().catch(() => {});
         }
-    } finally {
-        reader.releaseLock();
-        await conversation.delete().catch(() => {});
-    }
 
-    const clean = accumulated
-        .trim()
-        .replace(/<turn\|>\s*$/, "")
-        .replace(/<end_of_turn>\s*$/, "")
-        .trim();
+        clean = accumulated
+            .trim()
+            .replace(/<turn\|>\s*$/, "")
+            .replace(/<end_of_turn>\s*$/, "")
+            .trim();
+    }
 
     if (!clean) {
         throw new Error("[Memory] Summarization produced an empty result.");
     }
 
+    // Estimate token savings
+    const middleEstimatedTokens = Math.max(1, Math.round(conversationText.length / 3.7));
+    const summaryEstimatedTokens = Math.max(1, Math.round(clean.length / 3.7));
+    const tokensSaved = Math.max(0, middleEstimatedTokens - summaryEstimatedTokens);
+
     const ctx: MemoryContext = {
         chatId,
         summary: clean,
-        summaryTokenCount: 0, // Counted separately if needed; kept as 0 to avoid extra LLM call.
+        summaryTokenCount: summaryEstimatedTokens,
+        tokensSaved,
+        strategy,
         createdAt: Date.now(),
         originalMessageCount: messages.length,
     };
     setMemoryContext(chatId, ctx);
 
+    // Update memory store state
+    useMemoryStore.getState().setCompactionSavings(tokensSaved, strategy);
+
+    // Recalculate prompt tokens with compacted context
+    const compactedMessages = applyMemoryContext(messages, chatId);
+    const newCount = await countTokensForMessages(instance, compactedMessages);
+    useMemoryStore.getState().setTokenCount(newCount);
+
     console.debug(
-        `[Memory] Summarization complete for chat "${chatId}". ` +
-        `Summary length: ${clean.length} chars.`
+        `[Memory] Summarization complete for chat "${chatId}" (${strategy}). ` +
+        `Saved ~${tokensSaved} tokens. Active prompt token count: ${newCount}.`
     );
 
-    return clean;
+    return { summary: clean, tokensSaved, strategy };
 }

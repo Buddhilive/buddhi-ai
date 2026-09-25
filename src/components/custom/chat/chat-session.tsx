@@ -163,8 +163,11 @@ export function ChatSession({
 
   if (isLoadingChat) {
     return (
-      <div className="flex h-[calc(100vh-80px)] items-center justify-center">
+      <div className="flex flex-col gap-3 h-[calc(100vh-80px)] items-center justify-center">
         <Spinner className="size-8" />
+        <span className="text-xs text-muted-foreground animate-pulse">
+          {isSummarizing ? "Compacting conversation context..." : "Loading chat session..."}
+        </span>
       </div>
     );
   }

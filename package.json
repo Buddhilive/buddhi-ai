@@ -12,7 +12,7 @@
   "dependencies": {
     "@ai-sdk/react": "^3.0.160",
     "@buddhilive/sandbox": "0.1.0-beta.7",
-    "@buddhilive/sandbox-sw": "0.1.0-beta.4",
+    "@buddhilive/sandbox-sw": "0.1.0-beta.7",
     "@electric-sql/pglite": "^0.5.8",
     "@electric-sql/pglite-pgvector": "^0.0.9",
     "@langchain/textsplitters": "^1.0.1",

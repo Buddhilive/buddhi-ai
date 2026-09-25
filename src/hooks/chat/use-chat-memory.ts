@@ -19,6 +19,8 @@ export function useChatMemory({
     const tokenCount = useMemoryStore((s) => s.tokenCount);
     const isSummarizing = useMemoryStore((s) => s.isSummarizing);
     const isSummarized = useMemoryStore((s) => s.isSummarized);
+    const tokensSaved = useMemoryStore((s) => s.tokensSaved);
+    const compactionStrategy = useMemoryStore((s) => s.compactionStrategy);
     const setIsSummarizing = useMemoryStore((s) => s.setIsSummarizing);
     const setIsSummarized = useMemoryStore((s) => s.setIsSummarized);
     const resetMemory = useMemoryStore((s) => s.reset);
@@ -37,14 +39,19 @@ export function useChatMemory({
 
         setIsSummarizing(true);
         try {
-            await runSummarization(
+            const res = await runSummarization(
                 instance,
                 uiMessages,
                 systemPrompt,
                 chatId,
                 templateVersion
             );
-            setIsSummarized(true);
+            if (res.summary) {
+                setIsSummarized(true);
+                toast.success("Chat context compacted", {
+                    description: `Optimized conversation history via ${res.strategy === "rlm-recursive" ? "in-WASM RLM" : "LiteRT"} and saved ~${res.tokensSaved} tokens.`,
+                });
+            }
         } catch (err) {
             console.error("[ChatSession] Summarization failed:", err);
             toast.error(
@@ -60,6 +67,8 @@ export function useChatMemory({
         tokenCount,
         isSummarizing,
         isSummarized,
+        tokensSaved,
+        compactionStrategy,
         setIsSummarizing,
         setIsSummarized,
         resetMemory,

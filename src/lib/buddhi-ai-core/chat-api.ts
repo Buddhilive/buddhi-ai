@@ -30,7 +30,7 @@
  */
 
 import { DEFAULT_SYSTEM_PROMPT } from "@/const/system-prompt";
-import { applyMemoryContext } from "@/lib/memory";
+import { applyMemoryContext, estimateMessageTokens } from "@/lib/memory";
 import { useMemoryStore } from "@/stores/memory-store";
 import {
     GemmaChannelStreamParser,
@@ -436,6 +436,23 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                     ? `${ragBlock}\n\n---\n\nUser question: ${baseUserPrompt}`
                     : baseUserPrompt;
 
+                // Immediately compute baseline token count including new prompt and RAG context
+                // so the Context UI meter never dips to 0% when a prompt is submitted
+                const fullPromptForTokenCount: BuddhiAIMessage[] = [
+                    ...prefaceMessages.map((m) => ({
+                        role: m.role as any,
+                        content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+                    })),
+                    {
+                        role: "user",
+                        content: typeof userPrompt === "string" ? userPrompt : JSON.stringify(userPrompt),
+                    },
+                ];
+                let baselineTokens = estimateMessageTokens(fullPromptForTokenCount);
+                if (!useMemoryStore.getState().isSummarizing) {
+                    useMemoryStore.getState().setTokenCount(baselineTokens);
+                }
+
                 // Check if query should route to in-WASM Extended Context (RLM)
                 const settings = useSettingsStore.getState();
                 const currentPaper = usePaperStore.getState().currentPaper;
@@ -475,6 +492,17 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                     const messageId = nanoid();
                     const reasoningPartId = nanoid();
                     const textPartId = nanoid();
+
+                    let rlmInputChars = baseUserPrompt ? baseUserPrompt.length : 0;
+                    if (rlmMultiPapers) {
+                        rlmInputChars += rlmMultiPapers.reduce((acc, p) => acc + (p.text?.length || 0), 0);
+                    } else if (currentPaper?.rawText) {
+                        rlmInputChars += currentPaper.rawText.length;
+                    }
+                    baselineTokens = Math.max(baselineTokens, Math.round(rlmInputChars / 3.7));
+                    if (!useMemoryStore.getState().isSummarizing) {
+                        useMemoryStore.getState().setTokenCount(baselineTokens);
+                    }
 
                     writer.write({ type: "start", messageId });
                     writer.write({ type: "reasoning-start", id: reasoningPartId });
@@ -532,6 +560,11 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                         writer.write({ type: "text-delta", id: textPartId, delta: rlmResponse.answer });
                         writer.write({ type: "text-end", id: textPartId });
 
+                        const finalRlmTokens = baselineTokens + Math.round((rlmResponse.answer?.length || 0) / 3.7);
+                        if (!useMemoryStore.getState().isSummarizing) {
+                            useMemoryStore.getState().setTokenCount(finalRlmTokens);
+                        }
+
                         writer.write({
                             type: "finish",
                             finishReason: "stop",
@@ -569,10 +602,11 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                     throw new Error(`Failed to create LiteRT conversation: ${msg}`);
                 }
 
-                // Update token count in memory store
+                // Update token count from engine if it returns a non-zero count exceeding baseline
                 try {
                     const tokenCount = await conversation.getTokenCount();
-                    if (tokenCount !== undefined && !useMemoryStore.getState().isSummarizing) {
+                    if (tokenCount && tokenCount > baselineTokens && !useMemoryStore.getState().isSummarizing) {
+                        baselineTokens = tokenCount;
                         useMemoryStore.getState().setTokenCount(tokenCount);
                     }
                 } catch (err) {
@@ -609,6 +643,9 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                     let currentPrompt: Message | string = userPrompt;
                     let loopCount = 0;
                     const MAX_REACT_TURNS = 6;
+                    let generatedChars = 0;
+                    let lastReportedTokens = baselineTokens;
+                    let lastTokenUpdateTime = Date.now();
 
                     while (loopCount < MAX_REACT_TURNS && !settled && !abortSignal?.aborted) {
                         loopCount++;
@@ -696,6 +733,14 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
 
                                 if (partial) {
                                     parser.push(partial);
+                                    generatedChars += partial.length;
+                                    const now = Date.now();
+                                    const currentEstimatedTokens = baselineTokens + Math.round(generatedChars / 3.7);
+                                    if ((now - lastTokenUpdateTime > 100 || currentEstimatedTokens - lastReportedTokens >= 4) && !useMemoryStore.getState().isSummarizing) {
+                                        lastReportedTokens = currentEstimatedTokens;
+                                        lastTokenUpdateTime = now;
+                                        useMemoryStore.getState().setTokenCount(currentEstimatedTokens);
+                                    }
                                 }
                             }
                         } finally {
@@ -703,6 +748,12 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                         }
 
                         parser.flush();
+
+                        const turnEstimatedTokens = baselineTokens + Math.round(generatedChars / 3.7);
+                        lastReportedTokens = turnEstimatedTokens;
+                        if (!useMemoryStore.getState().isSummarizing) {
+                            useMemoryStore.getState().setTokenCount(turnEstimatedTokens);
+                        }
 
                         if (settled || abortSignal?.aborted || pendingToolCalls.length === 0) {
                             break;
@@ -735,6 +786,12 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                             });
                         }
 
+                        baselineTokens = lastReportedTokens + Math.round(JSON.stringify(toolResponses).length / 3.7);
+                        generatedChars = 0;
+                        if (!useMemoryStore.getState().isSummarizing) {
+                            useMemoryStore.getState().setTokenCount(baselineTokens);
+                        }
+
                         currentPrompt = {
                             role: "tool",
                             content: toolResponses,
@@ -742,6 +799,9 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                     }
 
                     if (!settled) {
+                        if (!useMemoryStore.getState().isSummarizing) {
+                            useMemoryStore.getState().setTokenCount(lastReportedTokens);
+                        }
                         const metadata: BuddhiMessageMetadata = { ragCitations: ragAnnotations };
                         writer.write({
                             type: "finish",

@@ -9,10 +9,13 @@ import {
     updateExistingChat,
 } from "@/lib/chat-manager";
 import { useMemoryStore } from "@/stores/memory-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import {
+    applyMemoryContext,
     countTokensForMessages,
     extractBuddhiMessages,
-    SUMMARIZATION_THRESHOLD,
+    getCompactionThreshold,
+    getMemoryContext,
 } from "@/lib/memory";
 import type { UIMessage } from "ai";
 import type { Engine } from "@litert-lm/core";
@@ -46,17 +49,33 @@ export function useChatStorage({
     const setCurrentChatId = useChatStore((s) => s.setCurrentChatId);
     const refreshChats = useChatStore((s) => s.refreshChats);
 
-    // Load existing chat
+    // Load existing chat & perform initial compaction before releasing loading state
     useEffect(() => {
         setCurrentChatId(chatId);
         resetMemory();
 
         if (!chatId) return;
 
-        loadChat(chatId)
-            .then(async (chat) => {
+        let isCancelled = false;
+
+        (async () => {
+            setIsLoadingChat(true);
+            try {
+                const chat = await loadChat(chatId);
+                if (isCancelled) return;
+
                 if (chat?.messages?.length) {
                     setMessages(chat.messages);
+
+                    // Restore any existing memory context from sessionStorage
+                    const existingCtx = getMemoryContext(chatId);
+                    if (existingCtx) {
+                        useMemoryStore.getState().setCompactionSavings(
+                            existingCtx.tokensSaved || 0,
+                            existingCtx.strategy || "litert-standard"
+                        );
+                        useMemoryStore.getState().setIsSummarized(true);
+                    }
 
                     if (instance) {
                         try {
@@ -65,18 +84,31 @@ export function useChatStorage({
                                 systemPrompt,
                                 templateVersion
                             );
-                            const count = await countTokensForMessages(
+                            const effectiveMsgs = applyMemoryContext(buddhiMsgs, chatId);
+                            let count = await countTokensForMessages(
                                 instance,
-                                buddhiMsgs
+                                effectiveMsgs
                             );
                             useMemoryStore.getState().setTokenCount(count);
 
-                            if (count > SUMMARIZATION_THRESHOLD) {
+                            const maxLimit = useSettingsStore.getState().maxContextTokens;
+                            const threshold = getCompactionThreshold(maxLimit);
+
+                            // If chat history reaches threshold and has not yet been compacted,
+                            // run compaction BEFORE declaring the chat ready for continuation
+                            if (count >= threshold && !existingCtx) {
                                 console.debug(
-                                    `[ChatSession] Loaded chat "${chatId}" exceeds token threshold ` +
-                                    `(${count} > ${SUMMARIZATION_THRESHOLD}). Triggering summarization.`
+                                    `[ChatSession] Loaded chat "${chatId}" has heavy history ` +
+                                    `(${count} >= ${threshold} [80% of ${maxLimit}]). Running initial compaction...`
                                 );
                                 await triggerSummarization(chat.messages);
+
+                                if (!isCancelled) {
+                                    // Recount tokens with newly compacted buffer
+                                    const postCompactionMsgs = applyMemoryContext(buddhiMsgs, chatId);
+                                    count = await countTokensForMessages(instance, postCompactionMsgs);
+                                    useMemoryStore.getState().setTokenCount(count);
+                                }
                             }
                         } catch (err) {
                             console.warn(
@@ -86,17 +118,25 @@ export function useChatStorage({
                         }
                     }
                 }
-            })
-            .catch(() => {
-                console.error("[ChatSession] Failed to load chat:", chatId);
-                toast.error("Could not load chat history.");
-            })
-            .finally(() => setIsLoadingChat(false));
+            } catch (err) {
+                if (!isCancelled) {
+                    console.error("[ChatSession] Failed to load chat:", chatId, err);
+                    toast.error("Could not load chat history.");
+                }
+            } finally {
+                if (!isCancelled) {
+                    setIsLoadingChat(false);
+                }
+            }
+        })();
 
-        return () => setCurrentChatId(null);
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+        return () => {
+            isCancelled = true;
+            setCurrentChatId(null);
+        };
+    }, [chatId, instance, systemPrompt, templateVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Save chat on streaming -> ready transition
+    // Save chat on streaming -> ready transition and recount tokens
     useEffect(() => {
         const wasStreaming = prevStatusRef.current === "streaming";
         prevStatusRef.current = status;
@@ -122,15 +162,29 @@ export function useChatStorage({
                 toast.error("Chat could not be saved.");
             }
 
-            const currentTokenCount = useMemoryStore.getState().tokenCount;
-            const alreadySummarized = useMemoryStore.getState().isSummarized;
+            // Recalculate prompt tokens for the completed conversation
+            if (instance) {
+                try {
+                    const buddhiMsgs = extractBuddhiMessages(messages, systemPrompt, templateVersion);
+                    const activeChatId = currentChatIdRef.current || "";
+                    const effectiveMsgs = applyMemoryContext(buddhiMsgs, activeChatId);
+                    const count = await countTokensForMessages(instance, effectiveMsgs);
+                    useMemoryStore.getState().setTokenCount(count);
 
-            if (currentTokenCount > SUMMARIZATION_THRESHOLD && !alreadySummarized) {
-                console.debug(
-                    `[ChatSession] Token count ${currentTokenCount} exceeds threshold ` +
-                    `${SUMMARIZATION_THRESHOLD}. Starting summarization.`
-                );
-                await triggerSummarization(messages);
+                    const maxLimit = useSettingsStore.getState().maxContextTokens;
+                    const threshold = getCompactionThreshold(maxLimit);
+                    const alreadySummarized = useMemoryStore.getState().isSummarized;
+
+                    if (count >= threshold && !alreadySummarized) {
+                        console.debug(
+                            `[ChatSession] Post-generation token count ${count} reaches compaction threshold ` +
+                            `${threshold} (80% of ${maxLimit}). Starting automatic compaction.`
+                        );
+                        await triggerSummarization(messages);
+                    }
+                } catch (err) {
+                    console.warn("[ChatSession] Token recalculation failed after stream:", err);
+                }
             }
         })();
     }, [status]); // eslint-disable-line react-hooks/exhaustive-deps

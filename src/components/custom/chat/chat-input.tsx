@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Brain } from "lucide-react";
+import { Brain, Sparkles, CheckCircle2 } from "lucide-react";
 import {
   PromptInput,
   PromptInputBody,
@@ -20,8 +20,10 @@ import {
   ContextContentHeader,
   ContextTrigger,
 } from "@/components/ai-elements/context";
+import type { ChatStatus } from "ai";
 import { PromptInputAttachmentsDisplay } from "./chat-attachments";
-import { MAX_CONTEXT_TOKENS } from "@/lib/memory";
+import { useSettingsStore } from "@/stores/settings-store";
+import { useMemoryStore } from "@/stores/memory-store";
 
 interface ChatInputProps {
   text: string;
@@ -29,7 +31,7 @@ interface ChatInputProps {
   handleSubmit: (message: PromptInputMessage) => Promise<void>;
   isSubmitDisabled: boolean;
   stop: () => void;
-  status: any;
+  status: ChatStatus;
   isReasoningOn: boolean;
   toggleReasoning: () => void;
   handleTranscriptionChange: (transcript: string) => void;
@@ -48,6 +50,12 @@ export function ChatInput({
   handleTranscriptionChange,
   tokenCount,
 }: ChatInputProps) {
+  const maxContextTokens = useSettingsStore((s) => s.maxContextTokens);
+  const isSummarizing = useMemoryStore((s) => s.isSummarizing);
+  const isSummarized = useMemoryStore((s) => s.isSummarized);
+  const tokensSaved = useMemoryStore((s) => s.tokensSaved);
+  const compactionStrategy = useMemoryStore((s) => s.compactionStrategy);
+
   return (
     <div className="grid shrink-0 gap-3 pt-4">
       <div className="w-full px-4 pb-4">
@@ -82,17 +90,30 @@ export function ChatInput({
             </PromptInputTools>
 
             <div className="flex items-center gap-1">
-              {tokenCount > 0 && (
-                <Context
-                  usedTokens={tokenCount}
-                  maxTokens={MAX_CONTEXT_TOKENS}
-                >
-                  <ContextTrigger size="sm" />
-                  <ContextContent>
-                    <ContextContentHeader />
-                  </ContextContent>
-                </Context>
-              )}
+              <Context
+                usedTokens={tokenCount}
+                maxTokens={maxContextTokens || 4096}
+              >
+                <ContextTrigger size="sm" />
+                <ContextContent>
+                  <ContextContentHeader />
+                  {isSummarizing && (
+                    <div className="px-3 py-2 bg-primary/10 text-primary text-xs flex items-center gap-2 border-t">
+                      <Sparkles className="w-3.5 h-3.5 animate-spin" />
+                      <span>Compacting chat context...</span>
+                    </div>
+                  )}
+                  {!isSummarizing && isSummarized && tokensSaved > 0 && (
+                    <div className="px-3 py-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs flex items-center justify-between border-t">
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>Compacted {compactionStrategy === "rlm-recursive" ? "(RLM)" : "(LiteRT)"}</span>
+                      </div>
+                      <span className="font-mono font-medium">Saved ~{tokensSaved} tokens</span>
+                    </div>
+                  )}
+                </ContextContent>
+              </Context>
 
               <PromptInputSubmit
                 disabled={isSubmitDisabled}

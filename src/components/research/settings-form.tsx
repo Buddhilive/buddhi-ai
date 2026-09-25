@@ -1,19 +1,39 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { KeyRound, ExternalLink, Trash2, CheckCircle2, ShieldCheck, Cpu, Sparkles } from "lucide-react";
+import {
+  KeyRound,
+  ExternalLink,
+  Trash2,
+  CheckCircle2,
+  ShieldCheck,
+  Cpu,
+  Sparkles,
+  Gauge,
+  Layers,
+} from "lucide-react";
 import { useSettings } from "@/hooks/use-settings";
-import { useSettingsStore } from "@/stores/settings-store";
+import {
+  useSettingsStore,
+  LITERT_MAX_CONTEXT_TOKENS,
+  RLM_MAX_CONTEXT_TOKENS,
+} from "@/stores/settings-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 
 export function SettingsForm() {
   const { hfToken, isLoading, saveHfToken, removeHfToken } = useSettings();
-  const { enableExtendedContext, setEnableExtendedContext } = useSettingsStore();
+  const {
+    enableExtendedContext,
+    setEnableExtendedContext,
+    maxContextTokens,
+    setMaxContextTokens,
+  } = useSettingsStore();
   const [tokenInput, setTokenInput] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -61,8 +81,22 @@ export function SettingsForm() {
     return tok.slice(0, 4) + "••••••••••••••••" + tok.slice(-4);
   };
 
+  const formatTokens = (tokens: number) => {
+    if (tokens >= 1024) {
+      const k = tokens / 1024;
+      return `${Number.isInteger(k) ? k : k.toFixed(1)}k tokens`;
+    }
+    return `${tokens} tokens`;
+  };
+
+  const sliderMax = enableExtendedContext ? RLM_MAX_CONTEXT_TOKENS : LITERT_MAX_CONTEXT_TOKENS;
+  const sliderMin = 1024;
+  const sliderStep = enableExtendedContext ? 1024 : 256;
+  const compactionThreshold = Math.floor(maxContextTokens * 0.8);
+
   return (
     <div className="space-y-6 max-w-3xl">
+      {/* Hugging Face Token Card */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
@@ -168,6 +202,7 @@ export function SettingsForm() {
         </CardFooter>
       </Card>
 
+      {/* Extended Context Window (RLM) Card */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -193,7 +228,7 @@ export function SettingsForm() {
               </label>
               <p className="text-xs text-muted-foreground">
                 When enabled, synthesis and deep paper questions execute iterative REPL turns directly inside
-                your browser sandbox rather than cutting text to a 16KB window.
+                your browser sandbox rather than cutting text to a 16KB window. Unlocks context configurations up to 128K tokens.
               </p>
             </div>
             <Switch
@@ -201,11 +236,17 @@ export function SettingsForm() {
               checked={enableExtendedContext}
               onCheckedChange={(val) => {
                 setEnableExtendedContext(val);
-                toast.success(
-                  val
-                    ? "Extended Context (RLM) enabled"
-                    : "Extended Context disabled (Standard RAG active)"
-                );
+                if (!val && maxContextTokens > LITERT_MAX_CONTEXT_TOKENS) {
+                  toast.info(
+                    `Context window clamped to ${formatTokens(LITERT_MAX_CONTEXT_TOKENS)} (LiteRT-LM KV cache maximum)`
+                  );
+                } else {
+                  toast.success(
+                    val
+                      ? "Extended Context (RLM) enabled (Up to 128K context window unlocked)"
+                      : "Extended Context disabled (Standard 4K KV cache active)"
+                  );
+                }
               }}
             />
           </div>
@@ -215,6 +256,92 @@ export function SettingsForm() {
           <span>
             Zero remote servers. The WebAssembly sandbox operates entirely client-side using
             @buddhilive/sandbox and local LiteRT WebGPU/WASM model weights.
+          </span>
+        </CardFooter>
+      </Card>
+
+      {/* Context Window & Compaction Settings Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Gauge className="h-5 w-5 text-primary" />
+              <CardTitle>Context Window & Memory Optimization</CardTitle>
+            </div>
+            <Badge variant="secondary" className="font-mono text-[11px] gap-1">
+              <Layers className="w-3 h-3 text-muted-foreground" />
+              {enableExtendedContext ? "RLM Scalable" : "Fixed 4K Cache"}
+            </Badge>
+          </div>
+          <CardDescription>
+            Configure the maximum token capacity for conversation history. When conversations reach 80%
+            of this threshold, older turns are automatically compacted into high-fidelity memory to avoid KV-cache overflow.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-3 p-4 border rounded-lg bg-card">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-sm font-medium">Context Window Limit</span>
+                <p className="text-xs text-muted-foreground">
+                  {enableExtendedContext
+                    ? "Scalable up to 128K tokens powered by in-WASM RLM sandbox."
+                    : "Strictly capped at 4,096 tokens to match on-device LiteRT-LM KV-cache buffer."}
+                </p>
+              </div>
+              <div className="text-right">
+                <span className="font-mono font-bold text-sm text-primary">
+                  {formatTokens(maxContextTokens)}
+                </span>
+                <p className="text-[11px] font-mono text-muted-foreground">
+                  ({maxContextTokens.toLocaleString()} tokens)
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 pb-1">
+              <Slider
+                min={sliderMin}
+                max={sliderMax}
+                step={sliderStep}
+                value={[maxContextTokens]}
+                onValueChange={(vals) => {
+                  if (vals.length > 0) {
+                    setMaxContextTokens(vals[0]);
+                  }
+                }}
+                className="w-full cursor-pointer"
+              />
+            </div>
+
+            <div className="flex justify-between text-[11px] font-mono text-muted-foreground">
+              <span>{formatTokens(sliderMin)}</span>
+              <span className="text-center">
+                Threshold: ~{formatTokens(compactionThreshold)} (80%)
+              </span>
+              <span>{formatTokens(sliderMax)}</span>
+            </div>
+          </div>
+
+          <div className="p-3 bg-muted/40 rounded-md border text-xs space-y-1.5">
+            <div className="flex items-center gap-1.5 font-medium text-foreground">
+              <Sparkles className="w-3.5 h-3.5 text-primary" />
+              <span>Automatic Chat Compaction</span>
+            </div>
+            <p className="text-muted-foreground leading-relaxed">
+              When conversation tokens exceed{" "}
+              <strong className="text-foreground font-mono">{compactionThreshold.toLocaleString()} tokens</strong>{" "}
+              (80% capacity), the system non-destructively summarizes intermediate conversation turns. Your full transcript
+              remains visible in chat history and IndexedDB, while the active LiteRT-LM inference prompt buffer stays lean and fast.
+            </p>
+          </div>
+        </CardContent>
+        <CardFooter className="border-t bg-muted/20 px-6 py-3 text-xs text-muted-foreground flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
+          <span>
+            {enableExtendedContext
+              ? "RLM mode active: Long context summaries are generated hierarchically inside the WebAssembly sandbox."
+              : "Standard LiteRT mode: History is kept within the 4,096 token WebGPU KV-cache buffer."}
           </span>
         </CardFooter>
       </Card>
