@@ -20,7 +20,6 @@ import { ExtendedContextBadge } from "@/components/research/extended-context-bad
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import type { AssistantMessage, RAGCitation, SearchResultChunk } from "@/types/research";
 import { nanoid } from "nanoid";
@@ -45,10 +44,15 @@ export function AiAssistantPanel({ paperId }: AiAssistantPanelProps) {
   const [lowConfidenceWarning, setLowConfidenceWarning] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const { currentPaper, setSelectedChunkId, setActiveCitations } = usePaperStore();
   const { enableExtendedContext, setEnableExtendedContext } = useSettingsStore();
   const liteRTModelInstance = useLiteRTModelStore((s) => s.liteRTModelInstance);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isLoading]);
 
   useEffect(() => {
     return () => {
@@ -198,8 +202,8 @@ export function AiAssistantPanel({ paperId }: AiAssistantPanelProps) {
   };
 
   return (
-    <div className="flex flex-col h-full border-l bg-card w-80 md:w-96 shrink-0">
-      <div className="p-3 border-b flex flex-col gap-2">
+    <div className="flex flex-col h-full min-h-0 border-l bg-card w-80 md:w-96 shrink-0 overflow-hidden">
+      <div className="p-3 border-b flex flex-col gap-2 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
@@ -234,98 +238,97 @@ export function AiAssistantPanel({ paperId }: AiAssistantPanelProps) {
         </div>
       </div>
 
-      <ScrollArea className="flex-1 p-4 space-y-4">
-        <div className="space-y-4 pb-4">
-          {messages.map((msg) => (
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={`flex flex-col text-xs leading-relaxed ${
+              msg.role === "user"
+                ? "items-end"
+                : "items-start"
+            }`}
+          >
             <div
-              key={msg.id}
-              className={`flex flex-col text-xs leading-relaxed ${
+              className={`p-3 rounded-xl max-w-[90%] whitespace-pre-wrap ${
                 msg.role === "user"
-                  ? "items-end"
-                  : "items-start"
+                  ? "bg-primary text-primary-foreground font-sans"
+                  : "bg-muted text-foreground border"
               }`}
             >
-              <div
-                className={`p-3 rounded-xl max-w-[90%] whitespace-pre-wrap ${
-                  msg.role === "user"
-                    ? "bg-primary text-primary-foreground font-sans"
-                    : "bg-muted text-foreground border"
-                }`}
-              >
-                {msg.content}
+              {msg.content}
 
-                {/* Inline Citations */}
-                {msg.citations && msg.citations.length > 0 && (
-                  <div className="mt-3 pt-2 border-t border-border/50 space-y-1.5">
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">
-                      Sources & Citations:
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {msg.citations.map((cite, i) => (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={() => setSelectedChunkId(cite.chunkId)}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-background/80 hover:bg-background border text-[11px] font-medium text-primary hover:underline transition-colors"
-                        >
-                          <BookOpen className="h-3 w-3" />
-                          <span>p.{cite.pageNumber}</span>
-                        </button>
-                      ))}
-                    </div>
+              {/* Inline Citations */}
+              {msg.citations && msg.citations.length > 0 && (
+                <div className="mt-3 pt-2 border-t border-border/50 space-y-1.5">
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">
+                    Sources & Citations:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {msg.citations.map((cite, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setSelectedChunkId(cite.chunkId)}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-background/80 hover:bg-background border text-[11px] font-medium text-primary hover:underline transition-colors"
+                      >
+                        <BookOpen className="h-3 w-3" />
+                        <span>p.{cite.pageNumber}</span>
+                      </button>
+                    ))}
                   </div>
-                )}
+                </div>
+              )}
 
-                {/* RLM Metadata Badge */}
-                {msg.rlmMetadata && (
-                  <div className="mt-2.5 pt-2 border-t border-border/40">
-                    <ExtendedContextBadge metadata={msg.rlmMetadata} />
-                  </div>
-                )}
-              </div>
-              <span className="text-[9px] text-muted-foreground mt-1 px-1">
-                {new Date(msg.timestamp).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
+              {/* RLM Metadata Badge */}
+              {msg.rlmMetadata && (
+                <div className="mt-2.5 pt-2 border-t border-border/40">
+                  <ExtendedContextBadge metadata={msg.rlmMetadata} />
+                </div>
+              )}
+            </div>
+            <span className="text-[9px] text-muted-foreground mt-1 px-1">
+              {new Date(msg.timestamp).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </span>
+          </div>
+        ))}
+
+        {isLoading && (
+          <div className="flex items-center justify-between text-xs text-muted-foreground p-3 rounded-lg bg-muted/40 border">
+            <div className="flex items-center gap-2 overflow-hidden">
+              {rlmStatus ? (
+                <Sparkles className="h-3.5 w-3.5 animate-pulse text-primary shrink-0" />
+              ) : (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
+              )}
+              <span className="truncate">
+                {rlmStatus || "Embedding query & searching paper vectors..."}
               </span>
             </div>
-          ))}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleCancel}
+              className="h-6 px-1.5 text-xs text-destructive hover:bg-destructive/10 shrink-0"
+            >
+              <StopCircle className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
 
-          {isLoading && (
-            <div className="flex items-center justify-between text-xs text-muted-foreground p-3 rounded-lg bg-muted/40 border">
-              <div className="flex items-center gap-2 overflow-hidden">
-                {rlmStatus ? (
-                  <Sparkles className="h-3.5 w-3.5 animate-pulse text-primary shrink-0" />
-                ) : (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
-                )}
-                <span className="truncate">
-                  {rlmStatus || "Embedding query & searching paper vectors..."}
-                </span>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleCancel}
-                className="h-6 px-1.5 text-xs text-destructive hover:bg-destructive/10 shrink-0"
-              >
-                <StopCircle className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          )}
+        {lowConfidenceWarning && (
+          <div className="flex items-center gap-1.5 text-xs text-amber-500 bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-lg">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            <span>Low confidence match. Consider rephrasing your inquiry.</span>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
 
-          {lowConfidenceWarning && (
-            <div className="flex items-center gap-1.5 text-xs text-amber-500 bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-lg">
-              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              <span>Low confidence match. Consider rephrasing your inquiry.</span>
-            </div>
-          )}
-        </div>
-      </ScrollArea>
-
-      <form onSubmit={handleSend} className="p-3 border-t flex gap-2 bg-background">
+      <form onSubmit={handleSend} className="p-3 border-t flex gap-2 bg-background shrink-0">
         <Input
           placeholder={
             enableExtendedContext

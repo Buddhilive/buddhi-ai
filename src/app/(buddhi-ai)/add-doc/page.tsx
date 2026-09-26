@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 
 export default function AddDocPage() {
   return (
-    <div className="flex-1 space-y-8 p-6 md:p-8 max-w-6xl mx-auto">
+    <div className="flex-1 w-full min-w-0 space-y-8 p-6 md:p-8 max-w-6xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Add Documents</h1>

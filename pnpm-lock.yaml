@@ -12,11 +12,11 @@ importers:
         specifier: ^3.0.160
         version: 3.0.160(react@19.2.8)(zod@4.3.6)
       '@buddhilive/sandbox':
-        specifier: 0.1.0-beta.5
-        version: 0.1.0-beta.5
+        specifier: 0.1.0-beta.8
+        version: 0.1.0-beta.8
       '@buddhilive/sandbox-sw':
-        specifier: 0.1.0-beta.4
-        version: 0.1.0-beta.4
+        specifier: 0.1.0-beta.8
+        version: 0.1.0-beta.8
       '@electric-sql/pglite':
         specifier: ^0.5.8
         version: 0.5.8
@@ -332,14 +332,11 @@ packages:
   '@braintree/sanitize-url@7.1.2':
     resolution: {integrity: sha512-jigsZK+sMF/cuiB7sERuo9V7N9jx+dhmHHnQyDSVdpZwVutaBu7WvNYqMDLSgFgfB30n452TP3vjDAvFC973mA==}
 
-  '@buddhilive/sandbox-sw@0.1.0-beta.4':
-    resolution: {integrity: sha512-HuPwHgFEcmajl2wyAOigQTPOZ6AWLWko7LNhRvhFHOstYsBcr8Ny7JCSoSxwfao9vHvLJIxHkQXDjPKPX2mvAw==}
+  '@buddhilive/sandbox-sw@0.1.0-beta.8':
+    resolution: {integrity: sha512-Qgi/qzeNuSe2hTTYHVkqN0R48wVk38W0RL9csa4zoYZqm+KH94dbHA4uXEvOkl1QgGT/sve4bSjyHpWFHY6b3Q==}
 
-  '@buddhilive/sandbox-toolchain@0.1.0-beta.5':
-    resolution: {integrity: sha512-g6SZXKqzVchL/ZIhmV1m4g0MTIe7Cnj7uF4/mFRg6W//uoyr023DTuC/uNCkNOTAFlR3HTLQTksbgCrgSBW9FQ==}
-
-  '@buddhilive/sandbox@0.1.0-beta.5':
-    resolution: {integrity: sha512-d6x2iwymFEZeLQ1UD/h4R8GFsiNQDbxKrcx9mmPOpO6JzndflEV/A6L9tTQCjlid0hCcoKDCMomv51I2DHsTvg==}
+  '@buddhilive/sandbox@0.1.0-beta.8':
+    resolution: {integrity: sha512-/MPx7LwmaTB1lwPENNeXq05+r33gRgZp17hi7wTbXGxbe1Hw60YJU3p/AhYE1oE8nXA5xL+TE9ZRJocMp72h1w==}
 
   '@cfworker/json-schema@4.1.1':
     resolution: {integrity: sha512-gAmrUZSGtKc3AiBL71iNWxDsyUC5uMaKKGdvzYsBoTW/xi42JQHl7eKV2OYzCUqvc+D2RCcf7EXY2iCyFIk6og==}
@@ -2830,11 +2827,6 @@ packages:
     resolution: {integrity: sha512-w+5mJ3GuFL+NjVtJlvydShqE1eN3h3PbI7/5LAsYJP/2qtuMXjfL2LpHSRqo4b4eSF5K/DH1JXKUAHSB2UW50g==}
     engines: {node: '>= 0.4'}
 
-  esbuild-wasm@0.21.5:
-    resolution: {integrity: sha512-L/FlOPMMFtw+6qPAbuPvJXdrOYOp9yx/PEwSrIZW0qghY4vgV003evdYDwqQ/9ENMQI0B6RMod9xT4FHtto6OQ==}
-    engines: {node: '>=12'}
-    hasBin: true
-
   escalade@3.2.0:
     resolution: {integrity: sha512-WUj2qlxaQtO4g6Pq5c29GTcWGDyd8itL8zTlipgECz3JesAiiOKotd8JU6otB3PACgG6xkJUyVhboMS+bje/jA==}
     engines: {node: '>=6'}
@@ -5080,9 +5072,6 @@ packages:
   vscode-uri@3.1.0:
     resolution: {integrity: sha512-/BpdSx+yCQGnCvecbyXdxHDkuk55/G3xwnC0GqY4gmQ3j+A+g8kzzgB4Nk/SINjqn6+waqw3EgbVF2QKExkRxQ==}
 
-  wa-sqlite@1.0.0:
-    resolution: {integrity: sha512-Kyybo5/BaJp76z7gDWGk2J6Hthl4NIPsE+swgraEjy3IY6r5zIR02wAs1OJH4XtJp1y3puj3Onp5eMGS0z7nUA==}
-
   web-namespaces@2.0.1:
     resolution: {integrity: sha512-bKr1DkiNa2krS7qxNtdrtHAmzuYGFQLiQ13TsorsdT6ULTkPLKuu5+GsFpDlg6JFjUTwX2DyhMPG2be8uPrqsQ==}
 
@@ -5439,16 +5428,10 @@ snapshots:
 
   '@braintree/sanitize-url@7.1.2': {}
 
-  '@buddhilive/sandbox-sw@0.1.0-beta.4': {}
+  '@buddhilive/sandbox-sw@0.1.0-beta.8': {}
 
-  '@buddhilive/sandbox-toolchain@0.1.0-beta.5':
+  '@buddhilive/sandbox@0.1.0-beta.8':
     dependencies:
-      esbuild-wasm: 0.21.5
-      wa-sqlite: 1.0.0
-
-  '@buddhilive/sandbox@0.1.0-beta.5':
-    dependencies:
-      '@buddhilive/sandbox-toolchain': 0.1.0-beta.5
       fflate: 0.8.3
 
   '@cfworker/json-schema@4.1.1': {}
@@ -8035,8 +8018,6 @@ snapshots:
       is-callable: 1.2.7
       is-date-object: 1.1.0
       is-symbol: 1.1.1
-
-  esbuild-wasm@0.21.5: {}
 
   escalade@3.2.0: {}
 
@@ -10916,8 +10897,6 @@ snapshots:
       vscode-languageserver-protocol: 3.17.5
 
   vscode-uri@3.1.0: {}
-
-  wa-sqlite@1.0.0: {}
 
   web-namespaces@2.0.1: {}
 

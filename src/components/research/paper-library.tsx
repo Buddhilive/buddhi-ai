@@ -211,10 +211,10 @@ export function PaperLibrary() {
 
       {/* Table Container */}
       <div className="rounded-lg border border-border/70 bg-card/60 backdrop-blur-sm overflow-hidden shadow-xs">
-        <Table>
+        <Table className="table-fixed w-full">
           <TableHeader>
             <TableRow className="bg-muted/40 hover:bg-muted/40">
-              <TableHead className="w-[45%]">Document</TableHead>
+              <TableHead className="w-[45%] max-w-0">Document</TableHead>
               <TableHead className="w-[15%]">Status</TableHead>
               <TableHead className="w-[10%] text-center">Chunks</TableHead>
               <TableHead className="w-[15%]">Uploaded</TableHead>
@@ -225,10 +225,10 @@ export function PaperLibrary() {
             {isLoading ? (
               Array.from({ length: 5 }).map((_, idx) => (
                 <TableRow key={idx} className="hover:bg-transparent">
-                  <TableCell>
-                    <div className="flex items-center gap-2.5">
+                  <TableCell className="max-w-0">
+                    <div className="flex items-center gap-2.5 min-w-0">
                       <Skeleton className="h-4 w-4 rounded-xs shrink-0" />
-                      <div className="space-y-1.5 flex-1">
+                      <div className="space-y-1.5 flex-1 min-w-0">
                         <Skeleton className="h-4 w-3/4" />
                         <Skeleton className="h-3 w-1/3" />
                       </div>
@@ -293,15 +293,21 @@ export function PaperLibrary() {
                   className="cursor-pointer transition-colors hover:bg-muted/40 group"
                   onClick={() => router.push(`/reader/${paper.id}`)}
                 >
-                  <TableCell className="font-medium">
-                    <div className="flex items-start gap-2.5">
+                  <TableCell className="font-medium max-w-0">
+                    <div className="flex items-start gap-2.5 min-w-0">
                       <FileText className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                      <div className="min-w-0">
-                        <div className="font-semibold text-sm line-clamp-1 group-hover:text-primary transition-colors">
+                      <div className="min-w-0 flex-1">
+                        <div
+                          className="font-semibold text-sm truncate group-hover:text-primary transition-colors"
+                          title={paper.metadata.title || paper.fileName}
+                        >
                           {paper.metadata.title || paper.fileName}
                         </div>
                         {paper.metadata.authors && paper.metadata.authors.length > 0 && (
-                          <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                          <div
+                            className="text-xs text-muted-foreground truncate mt-0.5"
+                            title={paper.metadata.authors.join(", ")}
+                          >
                             {paper.metadata.authors.join(", ")}
                           </div>
                         )}

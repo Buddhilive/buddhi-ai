@@ -72,8 +72,8 @@ export default function ReaderPage({
   }
 
   return (
-    <div className="flex flex-col flex-1 h-full">
-      <div className="border-b bg-background/80 backdrop-blur px-6 py-2.5 flex items-center justify-between sticky top-0 z-10">
+    <div className="flex flex-col h-[calc(100dvh-4rem)] max-h-[calc(100dvh-4rem)] w-full min-h-0 overflow-hidden">
+      <div className="h-12 border-b bg-background/80 backdrop-blur px-6 flex items-center justify-between shrink-0 z-10">
         <Button
           variant="ghost"
           size="sm"
@@ -83,12 +83,15 @@ export default function ReaderPage({
           <ArrowLeft className="h-4 w-4" />
           Back to Library
         </Button>
-        <span className="text-xs font-medium text-muted-foreground truncate max-w-md">
+        <span
+          className="text-xs font-medium text-muted-foreground truncate max-w-md"
+          title={paper.metadata.title}
+        >
           {paper.metadata.title}
         </span>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0 min-w-0 w-full overflow-hidden">
         <PdfReader paper={paper} chunks={chunks} />
         <AiAssistantPanel paperId={paper.id} />
       </div>

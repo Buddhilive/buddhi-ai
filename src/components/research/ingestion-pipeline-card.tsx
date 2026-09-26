@@ -115,11 +115,14 @@ export function IngestionPipelineCard() {
           >
             {/* Top row: File info + Status Badge */}
             <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 <FileText className="h-4 w-4 text-primary shrink-0" />
-                <div className="min-w-0">
-                  <h4 className="text-xs font-medium truncate leading-tight">
-                    {job.fileName}
+                <div className="min-w-0 flex-1">
+                  <h4
+                    className="text-xs font-medium truncate leading-tight"
+                    title={job.paper?.metadata?.title || job.fileName}
+                  >
+                    {job.paper?.metadata?.title || job.fileName}
                   </h4>
                   <p className="text-[10px] text-muted-foreground mt-0.5">
                     {formatBytes(job.fileSize)}
@@ -208,11 +211,14 @@ export function IngestionPipelineCard() {
 
             {/* Progress bar and details */}
             <div className="space-y-1.5">
-              <div className="flex justify-between items-center text-[11px] text-muted-foreground">
-                <span className="font-medium text-foreground/80">
+              <div className="flex justify-between items-center text-[11px] text-muted-foreground gap-2 min-w-0">
+                <span
+                  className="font-medium text-foreground/80 truncate"
+                  title={job.stepLabel || "Preparing..."}
+                >
                   {job.stepLabel || "Preparing..."}
                 </span>
-                <span className="font-mono text-[10px]">{job.progress}%</span>
+                <span className="font-mono text-[10px] shrink-0">{job.progress}%</span>
               </div>
               <Progress
                 value={job.progress}

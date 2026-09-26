@@ -1,9 +1,9 @@
-var T = Object.defineProperty;
-var O = (e, t, r) => t in e ? T(e, t, { enumerable: !0, configurable: !0, writable: !0, value: r }) : e[t] = r;
-var g = (e, t, r) => O(e, typeof t != "symbol" ? t + "" : t, r);
-class C {
+var C = Object.defineProperty;
+var O = (e, t, r) => t in e ? C(e, t, { enumerable: !0, configurable: !0, writable: !0, value: r }) : e[t] = r;
+var m = (e, t, r) => O(e, typeof t != "symbol" ? t + "" : t, r);
+class E {
   constructor() {
-    g(this, "ports", /* @__PURE__ */ new Map());
+    m(this, "ports", /* @__PURE__ */ new Map());
   }
   register(t, r) {
     this.ports.set(t, {
@@ -25,9 +25,9 @@ class C {
     return Array.from(this.ports.keys());
   }
 }
-const a = new C();
-async function E(e, t, r) {
-  const s = a.get(e);
+const l = new E();
+async function x(e, t, r) {
+  const s = l.get(e);
   if (!s)
     return new Response(
       `<html><body><h2>503 Service Unavailable</h2><p>No virtual HTTP server listening on port ${e}.</p></body></html>`,
@@ -43,65 +43,80 @@ async function E(e, t, r) {
     );
   if (s.messagePort) {
     const o = new MessageChannel(), f = {};
-    t.headers.forEach((l, i) => {
-      f[i] = l;
+    t.headers.forEach((c, i) => {
+      f[i] = c;
     });
-    const m = t.method !== "GET" && t.method !== "HEAD" ? await t.arrayBuffer() : null;
-    return new Promise((l) => {
-      let i = null, p = !1, h = 200, y = "OK";
-      const c = new Headers({
+    const w = t.method !== "GET" && t.method !== "HEAD" ? await t.arrayBuffer() : null;
+    return new Promise((c) => {
+      let i = null, d = !1, h = 200, y = "OK";
+      const u = new Headers({
         "Cross-Origin-Opener-Policy": "same-origin",
         "Cross-Origin-Embedder-Policy": "require-corp"
-      }), w = setTimeout(() => {
-        p || (p = !0, l(
+      }), b = setTimeout(() => {
+        d || (d = !0, c(
           new Response(
             `<html><body><h2>504 Gateway Timeout</h2><p>Port ${e} timed out responding.</p></body></html>`,
             { status: 504, headers: { "Content-Type": "text/html" } }
           )
         ));
       }, 15e3);
-      o.port1.onmessage = (b) => {
-        clearTimeout(w);
-        const n = b.data;
+      let g = !1;
+      o.port1.onmessage = (P) => {
+        clearTimeout(b);
+        const n = P.data;
         if (n.type === "headers") {
           if (h = n.status || 200, y = n.statusText || "OK", n.headers)
-            for (const [u, d] of Object.entries(n.headers))
-              c.set(u, String(d));
+            for (const [p, a] of Object.entries(n.headers))
+              u.set(p, String(a)), p.toLowerCase() === "content-type" && String(a).includes("text/event-stream") && (g = !0);
           return;
         }
         if (n.type === "chunk") {
-          if (p)
+          if (d)
             i && i.enqueue(new Uint8Array(n.data));
           else {
-            p = !0;
-            const u = new ReadableStream({
-              start(d) {
-                i = d, d.enqueue(new Uint8Array(n.data));
+            d = !0;
+            const p = new ReadableStream({
+              start(a) {
+                i = a, a.enqueue(new Uint8Array(n.data));
+              },
+              cancel() {
+                try {
+                  o.port1.postMessage({ type: "abort" }), o.port1.close();
+                } catch {
+                }
               }
             });
-            l(
-              new Response(u, {
+            c(
+              new Response(p, {
                 status: h,
                 statusText: y,
-                headers: c
+                headers: u
               })
             );
           }
           return;
         }
+        if (n.type === "close") {
+          if (i)
+            try {
+              i.close();
+            } catch {
+            }
+          return;
+        }
         if (n.type === "end" || !n.type) {
           if (i)
-            n.body && n.body.byteLength > 0 && i.enqueue(new Uint8Array(n.body)), i.close();
-          else if (!p) {
-            if (p = !0, n.headers)
-              for (const [d, P] of Object.entries(n.headers))
-                c.set(d, String(P));
-            const u = new Response(n.body || null, {
+            n.body && n.body.byteLength > 0 && i.enqueue(new Uint8Array(n.body)), g || i.close();
+          else if (!d) {
+            if (d = !0, n.headers)
+              for (const [a, T] of Object.entries(n.headers))
+                u.set(a, String(T));
+            const p = new Response(n.body || null, {
               status: n.status || h,
               statusText: n.statusText || y,
-              headers: c
+              headers: u
             });
-            l(u);
+            c(p);
           }
         }
       }, s.messagePort.postMessage(
@@ -111,7 +126,7 @@ async function E(e, t, r) {
           path: r,
           method: t.method,
           headers: f,
-          body: m,
+          body: w,
           replyPort: o.port2
         },
         [o.port2]
@@ -135,13 +150,13 @@ function R() {
   const e = new BroadcastChannel("buddhilive-sandbox-sw");
   e.onmessage = (t) => {
     const { type: r, port: s } = t.data;
-    r === "port:register" && typeof s == "number" ? (a.register(s), e.postMessage({ type: "port:registered", port: s })) : r === "port:unregister" && typeof s == "number" ? a.unregister(s) : r === "sw:ping" && e.postMessage({
+    r === "port:register" && typeof s == "number" ? (l.register(s), e.postMessage({ type: "port:registered", port: s })) : r === "port:unregister" && typeof s == "number" ? l.unregister(s) : r === "sw:ping" && e.postMessage({
       type: "sw:pong",
-      ports: a.list()
+      ports: l.list()
     });
   }, e.postMessage({
     type: "sw:ready",
-    ports: a.list()
+    ports: l.list()
   });
 }
 self.addEventListener("message", (e) => {
@@ -150,8 +165,8 @@ self.addEventListener("message", (e) => {
   const { type: r, port: s } = t;
   if (r === "port:register" && typeof s == "number") {
     const o = e.ports && e.ports[0];
-    a.register(s, o), e.source && "postMessage" in e.source && e.source.postMessage({ type: "port:registered", port: s });
-  } else r === "port:unregister" && typeof s == "number" && a.unregister(s);
+    l.register(s, o), e.source && "postMessage" in e.source && e.source.postMessage({ type: "port:registered", port: s });
+  } else r === "port:unregister" && typeof s == "number" && l.unregister(s);
 });
 self.addEventListener("install", (e) => {
   e.waitUntil(self.skipWaiting());
@@ -167,7 +182,7 @@ self.addEventListener("fetch", (e) => {
   const t = new URL(e.request.url), r = t.pathname.match(/^\/__preview\/(\d+)(.*)/);
   if (r) {
     const s = parseInt(r[1], 10), o = r[2] || "/";
-    e.respondWith(E(s, e.request, o));
+    e.respondWith(x(s, e.request, o));
     return;
   }
   t.origin === self.location.origin && e.respondWith(
