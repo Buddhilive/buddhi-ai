@@ -17,6 +17,7 @@ import { useSettingsStore } from "@/stores/settings-store";
 import { useLiteRTModelStore } from "@/stores/litert-store";
 import { rlmService } from "@/lib/rlm-service";
 import { ExtendedContextBadge } from "@/components/research/extended-context-badge";
+import { MessageResponse } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -248,44 +249,46 @@ export function AiAssistantPanel({ paperId }: AiAssistantPanelProps) {
                 : "items-start"
             }`}
           >
-            <div
-              className={`p-3 rounded-xl max-w-[90%] whitespace-pre-wrap ${
-                msg.role === "user"
-                  ? "bg-primary text-primary-foreground font-sans"
-                  : "bg-muted text-foreground border"
-              }`}
-            >
-              {msg.content}
+            {msg.role === "user" ? (
+              <div className="p-3 rounded-xl max-w-[90%] whitespace-pre-wrap bg-primary text-primary-foreground font-sans">
+                {msg.content}
+              </div>
+            ) : (
+              <div className="p-3 rounded-xl max-w-[90%] bg-muted text-foreground border overflow-hidden">
+                <div className="text-xs leading-relaxed prose prose-xs dark:prose-invert max-w-none break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_code]:text-[11px]">
+                  <MessageResponse>{msg.content}</MessageResponse>
+                </div>
 
-              {/* Inline Citations */}
-              {msg.citations && msg.citations.length > 0 && (
-                <div className="mt-3 pt-2 border-t border-border/50 space-y-1.5">
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">
-                    Sources & Citations:
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {msg.citations.map((cite, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setSelectedChunkId(cite.chunkId)}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-background/80 hover:bg-background border text-[11px] font-medium text-primary hover:underline transition-colors"
-                      >
-                        <BookOpen className="h-3 w-3" />
-                        <span>p.{cite.pageNumber}</span>
-                      </button>
-                    ))}
+                {/* Inline Citations */}
+                {msg.citations && msg.citations.length > 0 && (
+                  <div className="mt-3 pt-2 border-t border-border/50 space-y-1.5">
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">
+                      Sources & Citations:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {msg.citations.map((cite, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setSelectedChunkId(cite.chunkId)}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-background/80 hover:bg-background border text-[11px] font-medium text-primary hover:underline transition-colors"
+                        >
+                          <BookOpen className="h-3 w-3" />
+                          <span>p.{cite.pageNumber}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* RLM Metadata Badge */}
-              {msg.rlmMetadata && (
-                <div className="mt-2.5 pt-2 border-t border-border/40">
-                  <ExtendedContextBadge metadata={msg.rlmMetadata} />
-                </div>
-              )}
-            </div>
+                {/* RLM Metadata Badge */}
+                {msg.rlmMetadata && (
+                  <div className="mt-2.5 pt-2 border-t border-border/40">
+                    <ExtendedContextBadge metadata={msg.rlmMetadata} />
+                  </div>
+                )}
+              </div>
+            )}
             <span className="text-[9px] text-muted-foreground mt-1 px-1">
               {new Date(msg.timestamp).toLocaleTimeString([], {
                 hour: "2-digit",

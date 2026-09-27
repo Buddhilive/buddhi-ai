@@ -165,6 +165,7 @@ export class RlmService {
           } finally {
             reader.releaseLock();
           }
+          console.log(`[RLM Iteration ${currentIteration}] LLM Output:`, responseText);
           return responseText;
         } finally {
           await conversation.delete().catch(() => {});
@@ -178,6 +179,13 @@ export class RlmService {
       });
 
       const result: RlmResult = await session.run(query, llmFn);
+
+      if (!result.answer || result.answer.trim().toLowerCase() === "buffer") {
+        throw new RlmError(
+          "RLM synthesized an empty or placeholder response ('buffer')",
+          "ERR_INVALID_ANSWER"
+        );
+      }
 
       onProgress?.({
         iteration: result.iterations,
