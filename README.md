@@ -32,34 +32,34 @@
 
 ```mermaid
 graph TD
-    User((Researcher)) -->|Upload Paper / Prompt| UI[Buddhi AI Research Workspace]
+    User(("Researcher")) -->|Upload Paper / Prompt| UI["Buddhi AI Research Workspace"]
 
-    subgraph Browser_Client_Side [Browser Environment - 100% Client-Side]
+    subgraph Browser_Client_Side ["Browser Environment - 100% Client-Side"]
         direction TB
 
-        subgraph Ingestion_Layer [Ingestion & Processing]
-            PDF[PDF / Document Parser] --> CHUNK[Semantic Text Splitter]
-            CHUNK --> EMB[LiteRT Embedding Worker<br/>EmbeddingGemma-300M]
+        subgraph Ingestion_Layer ["Ingestion & Processing"]
+            PDF["PDF / Document Parser"] --> CHUNK["Semantic Text Splitter"]
+            CHUNK --> EMB["LiteRT Embedding Worker<br/>EmbeddingGemma-300M"]
         end
 
-        subgraph Storage_Layer [In-Browser Storage]
-            EMB -->|Vector Embeddings| PGLITE[(PGlite WASM<br/>pgvector Store)]
-            PDF -->|Document Cache| IDB[(IndexedDB Storage)]
+        subgraph Storage_Layer ["In-Browser Storage"]
+            EMB -->|Vector Embeddings| PGLITE[("PGlite WASM<br/>pgvector Store")]
+            PDF -->|Document Cache| IDB[("IndexedDB Storage")]
         end
 
-        subgraph Reasoning_Layer [Cognitive & Reasoning Pipeline]
-            PGLITE -->|Semantic Retrieval| RAG[RAG Engine]
-            RAG --> RLM[Recursive Language Model<br/>RLM Service]
-            RLM --> CTX[Context Assembler & Prompts]
+        subgraph Reasoning_Layer ["Cognitive & Reasoning Pipeline"]
+            PGLITE -->|Semantic Retrieval| RAG["RAG Engine"]
+            RAG --> RLM["Recursive Language Model<br/>RLM Service"]
+            RLM --> CTX["Context Assembler & Prompts"]
         end
 
-        subgraph Inference_Layer [On-Device Model Execution]
-            CTX --> LITERT[Google LiteRT WebGPU Runtime]
-            LITERT --> GEMMA[Gemma 4 E2B<br/>Chat Template v4]
+        subgraph Inference_Layer ["On-Device Model Execution"]
+            CTX --> LITERT["Google LiteRT WebGPU Runtime"]
+            LITERT --> GEMMA["Gemma 4 E2B<br/>Chat Template v4"]
         end
 
-        subgraph Sandbox_Layer [Client Execution Sandbox]
-            GEMMA -->|Generated Code / Previews| SB[@buddhilive/sandbox<br/>Service Worker Runtime]
+        subgraph Sandbox_Layer ["Client Execution Sandbox"]
+            GEMMA -->|Generated Code / Previews| SB["@buddhilive/sandbox<br/>Service Worker Runtime"]
         end
     end
 
