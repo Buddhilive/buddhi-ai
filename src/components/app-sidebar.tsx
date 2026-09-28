@@ -3,7 +3,7 @@
 import * as React from "react"
 
 import { NavMain } from "@/components/nav-main";
-/* import { NavProjects } from "@/components/nav-projects"; */
+import { NavProjects } from "@/components/nav-projects";
 /* import { NavUser } from "@/components/nav-user"; */
 import { TeamSwitcher } from "@/components/team-switcher";
 import { NavChatHistory } from "@/components/nav-chat-history";
@@ -19,7 +19,7 @@ import { useNavigation } from "@/hooks/use-navigation";
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const data = SIDEBAR_DATA;
-  const { navItems } = useNavigation();
+  const { navItems, projectItems } = useNavigation();
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -28,8 +28,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navItems} />
+        <NavProjects projects={projectItems} />
         <NavChatHistory />
-        {/* <NavProjects projects={data.projects} /> */}
       </SidebarContent>
       <SidebarFooter>
         {/* <NavUser user={data.user} /> */}

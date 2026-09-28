@@ -2,17 +2,17 @@
  * buddhi-ai-core/chat-api.ts
  *
  * Implements a custom `ChatTransport` for the Vercel AI SDK's `useChat` hook
- * that drives inference entirely in the browser via MediaPipe's LiteRT runtime
- * — no network requests, no API keys required.
+ * that drives inference entirely in the browser via Google's official LiteRT-LM Web
+ * runtime (@litert-lm/core) — no network requests, no API keys required.
  *
  * HOW IT FITS TOGETHER
  * --------------------
  *  useChat({ transport })
- *    └─ MediaPipeChatTransport.sendMessages()
+ *    └─ LiteRTChatTransport.sendMessages()
  *         ├─ Converts UIMessage[] → BuddhiAIMessage[]
- *         ├─ Prepends system message (native Gemma 4 role or injected into user turn)
- *         ├─ Calls generateChatTemplate() to build the Gemma prompt
- *         └─ Streams tokens from LlmInference.generateResponse()
+ *         ├─ Applies session memory context if available
+ *         ├─ Creates a LiteRT-LM Conversation with preface
+ *         └─ Streams tokens from conversation.sendMessageStreaming()
  *              └─ createUIMessageStream writes UIMessageChunks back to useChat
  *
  * CHUNK LIFECYCLE (what useChat expects)
@@ -30,19 +30,31 @@
  */
 
 import { DEFAULT_SYSTEM_PROMPT } from "@/const/system-prompt";
-import { generateChatTemplate } from "@/lib/buddhi-ai-core/chat-template-generator";
-import { applyMemoryContext } from "@/lib/memory";
+import { applyMemoryContext, estimateMessageTokens } from "@/lib/memory";
 import { useMemoryStore } from "@/stores/memory-store";
+import {
+    GemmaChannelStreamParser,
+    parseGemmaToolArguments,
+    type ToolCallPayload,
+} from "@/lib/buddhi-ai-core/gemma-channel-parser";
 import type { BuddhiAIChatTemplate, BuddhiAIMessage, GemmaTemplateVersion } from "@/types/messages";
-import type { LlmInference, Prompt } from "@mediapipe/tasks-genai";
+import type { Engine, Message } from "@litert-lm/core";
 import {
     createUIMessageStream,
     type ChatTransport,
     type FileUIPart,
+    type TextUIPart,
     type UIMessage,
     type UIMessageChunk,
 } from "ai";
 import { nanoid } from "nanoid";
+import { retrieveRagContext } from "@/lib/rag-retrieval";
+import { RAG_MAX_CONTEXT_CHARS, RAG_SNIPPET_MAX_CHARS } from "@/const/rag";
+import type { BuddhiMessageMetadata, RagCitationAnnotation, RagContext } from "@/types/research";
+import { rlmService } from "@/lib/rlm-service";
+import { usePaperStore } from "@/stores/paper-store";
+import { useSettingsStore } from "@/stores/settings-store";
+import { getAllPapers } from "@/lib/paper-storage";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -52,13 +64,6 @@ import { nanoid } from "nanoid";
  * Returns true when `line` (the first line of a response) is a code-fence
  * opening that signals the model is wrapping plain prose in backticks rather
  * than actual code.
- *
- * We treat a fence as "plain-text" when it has no language tag at all, or
- * when the tag is one of the well-known prose pseudo-languages:
- *   text | plaintext | plain | markdown | md
- *
- * Language-tagged fences like ```python or ```ts are left untouched so that
- * real code blocks continue to render with syntax highlighting.
  */
 function isPlainTextCodeFence(line: string): boolean {
     const match = line.match(/^```(\w*)$/);
@@ -75,15 +80,38 @@ function isPlainTextCodeFence(line: string): boolean {
 }
 
 /**
+ * Formats retrieved RAG contexts into a structured prompt block for the LLM.
+ * Strictly enforces total character budget.
+ */
+function ragContextToPromptBlock(contexts: RagContext[]): string {
+    if (contexts.length === 0) {
+        return "";
+    }
+
+    let totalChars = 0;
+    const lines: string[] = [
+        "[RESEARCH CONTEXT from your uploaded library — use [cite:N] to reference these sources inline:]",
+    ];
+
+    for (let i = 0; i < contexts.length; i++) {
+        const ctx = contexts[i];
+        const authors = ctx.authors.length > 0 ? ctx.authors.join(", ") : "Unknown Authors";
+        const attribution = `[${i}] "${ctx.paperTitle}" — ${authors}${ctx.year ? ` (${ctx.year})` : ""}, Page ${ctx.pageNumber}${ctx.sectionHeading ? `, §${ctx.sectionHeading}` : ""}`;
+        const snippet = ctx.textSnippet;
+        const entry = `${attribution}\n${snippet}`;
+
+        if (totalChars + entry.length > RAG_MAX_CONTEXT_CHARS) break;
+        totalChars += entry.length;
+        lines.push(entry);
+    }
+
+    lines.push("[END RESEARCH CONTEXT]");
+    return lines.join("\n\n");
+}
+
+/**
  * Removes the outer triple-backtick fence from a fully-buffered response,
  * returning only the inner content.
- *
- * Handles both forms:
- *   ```\ncontent\n```          (no language tag)
- *   ```plaintext\ncontent\n``` (plain-text language tag)
- *
- * Always safe to call — if the pattern doesn't match the input is returned
- * unchanged.
  */
 function stripOuterCodeFence(text: string): string {
     return text
@@ -93,9 +121,8 @@ function stripOuterCodeFence(text: string): string {
 
 /**
  * Strips Gemma model template tokens that may appear verbatim at the end of
- * a generated response.  Gemma 4 uses `<turn|>` and Gemma 3n uses
- * `<end_of_turn>` as turn-closing markers; if the runtime doesn't intercept
- * them as stop tokens they bleed into the user-visible text.
+ * a generated response. Gemma 4 uses `<turn|>` and Gemma 3n uses
+ * `<end_of_turn>` as turn-closing markers.
  */
 function stripTrailingTemplateTokens(text: string): string {
     return text
@@ -105,54 +132,46 @@ function stripTrailingTemplateTokens(text: string): string {
 }
 
 /**
- * Resolves a file's source into a `data:` URL suitable for MediaPipe.
- *
- * Handles three cases:
- *  1. Already a `data:` URL — returned as-is.
- *  2. A `blob:` URL (ephemeral object URL) — fetched and converted via FileReader.
- *  3. Raw binary in a `Uint8Array` or base64 `string` — encoded as a data URL.
- *
- * Returns `null` when the source cannot be resolved (e.g. a revoked blob URL).
+ * Converts a Blob to a data: URL string using FileReader.
+ */
+function blobToDataUrl(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = () =>
+            reject(new Error("FileReader failed to convert Blob to data URL"));
+        reader.readAsDataURL(blob);
+    });
+}
+
+/**
+ * Resolves a file part's content to a data: URL.
  */
 async function resolveFileUrl(
     url: string | undefined,
-    data?: Uint8Array | string,
-    mediaType?: string,
+    data: Uint8Array | string | undefined,
+    mediaType: string,
 ): Promise<string | null> {
-    if (!url && !data) return null;
-
-    // Already a data URL — use directly.
-    if (url && !url.startsWith("blob:")) return url;
-
-    // Blob URL — fetch the referenced Blob and encode it as base64.
-    if (url?.startsWith("blob:")) {
-        try {
-            const response = await fetch(url);
-            const blob = await response.blob();
-            return new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result as string);
-                reader.onerror = () => {
-                    console.error(
-                        "[resolveFileUrl] FileReader error while converting blob URL to data URL."
-                    );
-                    resolve(null);
-                };
-                reader.readAsDataURL(blob);
-            });
-        } catch (err) {
-            console.error("[resolveFileUrl] Failed to fetch blob URL:", err);
-            return null;
+    if (url) {
+        if (url.startsWith("data:")) return url;
+        if (url.startsWith("blob:")) {
+            try {
+                const res = await fetch(url);
+                const blob = await res.blob();
+                return await blobToDataUrl(blob);
+            } catch (err) {
+                console.warn("[resolveFileUrl] Failed to fetch blob: URL:", err);
+                return null;
+            }
         }
+        return url;
     }
 
-    // Uint8Array — convert to base64 data URL.
     if (data instanceof Uint8Array) {
         const binary = Array.from(data, (b) => String.fromCharCode(b)).join("");
         return `data:${mediaType ?? "application/octet-stream"};base64,${btoa(binary)}`;
     }
 
-    // String — treat as raw base64 payload.
     if (typeof data === "string") {
         return `data:${mediaType ?? "application/octet-stream"};base64,${data}`;
     }
@@ -161,65 +180,8 @@ async function resolveFileUrl(
 }
 
 /**
- * Walks a MediaPipe `Prompt` array and replaces every `{ imageSource: string }`
- * entry with `{ imageSource: ImageBitmap }`.
- *
- * MediaPipe's LiteRT WASM runtime cannot decode data: / blob: URL strings
- * passed as `imageSource` — it needs a decoded pixel buffer (ImageBitmap).
- * Passing a raw string causes the runtime to throw:
- *   "LlmVisionInferenceCalculator failed: Image models could not be created"
- *
- * Non-image parts (strings, audio objects) are returned unchanged.
- */
-async function resolvePromptImageSources(prompt: Prompt): Promise<Prompt> {
-    // Prompt can be a bare string PromptPart — nothing to convert.
-    if (!Array.isArray(prompt)) return prompt;
-
-    const resolved = await Promise.all(
-        (prompt as Array<unknown>).map(async (part) => {
-            if (
-                typeof part !== "object" ||
-                part === null ||
-                !("imageSource" in part) ||
-                typeof (part as Record<string, unknown>).imageSource !== "string"
-            ) {
-                return part;
-            }
-
-            const url = (part as { imageSource: string }).imageSource;
-            try {
-                const response = await fetch(url);
-                const blob = await response.blob();
-                const bitmap = await createImageBitmap(blob);
-                return { imageSource: bitmap };
-            } catch (err) {
-                console.warn(
-                    "[resolvePromptImageSources] Could not decode imageSource to ImageBitmap; " +
-                    "falling back to URL string (may cause a WASM runtime error):",
-                    err,
-                );
-                return part;
-            }
-        }),
-    );
-    return resolved as Prompt;
-}
-
-/**
  * Converts the Vercel AI SDK's `UIMessage[]` into the internal
- * `BuddhiAIMessage[]` format expected by `generateChatTemplate`.
- *
- * Text-only messages produce a plain `string` content (backward-compatible).
- * Messages that include at least one image or audio file produce an array of
- * `BuddhiAIChatTemplate` items so `generateGemma4Template` can inject the
- * correct `<|image|>` / `<|audio|>` placeholders.
- *
- * When `supportsVision` is `false` (the default for text-only model files),
- * image and audio parts are silently stripped — passing `{ imageSource }` to a
- * model that has no vision encoder causes MediaPipe to throw immediately.
- *
- * Unsupported file types (video, documents) are always dropped with a warning.
- * Reasoning parts are never forwarded to the model.
+ * `BuddhiAIMessage[]` format.
  */
 async function uiMessagesToBuddhiMessages(
     messages: UIMessage[],
@@ -233,20 +195,22 @@ async function uiMessagesToBuddhiMessages(
             for (const part of msg.parts) {
                 if (part.type === "text") {
                     contentParts.push({ type: "text", text: part.text });
+                } else if (part.type === "dynamic-tool" || (part as { type: string }).type?.startsWith?.("tool-")) {
+                    const toolPart = part as { toolName?: string; input?: unknown; output?: unknown; errorText?: string };
+                    if (toolPart.toolName) {
+                        const repr = `[Tool: ${toolPart.toolName} args: ${JSON.stringify(toolPart.input || {})} result: ${JSON.stringify(toolPart.output ?? toolPart.errorText ?? {})}]`;
+                        contentParts.push({ type: "text", text: repr });
+                    }
                 } else if (part.type === "file") {
                     const filePart = part as FileUIPart;
                     const mediaType = filePart.mediaType ?? "";
-                    // `data` exists on the full FileUIPart spec; local parts
-                    // only set `url`, so cast to `unknown` first.
                     const rawData = (filePart as unknown as { data?: Uint8Array | string }).data;
 
                     if (mediaType.startsWith("image/")) {
                         if (!supportsVision) {
-                            // Text-only model: passing imageSource crashes MediaPipe.
                             console.warn(
                                 `[uiMessagesToBuddhiMessages] Model does not support vision. ` +
-                                `Skipping image "${filePart.filename ?? "image"}" — load a ` +
-                                `vision-capable model to analyse images.`
+                                `Skipping image "${filePart.filename ?? "image"}".`
                             );
                         } else {
                             const dataUrl = await resolveFileUrl(filePart.url, rawData, mediaType);
@@ -258,19 +222,13 @@ async function uiMessagesToBuddhiMessages(
                                     fileName: filePart.filename,
                                 });
                                 hasMedia = true;
-                            } else {
-                                console.warn(
-                                    `[uiMessagesToBuddhiMessages] Could not resolve image URL for ` +
-                                    `"${filePart.filename ?? "image"}"; skipping file part.`
-                                );
                             }
                         }
                     } else if (mediaType.startsWith("audio/")) {
                         if (!supportsVision) {
                             console.warn(
-                                `[uiMessagesToBuddhiMessages] Model does not support vision/audio. ` +
-                                `Skipping audio "${filePart.filename ?? "audio"}" — load a ` +
-                                `vision-capable model (E2B/E4B) to process audio.`
+                                `[uiMessagesToBuddhiMessages] Model does not support audio. ` +
+                                `Skipping audio "${filePart.filename ?? "audio"}".`
                             );
                         } else {
                             const dataUrl = await resolveFileUrl(filePart.url, rawData, mediaType);
@@ -282,34 +240,12 @@ async function uiMessagesToBuddhiMessages(
                                     fileName: filePart.filename,
                                 });
                                 hasMedia = true;
-                            } else {
-                                console.warn(
-                                    `[uiMessagesToBuddhiMessages] Could not resolve audio URL for ` +
-                                    `"${filePart.filename ?? "audio"}"; skipping file part.`
-                                );
                             }
                         }
-                    } else if (mediaType.startsWith("video/")) {
-                        // LiteRT does not support video — dropped with a warning.
-                        console.warn(
-                            `[uiMessagesToBuddhiMessages] Video files are not supported by the ` +
-                            `on-device inference runtime. Skipping "${filePart.filename ?? "video"}".`
-                        );
-                    } else {
-                        // PDFs, DOCX, and other binary formats have no understanding layer.
-                        console.warn(
-                            `[uiMessagesToBuddhiMessages] Unsupported file type "${mediaType}" ` +
-                            `for "${filePart.filename ?? "file"}". Only images and audio ` +
-                            `(on vision-capable models) are forwarded to the model.`
-                        );
                     }
                 }
-                // Reasoning parts are produced by the model; never re-sent to it.
             }
 
-            // Text-only messages use a plain string (backward-compatible with
-            // Gemma 3n and existing chat history). Multimodal messages use an
-            // array so generateGemma4Template can insert media placeholders.
             const content: BuddhiAIMessage["content"] = hasMedia
                 ? contentParts
                 : contentParts
@@ -326,116 +262,63 @@ async function uiMessagesToBuddhiMessages(
 }
 
 // ---------------------------------------------------------------------------
-// MediaPipeChatTransport
+// LiteRTChatTransport
 // ---------------------------------------------------------------------------
+
+export interface TransportOptions {
+    isReasoningOn?: boolean;
+    systemPrompt?: string;
+    supportsVision?: boolean;
+    chatId?: string | null;
+}
 
 /**
  * A `ChatTransport` that runs LLM inference directly in the browser using
- * MediaPipe's `LlmInference` runtime (LiteRT / WebGPU).
- *
- * Pass a ready `LlmInference` instance to the constructor. The instance is
- * obtained by calling `LlmInference.createFromOptions()` in `useModelEngine`.
- * It is stored in `useLiteRTModelStore` once initialised.
- *
- * @param llm             - Initialised MediaPipe LlmInference instance.
- * @param templateVersion - Gemma prompt format to use. Defaults to "gemma4".
- * @param isReasoningOn   - When true, injects `<|think|>` into the system turn
- *                          and streams the model's internal reasoning as a
- *                          `reasoning` content block before the text response.
- *
- * @example
- * ```tsx
- * const transport = useMemo(
- *   () => new MediaPipeChatTransport(liteRTModelInstance, templateVersion, isReasoningOn),
- *   [liteRTModelInstance, templateVersion, isReasoningOn]
- * );
- * const { messages, sendMessage, stop, status } = useChat({ transport });
- * ```
+ * Google's official LiteRT-LM Web runtime (@litert-lm/core).
  */
-export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
-    /**
-     * Whether Gemma 4 extended thinking mode is active.
-     *
-     * This is intentionally a public mutable property rather than a constructor
-     * argument. The Vercel AI SDK's `useChat` stores the transport instance once
-     * (in an internal `useRef`) and never re-reads the `transport` option after
-     * the initial mount. Passing `isReasoningOn` as a constructor param and
-     * recreating the transport via `useMemo` would have no effect because `useChat`
-     * keeps using the original instance.
-     *
-     * The correct pattern is to keep the transport stable and update this property
-     * imperatively via a `useEffect` whenever the toggle changes:
-     *
-     * ```tsx
-     * useEffect(() => { transport.isReasoningOn = isReasoningOn; }, [transport, isReasoningOn]);
-     * ```
-     */
-    isReasoningOn: boolean = false;
-
-    /**
-     * The system prompt to use for the conversation.
-     * Updated imperatively by ChatSession when the user selects a different prompt.
-     */
-    systemPrompt: string = DEFAULT_SYSTEM_PROMPT;
-
-    /**
-     * Whether the loaded model file bundles a vision encoder.
-     *
-     * When `false` (the default), image and audio parts are stripped before the
-     * Gemma prompt is built.  Passing `{ imageSource }` to a text-only MediaPipe
-     * model causes an immediate "Image models could not be created" crash.
-     *
-     * Set to `true` via a `useEffect` in ChatSession when the active model's
-     * `ModelConfig.supportsVision` flag is `true`.
-     */
-    supportsVision: boolean = false;
-
-    /**
-     * A Promise that resolves to the RAG context string (or `null`) for the
-     * current turn.  Replaces the old synchronous `ragContext` property.
-     *
-     * **Why a Promise?**
-     * `sendMessage()` must be called *before* RAG retrieval so the user's
-     * message appears in the conversation immediately.  The transport's
-     * `execute` callback awaits this promise, so the LLM prompt is not built
-     * until the context is ready — but the UI update is not blocked.
-     *
-     * Usage in ChatSession.handleSubmit:
-     * ```ts
-     * let resolveRag: (ctx: string | null) => void;
-     * transport.ragContextPromise = new Promise(r => { resolveRag = r; });
-     * sendMessage({ text, files });   // user message appears immediately
-     * // …run retrieval…
-     * resolveRag(ragContextBlock);    // transport unblocks and builds prompt
-     * ```
-     *
-     * Reset to `null` after first use so stale context never bleeds into
-     * regenerations or follow-up turns.
-     */
-    ragContextPromise: Promise<string | null> | null = null;
-
-    /**
-     * The active chat ID. Set imperatively from ChatSession via a useEffect
-     * whenever the route changes. Used by the memory middleware to look up
-     * the session-scoped summary in sessionStorage.
-     *
-     * `null` for new chats that haven't been saved yet.
-     */
-    chatId: string | null = null;
+export class LiteRTChatTransport implements ChatTransport<UIMessage> {
+    private _isReasoningOn: boolean = false;
+    private _systemPrompt: string = DEFAULT_SYSTEM_PROMPT;
+    private _supportsVision: boolean = false;
+    private _chatId: string | null = null;
 
     constructor(
-        private readonly llm: LlmInference,
+        private readonly engine: Engine,
+        private readonly getOptions?: () => TransportOptions,
         private readonly templateVersion: GemmaTemplateVersion = "gemma4",
     ) { }
 
+    get isReasoningOn(): boolean {
+        return this.getOptions ? (this.getOptions().isReasoningOn ?? this._isReasoningOn) : this._isReasoningOn;
+    }
+    set isReasoningOn(val: boolean) {
+        this._isReasoningOn = val;
+    }
+
+    get systemPrompt(): string {
+        return this.getOptions ? (this.getOptions().systemPrompt ?? this._systemPrompt) : this._systemPrompt;
+    }
+    set systemPrompt(val: string) {
+        this._systemPrompt = val;
+    }
+
+    get supportsVision(): boolean {
+        return this.getOptions ? (this.getOptions().supportsVision ?? this._supportsVision) : this._supportsVision;
+    }
+    set supportsVision(val: boolean) {
+        this._supportsVision = val;
+    }
+
+    get chatId(): string | null {
+        return this.getOptions ? (this.getOptions().chatId ?? this._chatId) : this._chatId;
+    }
+    set chatId(val: string | null) {
+        this._chatId = val;
+    }
+
     /**
      * Called by `useChat` whenever the user submits a message or requests a
-     * regeneration. Returns a `ReadableStream<UIMessageChunk>` that the hook
-     * consumes to update the message list reactively.
-     *
-     * @param options.messages    - Full conversation history (UIMessage[])
-     * @param options.trigger     - 'submit-message' | 'regenerate-message'
-     * @param options.abortSignal - Wired to the Stop button by useChat
+     * regeneration. Returns a `ReadableStream<UIMessageChunk>`.
      */
     sendMessages({
         messages,
@@ -445,7 +328,6 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
     > {
         const stream = createUIMessageStream({
             execute: async ({ writer }) => {
-                // ── Early abort check ─────────────────────────────────────────
                 if (abortSignal?.aborted) {
                     writer.write({
                         type: "abort",
@@ -454,51 +336,13 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                     return;
                 }
 
-                // ── Await RAG context ─────────────────────────────────────────
-                // handleSubmit sets ragContextPromise before calling sendMessage so
-                // the user message appears in the UI immediately while retrieval
-                // runs concurrently.  We await the promise here so the LLM never
-                // sees a prompt without its context.  Reset to null after use so
-                // stale context never bleeds into regenerations or follow-up turns.
-                const pendingRag = this.ragContextPromise;
-                this.ragContextPromise = null;
-                const ragCtx = pendingRag ? await pendingRag : null;
-
-                // ── Build the prompt ──────────────────────────────────────────
-                // Gemma 4 supports a native "system" role in its chat template,
-                // so we prepend a dedicated system message with the SYSTEM_PROMPT.
-                // Setting enableThinking: true on that message causes
-                // generateChatTemplate to inject the `<|think|>` activation token,
-                // which tells Gemma 4 to produce an internal reasoning block before
-                // the visible response.
-                //
-                // Gemma 3n has no system role — inject the prompt into the first
-                // user turn instead (legacy behavior).
-                //
-                // supportsVision is checked here so text-only models never receive
-                // { imageSource } entries that crash LlmVisionInferenceCalculator.
+                // Convert UI messages
                 const rawConverted = await uiMessagesToBuddhiMessages(messages, this.supportsVision);
 
-                // ── Memory middleware ─────────────────────────────────────────
-                // If a summarized MemoryContext exists in sessionStorage for this
-                // chat, replace the middle messages with the stored summary.  This
-                // keeps the prompt well within the context window while preserving
-                // the first and last turns for coherent continuation.
-                //
-                // applyMemoryContext is a pure function; it returns the original
-                // array unchanged when no context is found.
-                const converted = applyMemoryContext(
-                    rawConverted,
-                    this.chatId ?? ""
-                );
+                // Apply memory middleware
+                const converted = applyMemoryContext(rawConverted, this.chatId ?? "");
 
-                // ── Vision-stripped notice ────────────────────────────────────
-                // When the loaded model is text-only, uiMessagesToBuddhiMessages
-                // silently drops any image/audio file parts.  Without a note the
-                // model has no idea the user attached media and will say something
-                // confusing like "you haven't provided an image."  Injecting a
-                // brief system note into the last user turn lets the model respond
-                // helpfully: explaining the limitation and suggesting a vision model.
+                // Notice when text-only model receives media
                 if (!this.supportsVision && converted.length > 0) {
                     const hasMediaAttachments = messages.some((msg) =>
                         msg.parts.some((p) => {
@@ -511,12 +355,8 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                         const lastIdx = converted.length - 1;
                         if (converted[lastIdx].role === "user") {
                             const notice =
-                                "\n\n[System note: The user has attached one or more media " +
-                                "files (image or audio) to this message. You are a text-only " +
-                                "model and cannot process media attachments. Please let the " +
-                                "user know you cannot analyse their attached file(s) and " +
-                                "suggest they load a vision-capable model variant to enable " +
-                                "image and audio analysis.]";
+                                "\n\n[System note: The user has attached media files to this message. " +
+                                "You are a text-only model and cannot process media attachments.]";
                             const lastMsg = converted[lastIdx];
                             converted[lastIdx] = {
                                 ...lastMsg,
@@ -532,102 +372,249 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                     }
                 }
 
-                // ── RAG context injection ─────────────────────────────────────
-                // Append the retrieved context as plain text so generateChatTemplate
-                // places it inside the correct <|turn>user … <turn|> block.
-                if (ragCtx && converted.length > 0) {
-                    const lastIdx = converted.length - 1;
-                    if (converted[lastIdx].role === "user") {
-                        const lastMsg = converted[lastIdx];
-                        if (typeof lastMsg.content === "string") {
-                            converted[lastIdx] = {
-                                ...lastMsg,
-                                content: lastMsg.content + ragCtx,
-                            };
-                        } else if (Array.isArray(lastMsg.content)) {
-                            // Multimodal message — append context as an extra text element.
-                            converted[lastIdx] = {
-                                ...lastMsg,
-                                content: [
-                                    ...lastMsg.content,
-                                    { type: "text" as const, text: ragCtx },
-                                ],
-                            };
+                // Partition messages into preface (prior turns) and the active user prompt
+                const prefaceMessages: Message[] = [];
+                if (this.systemPrompt) {
+                    const fullSystem = this.systemPrompt;
+                    prefaceMessages.push({
+                        role: "system",
+                        content: this.isReasoningOn ? `${fullSystem}\n<|think|>` : fullSystem,
+                    });
+                }
+
+                // All prior turns go to preface
+                for (let i = 0; i < converted.length - 1; i++) {
+                    const turn = converted[i];
+                    prefaceMessages.push({
+                        role: turn.role,
+                        content: typeof turn.content === "string" ? turn.content : JSON.stringify(turn.content),
+                    });
+                }
+
+                // Active prompt is the last turn, augmented with RAG research context
+                const lastTurn = converted[converted.length - 1];
+                const baseUserPrompt = lastTurn
+                    ? typeof lastTurn.content === "string"
+                        ? lastTurn.content
+                        : JSON.stringify(lastTurn.content)
+                    : "";
+
+                // Perform library-wide RAG retrieval on the latest user query
+                const lastUserMsg = messages.findLast((m) => m.role === "user");
+                const partsText = lastUserMsg?.parts
+                    ?.filter((p) => p.type === "text")
+                    .map((p) => (p as TextUIPart).text)
+                    .join(" ")
+                    .trim() ?? "";
+                const ragQuery = partsText || baseUserPrompt.trim();
+
+                let ragContexts: RagContext[] = [];
+                let ragAnnotations: RagCitationAnnotation[] = [];
+
+                if (ragQuery) {
+                    try {
+                        ragContexts = await retrieveRagContext(ragQuery);
+                    } catch (err) {
+                        console.warn("[LiteRTChatTransport] RAG retrieval failed:", err);
+                        ragContexts = [];
+                    }
+
+                    ragAnnotations = ragContexts.map((ctx, i) => ({
+                        index: i,
+                        paperId: ctx.paperId,
+                        paperTitle: ctx.paperTitle,
+                        authors: ctx.authors,
+                        year: ctx.year,
+                        pageNumber: ctx.pageNumber,
+                        sectionHeading: ctx.sectionHeading,
+                        textSnippet: ctx.textSnippet.slice(0, RAG_SNIPPET_MAX_CHARS),
+                    }));
+                }
+
+                const ragBlock = ragQuery ? ragContextToPromptBlock(ragContexts) : "";
+                const userPrompt = ragBlock
+                    ? `${ragBlock}\n\n---\n\nUser question: ${baseUserPrompt}`
+                    : baseUserPrompt;
+
+                // Immediately compute baseline token count including new prompt and RAG context
+                // so the Context UI meter never dips to 0% when a prompt is submitted
+                const fullPromptForTokenCount: BuddhiAIMessage[] = [
+                    ...prefaceMessages.map((m) => ({
+                        role: m.role as any,
+                        content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+                    })),
+                    {
+                        role: "user",
+                        content: typeof userPrompt === "string" ? userPrompt : JSON.stringify(userPrompt),
+                    },
+                ];
+                let baselineTokens = estimateMessageTokens(fullPromptForTokenCount);
+                if (!useMemoryStore.getState().isSummarizing) {
+                    useMemoryStore.getState().setTokenCount(baselineTokens);
+                }
+
+                // Check if query should route to in-WASM Extended Context (RLM)
+                const settings = useSettingsStore.getState();
+                const currentPaper = usePaperStore.getState().currentPaper;
+                const isComparativeQuery = /compare|contrast|cross-paper|across papers|all papers|literature review|both papers|synthesize papers/i.test(ragQuery);
+
+                let rlmMultiPapers: { id: string; title: string; text: string }[] | null = null;
+                if (settings.enableExtendedContext && isComparativeQuery) {
+                    try {
+                        const allPapers = await getAllPapers();
+                        const validPapers = allPapers.filter((p) => p.rawText && p.rawText.length > 200);
+                        if (validPapers.length >= 2) {
+                            rlmMultiPapers = validPapers.slice(0, 5).map((p) => ({
+                                id: p.id,
+                                title: p.metadata.title || p.fileName,
+                                text: p.rawText!,
+                            }));
                         }
+                    } catch (e) {
+                        console.warn("[LiteRTChatTransport] Failed to fetch all papers for multi-paper RLM:", e);
                     }
                 }
 
-                const buddhiMessages: BuddhiAIMessage[] =
-                    this.templateVersion === "gemma4"
-                        ? [
-                            {
-                                role: "system",
-                                content: this.systemPrompt,
-                                enableThinking: this.isReasoningOn,
-                            },
-                            ...converted,
-                        ]
-                        : converted.length > 0 && converted[0].role === "user"
-                            ? [
-                                {
-                                    ...converted[0],
-                                    content: `${this.systemPrompt}\n\n${converted[0].content}`,
-                                },
-                                ...converted.slice(1),
-                            ]
-                            : converted;
+                const shouldRunRlm = Boolean(
+                    settings.enableExtendedContext &&
+                    (
+                        rlmMultiPapers !== null ||
+                        (
+                            currentPaper?.rawText &&
+                            currentPaper.rawText.length > 500 &&
+                            (currentPaper.rawText.length > RAG_MAX_CONTEXT_CHARS ||
+                             /summarize|analysis|entire|whole|all sections|methodology|compare|synthesis/i.test(ragQuery))
+                        )
+                    )
+                );
 
-                let prompt: Awaited<ReturnType<typeof generateChatTemplate>>;
+                if (shouldRunRlm) {
+                    const messageId = nanoid();
+                    const reasoningPartId = nanoid();
+                    const textPartId = nanoid();
+
+                    let rlmInputChars = baseUserPrompt ? baseUserPrompt.length : 0;
+                    if (rlmMultiPapers) {
+                        rlmInputChars += rlmMultiPapers.reduce((acc, p) => acc + (p.text?.length || 0), 0);
+                    } else if (currentPaper?.rawText) {
+                        rlmInputChars += currentPaper.rawText.length;
+                    }
+                    baselineTokens = Math.max(baselineTokens, Math.round(rlmInputChars / 3.7));
+                    if (!useMemoryStore.getState().isSummarizing) {
+                        useMemoryStore.getState().setTokenCount(baselineTokens);
+                    }
+
+                    writer.write({ type: "start", messageId });
+                    writer.write({ type: "reasoning-start", id: reasoningPartId });
+
+                    if (rlmMultiPapers && rlmMultiPapers.length > 0) {
+                        writer.write({
+                            type: "reasoning-delta",
+                            id: reasoningPartId,
+                            delta: `[Extended Context (RLM): Ingesting ${rlmMultiPapers.length} library papers into in-browser WASM linear memory...]\n`,
+                        });
+                    } else if (currentPaper?.rawText) {
+                        writer.write({
+                            type: "reasoning-delta",
+                            id: reasoningPartId,
+                            delta: `[Extended Context (RLM): Ingesting "${currentPaper.fileName}" (~${Math.round(currentPaper.rawText.length / 1024)}KB) into in-browser WASM linear memory...]\n`,
+                        });
+                    }
+
+                    try {
+                        const rlmResponse = await rlmService.analyzeDocument(
+                            rlmMultiPapers
+                                ? {
+                                      query: ragQuery,
+                                      documentText: "",
+                                      papers: rlmMultiPapers,
+                                      maxDepth: 6,
+                                      signal: abortSignal,
+                                      onProgress: (prog) => {
+                                          writer.write({
+                                              type: "reasoning-delta",
+                                              id: reasoningPartId,
+                                              delta: `[RLM Step ${prog.iteration}: ${prog.message}]\n`,
+                                          });
+                                      },
+                                  }
+                                : {
+                                      query: ragQuery,
+                                      documentText: currentPaper!.rawText!,
+                                      documentTitle: currentPaper!.metadata.title || currentPaper!.fileName,
+                                      maxDepth: 5,
+                                      signal: abortSignal,
+                                      onProgress: (prog) => {
+                                          writer.write({
+                                              type: "reasoning-delta",
+                                              id: reasoningPartId,
+                                              delta: `[RLM Step ${prog.iteration}: ${prog.message}]\n`,
+                                          });
+                                      },
+                                  },
+                            this.engine
+                        );
+
+                        writer.write({ type: "reasoning-end", id: reasoningPartId });
+                        writer.write({ type: "text-start", id: textPartId });
+                        writer.write({ type: "text-delta", id: textPartId, delta: rlmResponse.answer });
+                        writer.write({ type: "text-end", id: textPartId });
+
+                        const finalRlmTokens = baselineTokens + Math.round((rlmResponse.answer?.length || 0) / 3.7);
+                        if (!useMemoryStore.getState().isSummarizing) {
+                            useMemoryStore.getState().setTokenCount(finalRlmTokens);
+                        }
+
+                        writer.write({
+                            type: "finish",
+                            finishReason: "stop",
+                            messageMetadata: {
+                                rlmMetadata: rlmResponse.metadata,
+                                ragCitations: ragAnnotations,
+                            } as BuddhiMessageMetadata,
+                        });
+                        return;
+                    } catch (rlmErr: any) {
+                        if (abortSignal?.aborted) {
+                            writer.write({ type: "abort", reason: "Analysis aborted." });
+                            return;
+                        }
+                        console.warn("[LiteRTChatTransport] RLM execution fell back to standard RAG:", rlmErr);
+                        writer.write({
+                            type: "reasoning-delta",
+                            id: reasoningPartId,
+                            delta: `\n[RLM fallback: ${rlmErr?.message || "Standard RAG continuing"}]\n`,
+                        });
+                        writer.write({ type: "reasoning-end", id: reasoningPartId });
+                        // Fall back to standard LiteRT conversation flow below
+                    }
+                }
+
+                let conversation;
                 try {
-                    prompt = await generateChatTemplate(buddhiMessages, {
-                        templateVersion: this.templateVersion,
+                    conversation = await this.engine.createConversation({
+                        preface: {
+                            messages: prefaceMessages,
+                        },
                     });
                 } catch (err) {
-                    const msg =
-                        err instanceof Error ? err.message : String(err);
-                    throw new Error(
-                        `Failed to build chat template: ${msg}. ` +
-                        "Check that the conversation history is valid."
-                    );
+                    const msg = err instanceof Error ? err.message : String(err);
+                    throw new Error(`Failed to create LiteRT conversation: ${msg}`);
                 }
 
-                // ── Token counting ────────────────────────────────────────────
-                // sizeInTokens() is synchronous and cannot run while generateResponse
-                // is active.  We call it here — after the prompt is fully built but
-                // before generation starts — which is always safe.
-                //
-                // The count is written directly to the Zustand store so the React
-                // component can read it without prop-drilling.
-                //
-                // Guard: skip if a summarization is already in progress (that call
-                // is itself using the LLM, so the model may be busy).
-                if (!useMemoryStore.getState().isSummarizing) {
-                    try {
-                        const tokenCount = this.llm.sizeInTokens(prompt);
-                        if (tokenCount !== undefined) {
-                            useMemoryStore.getState().setTokenCount(tokenCount);
-                        } else {
-                            console.warn(
-                                "[ChatTransport] sizeInTokens returned undefined — " +
-                                "token count display may be stale."
-                            );
-                        }
-                    } catch (err) {
-                        // sizeInTokens failure is non-fatal; log and continue.
-                        console.warn("[ChatTransport] sizeInTokens threw:", err);
+                // Update token count from engine if it returns a non-zero count exceeding baseline
+                try {
+                    const tokenCount = await conversation.getTokenCount();
+                    if (tokenCount && tokenCount > baselineTokens && !useMemoryStore.getState().isSummarizing) {
+                        baselineTokens = tokenCount;
+                        useMemoryStore.getState().setTokenCount(tokenCount);
                     }
-                }
-
-                // ── Resolve imageSource strings → ImageBitmap ─────────────────
-                // MediaPipe's WASM runtime cannot decode data: / blob: URL strings
-                // passed as `imageSource` — passing a raw string causes:
-                //   "LlmVisionInferenceCalculator failed: Image models could not be created"
-                // Convert all string imageSource entries to ImageBitmap objects.
-                if (this.supportsVision) {
-                    prompt = await resolvePromptImageSources(prompt);
+                } catch (err) {
+                    console.warn("[LiteRTChatTransport] getTokenCount threw:", err);
                 }
 
                 if (abortSignal?.aborted) {
+                    await conversation.delete().catch(() => {});
                     writer.write({
                         type: "abort",
                         reason: "Request was aborted before generation started.",
@@ -635,268 +622,219 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
                     return;
                 }
 
-                // ── Open the assistant message ────────────────────────────────
+                // Open assistant message
                 const messageId = nanoid();
                 const reasoningPartId = nanoid();
-                const textPartId = nanoid();
+                let textPartId = nanoid();
 
                 writer.write({ type: "start", messageId });
 
-                // For non-reasoning mode, open the text block immediately.
-                // For reasoning mode, defer text-start until after the thinking
-                // block is detected (or skipped if the model outputs no thinking).
-                if (!this.isReasoningOn) {
-                    writer.write({ type: "text-start", id: textPartId });
-                }
-
-                // ── Streaming constants ───────────────────────────────────────
-                // Gemma 4 thinking output format:
-                //   <|channel>thought\n[reasoning]<channel|>\n[visible text]
-                //
-                // THINKING_HEADER  — opening marker (18 chars): "<|channel>thought\n"
-                // THINKING_END     — closing marker (10 chars): "<channel|>"
-                // THINKING_TAIL    — chars held back during reasoning streaming so
-                //                    the end marker is always intact in the buffer.
-                // TEXT_TAIL        — chars held back during text streaming so leaked
-                //                    template tokens (<turn|>, <end_of_turn>) can be
-                //                    stripped before the final chunk is emitted.
-
-                const THINKING_HEADER = "<|channel>thought\n";
-                const THINKING_HEADER_LEN = THINKING_HEADER.length;   // 18
-                const THINKING_END = "<channel|>";
-                const THINKING_END_LEN = THINKING_END.length;       // 10
-                const THINKING_TAIL = 12;
-                const TEXT_TAIL = 20;
-
-                // ── Streaming state ───────────────────────────────────────────
-                // "think-pre"  — initial state (reasoning mode only): buffering
-                //                until we can confirm whether the response starts
-                //                with a thinking block.
-                // "thinking"   — inside <|channel>thought\n…<channel|> block;
-                //                streaming reasoning-delta chunks.
-                // "detecting"  — deciding between "streaming" and "buffering"
-                //                based on the first line of the text response.
-                // "streaming"  — normal text streaming with tail hold-back.
-                // "buffering"  — entire response buffered (plain-text code-fence);
-                //                emitted in one shot at done.
-
-                type StreamMode = "think-pre" | "thinking" | "detecting" | "streaming" | "buffering";
-
                 let settled = false;
-                let accumulated = "";
-                let mode: StreamMode = this.isReasoningOn ? "think-pre" : "detecting";
-
-                // Absolute positions in `accumulated`:
-                let reasoningWrittenUpTo = THINKING_HEADER_LEN; // right after the header
-                let textOffset = 0; // where the visible text begins
-                let textEmitted = 0; // how far into accumulated text has been streamed
+                const onAbort = () => {
+                    try {
+                        conversation.cancel();
+                    } catch { }
+                };
+                if (abortSignal) {
+                    abortSignal.addEventListener("abort", onAbort, { once: true });
+                }
 
                 try {
-                    await this.llm.generateResponse(
-                        prompt,
-                        (partialResult: string, done: boolean) => {
-                            if (settled) return;
+                    let currentPrompt: Message | string = userPrompt;
+                    let loopCount = 0;
+                    const MAX_REACT_TURNS = 6;
+                    let generatedChars = 0;
+                    let lastReportedTokens = baselineTokens;
+                    let lastTokenUpdateTime = Date.now();
 
-                            if (abortSignal?.aborted) {
-                                writer.write({
-                                    type: "abort",
-                                    reason: "User stopped generation.",
-                                });
-                                settled = true;
-                                return;
-                            }
+                    while (loopCount < MAX_REACT_TURNS && !settled && !abortSignal?.aborted) {
+                        loopCount++;
+                        const pendingToolCalls: ToolCallPayload[] = [];
+                        let textStartedForTurn = false;
 
-                            accumulated += partialResult;
-
-                            // ── "think-pre": detect thinking block ───────────
-                            // Buffer until we have enough chars to check whether
-                            // the response opens with <|channel>thought\n.
-                            if (mode === "think-pre") {
-                                if (accumulated.length >= THINKING_HEADER_LEN || done) {
-                                    if (accumulated.startsWith(THINKING_HEADER)) {
-                                        mode = "thinking";
-                                        writer.write({ type: "reasoning-start", id: reasoningPartId });
-                                        // reasoningWrittenUpTo already = THINKING_HEADER_LEN
-                                    } else {
-                                        // No thinking block — fall through to text detection.
-                                        textOffset = 0;
-                                        textEmitted = 0;
-                                        mode = "detecting";
+                        const parser = new GemmaChannelStreamParser(
+                            {
+                                onReasoningStart: () => {
+                                    writer.write({ type: "reasoning-start", id: reasoningPartId });
+                                },
+                                onReasoningDelta: (delta: string) => {
+                                    writer.write({ type: "reasoning-delta", id: reasoningPartId, delta });
+                                },
+                                onReasoningEnd: () => {
+                                    writer.write({ type: "reasoning-end", id: reasoningPartId });
+                                },
+                                onTextStart: () => {
+                                    if (!textStartedForTurn) {
                                         writer.write({ type: "text-start", id: textPartId });
-                                        // ↓ fall through
+                                        textStartedForTurn = true;
                                     }
-                                } else {
-                                    return; // not enough chars yet
-                                }
-                            }
-
-                            // ── "thinking": stream reasoning, watch for end marker
-                            if (mode === "thinking") {
-                                const endIdx = accumulated.indexOf(THINKING_END, THINKING_HEADER_LEN);
-
-                                if (endIdx !== -1) {
-                                    // Emit remaining reasoning (strip trailing \n before marker)
-                                    const rawThinking = accumulated.slice(THINKING_HEADER_LEN, endIdx);
-                                    const cleanThinking = rawThinking.endsWith("\n")
-                                        ? rawThinking.slice(0, -1)
-                                        : rawThinking;
-                                    const thinkingRemain = cleanThinking.slice(
-                                        reasoningWrittenUpTo - THINKING_HEADER_LEN
-                                    );
-                                    if (thinkingRemain) {
-                                        writer.write({
-                                            type: "reasoning-delta",
-                                            id: reasoningPartId,
-                                            delta: thinkingRemain,
-                                        });
+                                },
+                                onTextDelta: (delta: string) => {
+                                    writer.write({ type: "text-delta", id: textPartId, delta });
+                                },
+                                onTextEnd: () => {
+                                    if (textStartedForTurn) {
+                                        writer.write({ type: "text-end", id: textPartId });
+                                        textStartedForTurn = false;
+                                        textPartId = nanoid();
                                     }
-                                    writer.write({ type: "reasoning-end", id: reasoningPartId });
+                                },
+                                onToolCall: (call: ToolCallPayload) => {
+                                    pendingToolCalls.push(call);
+                                },
+                            },
+                            this.isReasoningOn
+                        );
 
-                                    // Text starts after <channel|> + any leading newlines
-                                    textOffset = endIdx + THINKING_END_LEN;
-                                    while (
-                                        textOffset < accumulated.length &&
-                                        accumulated[textOffset] === "\n"
-                                    ) textOffset++;
-                                    textEmitted = textOffset;
+                        const responseStream = conversation.sendMessageStreaming(currentPrompt as unknown as string);
+                        const reader = responseStream.getReader();
 
-                                    mode = "detecting";
-                                    writer.write({ type: "text-start", id: textPartId });
-                                    // ↓ fall through
+                        try {
+                            while (true) {
+                                const { done, value: chunk } = await reader.read();
+                                if (done || !chunk || settled) break;
 
-                                } else if (done) {
-                                    // Response ended inside the thinking block — no visible text.
-                                    const rawThinking = accumulated.slice(THINKING_HEADER_LEN).trimEnd();
-                                    const thinkingRemain = rawThinking.slice(
-                                        reasoningWrittenUpTo - THINKING_HEADER_LEN
-                                    );
-                                    if (thinkingRemain) {
-                                        writer.write({
-                                            type: "reasoning-delta",
-                                            id: reasoningPartId,
-                                            delta: thinkingRemain,
-                                        });
-                                    }
-                                    writer.write({ type: "reasoning-end", id: reasoningPartId });
-                                    writer.write({ type: "text-start", id: textPartId });
-                                    writer.write({ type: "text-end", id: textPartId });
-                                    writer.write({ type: "finish", finishReason: "stop" });
+                                if (abortSignal?.aborted) {
+                                    writer.write({
+                                        type: "abort",
+                                        reason: "User stopped generation.",
+                                    });
                                     settled = true;
-                                    return;
+                                    break;
+                                }
 
-                                } else {
-                                    // Still in thinking — stream safe portion with tail hold-back
-                                    const safeEnd = accumulated.length - THINKING_TAIL;
-                                    if (safeEnd > reasoningWrittenUpTo) {
-                                        writer.write({
-                                            type: "reasoning-delta",
-                                            id: reasoningPartId,
-                                            delta: accumulated.slice(reasoningWrittenUpTo, safeEnd),
+                                // If LiteRT parsed native tool calls, extract them
+                                if (chunk.tool_calls && chunk.tool_calls.length > 0) {
+                                    for (const tc of chunk.tool_calls) {
+                                        const name = tc.function?.name || (tc as any).name;
+                                        const rawArgs = tc.function?.arguments || (tc as any).arguments || {};
+                                        pendingToolCalls.push({
+                                            name,
+                                            args: typeof rawArgs === "string" ? parseGemmaToolArguments(rawArgs) : (rawArgs as Record<string, unknown>),
+                                            raw: JSON.stringify(tc),
                                         });
-                                        reasoningWrittenUpTo = safeEnd;
-                                    }
-                                    return; // wait for more tokens
-                                }
-                            }
-
-                            // ── "detecting": code-fence detection for text ────
-                            // Operates on accumulated.slice(textOffset) so the
-                            // thinking header is excluded from the analysis.
-                            if (mode === "detecting") {
-                                const textContent = accumulated.slice(textOffset);
-                                if (textContent.length >= 3 && !textContent.startsWith("```")) {
-                                    mode = "streaming";
-                                } else if (textContent.startsWith("```")) {
-                                    const nl = textContent.indexOf("\n");
-                                    if (nl !== -1 || done) {
-                                        const firstLine = nl !== -1
-                                            ? textContent.slice(0, nl)
-                                            : textContent;
-                                        mode = isPlainTextCodeFence(firstLine)
-                                            ? "buffering"
-                                            : "streaming";
-                                    }
-                                } else if (done) {
-                                    mode = "streaming";
-                                }
-                            }
-
-                            // ── "streaming": emit text with tail hold-back ────
-                            if (mode === "streaming" && !done) {
-                                const safeEnd = accumulated.length - TEXT_TAIL;
-                                if (safeEnd > textEmitted) {
-                                    writer.write({
-                                        type: "text-delta",
-                                        id: textPartId,
-                                        delta: accumulated.slice(textEmitted, safeEnd),
-                                    });
-                                    textEmitted = safeEnd;
-                                }
-                            }
-
-                            // ── Generation complete ───────────────────────────
-                            if (done) {
-                                let finalText = accumulated.slice(textOffset);
-
-                                if (mode === "buffering") {
-                                    const nl = finalText.indexOf("\n");
-                                    const firstLine = nl !== -1
-                                        ? finalText.slice(0, nl)
-                                        : finalText;
-                                    if (isPlainTextCodeFence(firstLine)) {
-                                        finalText = stripOuterCodeFence(finalText);
                                     }
                                 }
 
-                                // Strip any leaked template tokens from the tail.
-                                finalText = stripTrailingTemplateTokens(finalText);
-
-                                // textEmitted is an absolute position; convert to
-                                // an offset within finalText (which starts at textOffset).
-                                const alreadyEmitted = textEmitted - textOffset;
-                                const remaining = finalText.slice(alreadyEmitted);
-                                if (remaining) {
-                                    writer.write({
-                                        type: "text-delta",
-                                        id: textPartId,
-                                        delta: remaining,
-                                    });
+                                let partial = "";
+                                if (typeof chunk.content === "string") {
+                                    partial = chunk.content;
+                                } else if (Array.isArray(chunk.content)) {
+                                    for (const p of chunk.content) {
+                                        if (p.type === "text" && p.text) {
+                                            partial += p.text;
+                                        }
+                                    }
                                 }
 
-                                writer.write({ type: "text-end", id: textPartId });
-                                writer.write({ type: "finish", finishReason: "stop" });
-                                settled = true;
+                                if (chunk.channels?.thought && !partial) {
+                                    partial = `<|channel>thought\n${chunk.channels.thought}<channel|>\n`;
+                                }
+
+                                if (partial) {
+                                    parser.push(partial);
+                                    generatedChars += partial.length;
+                                    const now = Date.now();
+                                    const currentEstimatedTokens = baselineTokens + Math.round(generatedChars / 3.7);
+                                    if ((now - lastTokenUpdateTime > 100 || currentEstimatedTokens - lastReportedTokens >= 4) && !useMemoryStore.getState().isSummarizing) {
+                                        lastReportedTokens = currentEstimatedTokens;
+                                        lastTokenUpdateTime = now;
+                                        useMemoryStore.getState().setTokenCount(currentEstimatedTokens);
+                                    }
+                                }
                             }
+                        } finally {
+                            reader.releaseLock();
                         }
-                    );
+
+                        parser.flush();
+
+                        const turnEstimatedTokens = baselineTokens + Math.round(generatedChars / 3.7);
+                        lastReportedTokens = turnEstimatedTokens;
+                        if (!useMemoryStore.getState().isSummarizing) {
+                            useMemoryStore.getState().setTokenCount(turnEstimatedTokens);
+                        }
+
+                        if (settled || abortSignal?.aborted || pendingToolCalls.length === 0) {
+                            break;
+                        }
+
+                        // Execute pending tool calls and prepare next prompt
+                        const toolResponses: Array<{ type: "tool_response"; name: string; response: Record<string, unknown> }> = [];
+
+                        for (const call of pendingToolCalls) {
+                            const toolCallId = nanoid();
+                            writer.write({
+                                type: "tool-input-available",
+                                toolCallId,
+                                toolName: call.name,
+                                input: call.args,
+                                dynamic: true,
+                            });
+
+                            writer.write({
+                                type: "tool-output-error",
+                                toolCallId,
+                                errorText: "Tool execution is not supported in pure chat mode.",
+                                dynamic: true,
+                            });
+
+                            toolResponses.push({
+                                type: "tool_response",
+                                name: call.name,
+                                response: { error: "Tool execution is not supported in pure chat mode." },
+                            });
+                        }
+
+                        baselineTokens = lastReportedTokens + Math.round(JSON.stringify(toolResponses).length / 3.7);
+                        generatedChars = 0;
+                        if (!useMemoryStore.getState().isSummarizing) {
+                            useMemoryStore.getState().setTokenCount(baselineTokens);
+                        }
+
+                        currentPrompt = {
+                            role: "tool",
+                            content: toolResponses,
+                        } as unknown as Message;
+                    }
+
+                    if (!settled) {
+                        if (!useMemoryStore.getState().isSummarizing) {
+                            useMemoryStore.getState().setTokenCount(lastReportedTokens);
+                        }
+                        const metadata: BuddhiMessageMetadata = { ragCitations: ragAnnotations };
+                        writer.write({
+                            type: "finish",
+                            finishReason: "stop",
+                            messageMetadata: metadata as unknown as Record<string, unknown>,
+                        });
+                        settled = true;
+                    }
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    throw new Error(
-                        `MediaPipe LLM inference failed: ${msg}. ` +
-                        "Try reloading the page or reducing the conversation length."
-                    );
+                    if (!abortSignal?.aborted) {
+                        const msg = err instanceof Error ? err.message : String(err);
+                        throw new Error(`LiteRT-LM inference failed: ${msg}.`);
+                    }
+                } finally {
+                    if (abortSignal) {
+                        abortSignal.removeEventListener("abort", onAbort);
+                    }
+                    await conversation.delete().catch(() => {});
                 }
 
-                // ── Safety net ────────────────────────────────────────────────
                 if (!settled) {
-                    console.warn(
-                        "[MediaPipeChatTransport] generateResponse resolved " +
-                        "without a `done` callback. Closing stream manually."
-                    );
-                    writer.write({ type: "text-end", id: textPartId });
-                    writer.write({ type: "finish", finishReason: "stop" });
+                    const metadata: BuddhiMessageMetadata = { ragCitations: ragAnnotations };
+                    writer.write({
+                        type: "finish",
+                        finishReason: "stop",
+                        messageMetadata: metadata as unknown as Record<string, unknown>,
+                    });
                 }
             },
 
-            /**
-             * Converts any uncaught error inside `execute` into a human-readable
-             * string. `useChat` surfaces this via its `error` state so the UI
-             * can display a helpful message instead of crashing.
-             */
             onError: (error: unknown): string => {
-                const message =
-                    error instanceof Error ? error.message : String(error);
-                console.error("[MediaPipeChatTransport] Stream error:", error);
+                const message = error instanceof Error ? error.message : String(error);
+                console.error("[LiteRTChatTransport] Stream error:", error);
                 return message;
             },
         });
@@ -904,14 +842,10 @@ export class MediaPipeChatTransport implements ChatTransport<UIMessage> {
         return Promise.resolve(stream);
     }
 
-    /**
-     * Called by `useChat` to resume an interrupted stream (e.g. after a page
-     * reload mid-generation). Client-only transports have no server-side
-     * stream to reconnect to, so we return `null`.
-     */
-    reconnectToStream(
-        _options: Parameters<ChatTransport<UIMessage>["reconnectToStream"]>[0]
-    ): Promise<ReadableStream<UIMessageChunk> | null> {
+    reconnectToStream(): Promise<ReadableStream<UIMessageChunk> | null> {
         return Promise.resolve(null);
     }
 }
+
+// Backwards compatibility alias
+export { LiteRTChatTransport as MediaPipeChatTransport };

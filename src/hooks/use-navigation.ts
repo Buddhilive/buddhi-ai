@@ -6,70 +6,103 @@ import { type LucideIcon } from "lucide-react";
 import { SIDEBAR_DATA } from "@/const/sidebar-data";
 import { useChatStore } from "@/stores/chat-store";
 
-export interface NavigationState {
-    currentPage: string;
-    breadcrumbTitle: string;
-    navItems: Array<{
-        title: string;
-        url: string;
-        icon: LucideIcon;
-        isActive: boolean;
-    }>;
+export interface NavigationSubItem {
+  title: string;
+  url: string;
+  isActive: boolean;
 }
 
-/**
- * Custom hook for managing dynamic navigation state based on the current pathname.
- * 
- * This hook provides:
- * - Dynamic breadcrumb titles that update based on the current page
- * - Navigation items with proper active states
- * - Support for dynamic routes (like /summarizer/[docId] and /writer/[docId])
- * 
- * @returns NavigationState object containing current page info, breadcrumb title, and nav items
- */
+export interface NavigationProjectItem {
+  name: string;
+  url: string;
+  icon: LucideIcon;
+  isActive: boolean;
+  items?: NavigationSubItem[];
+}
+
+export interface NavigationState {
+  currentPage: string;
+  breadcrumbTitle: string;
+  navItems: Array<{
+    title: string;
+    url: string;
+    icon: LucideIcon;
+    isActive: boolean;
+  }>;
+  projectItems: NavigationProjectItem[];
+}
+
 export function useNavigation(): NavigationState {
-    const pathname = usePathname();
-    const { currentChat } = useChatStore();
+  const pathname = usePathname();
+  const { currentChat } = useChatStore();
 
-    const navigationState = useMemo(() => {
-        // Determine current page and breadcrumb title based on pathname
-        const currentPage = pathname;
-        let breadcrumbTitle = "Ask Buddhi AI"; // Default for app layout
+  const navigationState = useMemo(() => {
+    const currentPage = pathname;
+    let breadcrumbTitle = "Ask Buddhi AI";
 
-        // Map pathnames to breadcrumb titles
-        const pathTitleMap: Record<string, string> = {
-            "/chat": "Ask Buddhi AI",
-            "/documents": "Documents",
-            "/knowledge-graph": "Knowledge Graph",
-            "/models": "Models",
-        };
+    const pathTitleMap: Record<string, string> = {
+      "/": "Ask Buddhi AI",
+      "/chat": "Ask Buddhi AI",
+      "/library": "Paper Library",
+      "/add-doc": "Add Document",
+      "/models": "Models",
+      "/settings": "Settings",
+    };
 
-        // Handle dynamic routes and specific cases
-        if (pathname.startsWith("/chat/")) {
-            breadcrumbTitle = "Chat";
+    if (pathname.startsWith("/chat/")) {
+      breadcrumbTitle = "Chat";
+      const segments = pathname.split("/").filter(Boolean);
+      if (currentChat?.title) {
+        breadcrumbTitle = currentChat.title;
+      } else if (segments.length > 1 && segments[1]) {
+        breadcrumbTitle = `Chat - ${segments[1]}`;
+      }
+    } else if (pathname.startsWith("/reader/")) {
+      breadcrumbTitle = "Paper Reader";
+    } else {
+      breadcrumbTitle = pathTitleMap[pathname] || "Buddhi AI";
+    }
 
-            const segments = pathname.split('/').filter(Boolean);
-            if (currentChat?.title) {
-                breadcrumbTitle = currentChat.title;
-            } else if (segments.length > 1 && segments[1]) {
-                breadcrumbTitle = `Chat - ${segments[1]}`;
-            }
-        } else {
-            breadcrumbTitle = pathTitleMap[pathname] || "Ask Buddhi AI";
-        }
+    const navItems = SIDEBAR_DATA.navMain.map((item) => ({
+      ...item,
+      isActive:
+        item.url === currentPage ||
+        (item.url !== "/" && currentPage.startsWith(item.url)),
+    }));
 
-        // Create navigation items with active state
-        const navItems = SIDEBAR_DATA.navMain.map(item => ({
-            ...item,
-            isActive: item.url === currentPage
+    const projectItems: NavigationProjectItem[] = SIDEBAR_DATA.projects.map((project) => {
+      const { items, ...rest } = project;
+      if (items && items.length > 0) {
+        const subItems: NavigationSubItem[] = items.map((sub) => ({
+          title: sub.title,
+          url: sub.url,
+          isActive:
+            currentPage === sub.url ||
+            (sub.url === "/library" && currentPage.startsWith("/reader/")),
         }));
-
+        const isAnySubActive = subItems.some((sub) => sub.isActive);
         return {
-            currentPage,
-            breadcrumbTitle,
-            navItems
+          ...rest,
+          isActive: isAnySubActive,
+          items: subItems,
         };
-    }, [pathname, currentChat]);
+      }
 
-    return navigationState;
+      return {
+        ...rest,
+        isActive:
+          project.url === currentPage ||
+          (project.url !== "/" && currentPage.startsWith(project.url)),
+      };
+    });
+
+    return {
+      currentPage,
+      breadcrumbTitle,
+      navItems,
+      projectItems,
+    };
+  }, [pathname, currentChat]);
+
+  return navigationState;
 }

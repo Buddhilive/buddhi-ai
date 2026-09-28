@@ -33,14 +33,17 @@
  * model (e.g. if a user has the old model cached locally).
  */
 
-import type {
-    Prompt,
-    Image as MediaPipeImage,
-    Audio as MediaPipeAudio,
-} from "@mediapipe/tasks-genai";
+export interface MediaPipeImage {
+    imageSource: unknown;
+}
 
-/** Element type of a MediaPipe Prompt array. */
-type PromptPart = string | MediaPipeImage | MediaPipeAudio;
+export interface MediaPipeAudio {
+    audioSource: unknown;
+}
+
+/** Element type of a prompt array. */
+export type PromptPart = string | MediaPipeImage | MediaPipeAudio;
+export type Prompt = PromptPart[];
 import type {
     BuddhiAIMessage,
     BuddhiAIChatTemplate,
@@ -197,7 +200,7 @@ function serializeObject(obj: Record<string, unknown>): string {
     return `{${entries}}`;
 }
 
-function serializeToolDeclaration(tool: BuddhiAIToolDefinition): string {
+export function serializeToolDeclaration(tool: BuddhiAIToolDefinition): string {
     const schema: Record<string, unknown> = {
         description: tool.description,
     };
@@ -210,18 +213,18 @@ function serializeToolDeclaration(tool: BuddhiAIToolDefinition): string {
     return serializeObject(schema);
 }
 
-function serializeToolCall(tc: BuddhiAIToolCall): string {
+export function serializeToolCall(tc: BuddhiAIToolCall): string {
     if (Object.keys(tc.arguments).length === 0) {
-        return `<|tool_call>call:${tc.name}{}<tool_call|>`;
+        return `<|channel>call:${tc.name}{}<channel|>`;
     }
-    return `<|tool_call>call:${tc.name}${serializeObject(tc.arguments)}<tool_call|>`;
+    return `<|channel>call:${tc.name}${serializeObject(tc.arguments)}<channel|>`;
 }
 
-function serializeToolResponse(tr: BuddhiAIToolResponse): string {
+export function serializeToolResponse(tr: BuddhiAIToolResponse): string {
     if (Object.keys(tr.response).length === 0) {
-        return `<|tool_response>response:${tr.name}{}<tool_response|>`;
+        return `<|channel>call:${tr.name}{response:{}}<channel|>`;
     }
-    return `<|tool_response>response:${tr.name}${serializeObject(tr.response)}<tool_response|>`;
+    return `<|channel>call:${tr.name}${serializeObject({ response: tr.response })}<channel|>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -249,7 +252,7 @@ function generateGemma4Template(messages: BuddhiAIMessage[]): Prompt {
                     const decls = message.tools
                         .map(
                             (t) =>
-                                `<|tool>declaration:${t.name}${serializeToolDeclaration(t)}<tool|>`
+                                `<|channel>declaration:${t.name}${serializeToolDeclaration(t)}<channel|>`
                         )
                         .join("\n");
                     turnContent += `\n${decls}`;

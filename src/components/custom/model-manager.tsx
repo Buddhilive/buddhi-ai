@@ -32,7 +32,11 @@ import {
     AlertCircleIcon,
     CheckCircleIcon,
     BrainCircuitIcon,
+    LockIcon,
+    ExternalLinkIcon,
 } from "lucide-react";
+import Link from "next/link";
+import { useSettings } from "@/hooks/use-settings";
 
 // ─── Root view ────────────────────────────────────────────────────────────────
 
@@ -166,6 +170,10 @@ function ModelCard({ model }: ModelCardProps) {
 
     const inProgress = status === "downloading";
 
+    const { hfToken, isLoading: isSettingsLoading } = useSettings();
+    const isTokenGated = Boolean(model.requiresHFToken);
+    const isGatedMissingToken = isTokenGated && !isSettingsLoading && (!hfToken || !hfToken.trim());
+
     const startInstall = async () => {
         try {
             setIsInstalling(true);
@@ -233,7 +241,32 @@ function ModelCard({ model }: ModelCardProps) {
                         <Badge variant="outline" className="text-xs capitalize">
                             {model.type}
                         </Badge>
+                        {isTokenGated && (
+                            <Badge variant="secondary" className="text-xs flex items-center gap-1 font-mono">
+                                <LockIcon className="h-3 w-3" />
+                                HF Token Required
+                            </Badge>
+                        )}
                     </div>
+
+                    {isGatedMissingToken && (
+                        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400 space-y-1.5">
+                            <div className="flex items-center gap-1.5 font-medium">
+                                <AlertCircleIcon className="h-3.5 w-3.5" />
+                                <span>Gated Model: Token Required</span>
+                            </div>
+                            <p className="text-muted-foreground text-[11px]">
+                                This repository requires Hugging Face authentication. Save your access token in Settings to enable installation.
+                            </p>
+                            <Link
+                                href="/settings"
+                                className="inline-flex items-center gap-1 text-primary hover:underline font-semibold text-xs pt-0.5"
+                            >
+                                Configure HF Token in Settings
+                                <ExternalLinkIcon className="h-3 w-3" />
+                            </Link>
+                        </div>
+                    )}
 
                     {inProgress && (
                         <div className="flex items-center gap-2">
@@ -267,14 +300,20 @@ function ModelCard({ model }: ModelCardProps) {
                             className="w-full"
                             size="sm"
                             onClick={handleInstall}
-                            disabled={isInstalling}
+                            disabled={isInstalling || isGatedMissingToken}
                         >
                             {isInstalling ? (
                                 <RefreshCcwIcon className="mr-2 h-4 w-4 animate-spin" />
+                            ) : isGatedMissingToken ? (
+                                <LockIcon className="mr-2 h-4 w-4" />
                             ) : (
                                 <DownloadIcon className="mr-2 h-4 w-4" />
                             )}
-                            {status === "failed" ? "Retry Install" : "Install"}
+                            {isGatedMissingToken
+                                ? "HF Token Required"
+                                : status === "failed"
+                                ? "Retry Install"
+                                : "Install"}
                         </Button>
                     ) : inProgress ? (
                         <Button

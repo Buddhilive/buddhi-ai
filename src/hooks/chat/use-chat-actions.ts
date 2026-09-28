@@ -10,13 +10,11 @@ export function useChatActions({
     messages,
     setMessages,
     sendMessage,
-    transport,
     currentChatIdRef,
 }: {
     messages: UIMessage[];
     setMessages: (messages: UIMessage[]) => void;
     sendMessage: (message: { text: string }) => void;
-    transport: any; // MediaPipeChatTransport
     currentChatIdRef: React.MutableRefObject<string | null>;
 }) {
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -57,15 +55,14 @@ export function useChatActions({
         }
 
         const lastUserMsg = messages[lastUserMsgIndex];
-        const textPart = lastUserMsg.parts.find((p: any) => p.type === "text");
-        const userText = textPart?.type === "text" ? textPart.text : "";
+        const textPart = lastUserMsg.parts.find((p) => p.type === "text");
+        const userText = textPart && textPart.type === "text" ? textPart.text : "";
 
         const trimmedMessages = messages.slice(0, lastUserMsgIndex);
         setMessages(trimmedMessages);
 
-        transport.ragContextPromise = Promise.resolve(null);
         sendMessage({ text: userText });
-    }, [messages, setMessages, sendMessage, transport]);
+    }, [messages, setMessages, sendMessage]);
 
     const handleEditStart = useCallback((messageId: string, currentText: string) => {
         setEditingMessageId(messageId);
@@ -98,7 +95,7 @@ export function useChatActions({
                     ? m
                     : {
                         ...m,
-                        parts: m.parts.map((p: any) =>
+                        parts: m.parts.map((p) =>
                             p.type === "text" ? { ...p, text: trimmedEdit } : p
                         ),
                     }
@@ -118,9 +115,8 @@ export function useChatActions({
             }
         }
 
-        transport.ragContextPromise = Promise.resolve(null);
         sendMessage({ text: trimmedEdit });
-    }, [editText, messages, setMessages, sendMessage, transport, currentChatIdRef]);
+    }, [editText, messages, setMessages, sendMessage, currentChatIdRef]);
 
     return {
         editingMessageId,

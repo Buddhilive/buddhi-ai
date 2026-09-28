@@ -1,74 +1,86 @@
 import {
-    Brain,
-    BrainCircuit,
-    Command,
-    FileText,
-    Network,
-    Sparkles,
+  Brain,
+  BrainCircuit,
+  Command,
+  BookOpen,
+  Settings,
+  Sparkles,
+  type LucideIcon,
 } from "lucide-react";
 
-export const SIDEBAR_DATA = {
-    teams: [
-        {
-            name: "BuddhiAI",
-            logo: Brain,
-            plan: "AI in Browser",
-            url: "/",
-        },
-        {
-            name: "Buddhilive",
-            logo: Command,
-            plan: "Return to home",
-            url: "https://buddhilive.com",
-        },
-    ],
-    navMain: [
-        {
-            title: "New Chat",
-            url: "/chat",
-            icon: Sparkles,
-        },
-        {
-            title: "Documents",
-            url: "/documents",
-            icon: FileText,
-        },
-        {
-            title: "Knowledge Graph",
-            url: "/knowledge-graph",
-            icon: Network,
-        },
-        {
-            title: "Models",
-            url: "/models",
-            icon: BrainCircuit,
-        },
-    ],
-    navSecondary: [
-        {
-            title: "Models",
-            url: "/models",
-            icon: BrainCircuit,
-        },
-    ],
-    favorites: [
-        {
-            name: "Project Management & Task Tracking",
-            url: "#",
-            emoji: "📊",
-        },
-    ],
-    workspaces: [
-        {
-            name: "Personal Life Management",
-            emoji: "🏠",
-            pages: [
-                {
-                    name: "Daily Journal & Reflection",
-                    url: "#",
-                    emoji: "📔",
-                },
-            ],
-        },
-    ],
+export interface SidebarSubItem {
+  title: string;
+  url: string;
 }
+
+export interface SidebarProjectItem {
+  name: string;
+  url: string;
+  icon: LucideIcon;
+  items?: SidebarSubItem[];
+}
+
+export const SIDEBAR_DATA = {
+  teams: [
+    {
+      name: "Buddhi AI",
+      logo: Brain,
+      plan: "Academic Research Platform",
+      url: "/library",
+    },
+    {
+      name: "Buddhilive",
+      logo: Command,
+      plan: "Return to home",
+      url: "https://buddhilive.com",
+    },
+  ],
+  navMain: [
+    {
+      title: "New Chat",
+      url: "/chat",
+      icon: Sparkles,
+    },
+  ],
+  projects: [
+    {
+      name: "My Library",
+      url: "/library",
+      icon: BookOpen,
+      items: [
+        {
+          title: "Documents",
+          url: "/library",
+        },
+        {
+          title: "Add Document",
+          url: "/add-doc",
+        },
+      ],
+    },
+    {
+      name: "Models",
+      url: "/models",
+      icon: BrainCircuit,
+    },
+    {
+      name: "Settings",
+      url: "/settings",
+      icon: Settings,
+    },
+  ],
+  navSecondary: [
+    {
+      title: "Models",
+      url: "/models",
+      icon: BrainCircuit,
+    },
+    {
+      title: "Settings",
+      url: "/settings",
+      icon: Settings,
+    },
+  ],
+  favorites: [],
+  workspaces: [],
+};

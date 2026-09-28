@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "next-themes";
+import { SandboxServiceWorkerRegistrar } from "@/components/custom/sandbox/sandbox-sw-registrar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -16,25 +17,23 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Buddhi AI - Private Client-Side AI",
-    template: "%s | Buddhi AI"
+    default: "Buddhi AI — Academic Research Platform",
+    template: "%s | Buddhi AI",
   },
-  description: "Experience the future of private AI with Buddhi AI. Privacy-first Chat, Prompt Builder, Summarizer, and Writer running entirely on-device in your browser.",
+  description:
+    "AI-powered research platform designed to help students, academics, and researchers read, critique, and write academic papers more efficiently. 100% on-device and private.",
   keywords: [
-    "AI tools",
-    "client-side AI",
-    "private AI",
-    "browser AI",
-    "AI chat",
-    "text summarizer",
-    "AI writer",
-    "prompt builder",
-    "prompt generator",
-    "prompt engineering",
-    "privacy-first AI",
-    "local AI processing",
-    "secure AI tools",
-    "free AI tools"
+    "academic research",
+    "paper reader",
+    "scispace alternative",
+    "literature review",
+    "academic writing",
+    "research assistant",
+    "local ai",
+    "on-device ai",
+    "private ai research",
+    "citation assistant",
+    "scholarly writing"
   ],
   authors: [{ name: "Buddhi Kavindra" }],
   creator: "Buddhilive Labs",
@@ -44,8 +43,9 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   openGraph: {
-    title: "Buddhi AI - Private Client-Side AI Tools",
-    description: "Powerful AI tools that run directly in your browser. Chat, Prompt Builder, Summarizer, and Writer with complete privacy and no server-side data processing.",
+    title: "Buddhi AI — Academic Research Platform",
+    description:
+      "Read, understand, and write academic papers with an intelligent on-device AI assistant. Completely private, running in your browser.",
     url: "https://ai.buddhilive.com",
     siteName: "Buddhi AI",
     type: "website",
@@ -55,14 +55,15 @@ export const metadata: Metadata = {
         url: "images/buddhi-ai-screenshot.png",
         width: 1200,
         height: 630,
-        alt: "Buddhi AI - Private Client-Side AI Tools",
+        alt: "Buddhi AI — Academic Research Platform",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Buddhi AI - Private Client-Side AI Tools",
-    description: "Powerful on-device AI tools (Chat, Prompt Builder, Summarizer, Writer) running in your browser with complete privacy.",
+    title: "Buddhi AI — Academic Research Platform",
+    description:
+      "Read, understand, and write academic papers with an intelligent on-device AI assistant.",
     images: ["images/buddhi-ai-screenshot.png"],
     creator: "@buddhilive",
   },
@@ -77,8 +78,8 @@ export const metadata: Metadata = {
       "max-snippet": -1,
     },
   },
-  category: "Technology",
-  classification: "AI Tools",
+  category: "Education",
+  classification: "Academic Research Tools",
 };
 
 export default function RootLayout({
@@ -113,7 +114,10 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <TooltipProvider>{children}</TooltipProvider>
+          <TooltipProvider>
+            <SandboxServiceWorkerRegistrar />
+            {children}
+          </TooltipProvider>
         </ThemeProvider>
       </body>
     </html>

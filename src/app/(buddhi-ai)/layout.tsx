@@ -15,19 +15,24 @@ import {
 } from "@/components/ui/sidebar"
 import { useNavigation } from "@/hooks/use-navigation";
 import { useModelEngine } from "@/hooks/use-ai-model";
-import { ModeToggle } from "@/components/custom/toggle-mode"
+import { usePipelineGuard } from "@/hooks/use-pipeline-guard";
+import "@/lib/litert-log-filter";
+import { ModeToggle } from "@/components/custom/toggle-mode";
+import { HardwareStatusBadge } from "@/components/research/hardware-status-badge";
+import { StorageQuotaIndicator } from "@/components/research/storage-quota-indicator";
 
 export default function BuddhiAILayout({ children }: { children: React.ReactNode }) {
 
   const { breadcrumbTitle } = useNavigation();
   useModelEngine();
+  usePipelineGuard();
 
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={false}>
       <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 justify-between">
-          <div className="flex items-center gap-2 px-4">
+      <SidebarInset className="min-w-0">
+        <header className="flex h-16 shrink-0 items-center gap-2 border-b justify-between">
+          <div className="flex items-center gap-2 px-4 min-w-0">
             <SidebarTrigger className="-ml-1" />
             <Separator
               orientation="vertical"
@@ -43,7 +48,9 @@ export default function BuddhiAILayout({ children }: { children: React.ReactNode
               </BreadcrumbList>
             </Breadcrumb>
           </div>
-          <div className="flex items-center gap-2 px-4">
+          <div className="flex items-center gap-3 px-4">
+            <HardwareStatusBadge />
+            <StorageQuotaIndicator />
             <ModeToggle />
           </div>
         </header>

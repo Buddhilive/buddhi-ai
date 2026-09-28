@@ -1,12 +1,12 @@
-import { LlmInference } from '@mediapipe/tasks-genai';
+import { Engine } from '@litert-lm/core';
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 
 interface LiteRTModelState {
-    liteRTModelInstance?: LlmInference;
+    liteRTModelInstance?: Engine;
     liteRTModelModel?: string;
     liteRTModelStatus?: "idle" | "loading" | "ready" | "error";
-    setLiteRTModelInstance: (instance?: LlmInference) => void;
+    setLiteRTModelInstance: (instance?: Engine) => void;
     setLiteRTModelModel: (model?: string) => void;
     setLiteRTModelStatus: (status?: "idle" | "loading" | "ready" | "error") => void;
 }

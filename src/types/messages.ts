@@ -18,11 +18,6 @@ interface BuddhiAIChatTemplate {
     url?: string;
     mediaType?: string;
     fileName?: string;
-    // RAG source metadata
-    source?: string;       // Document name
-    documentId?: string;   // Document ID for tracking
-    chunkId?: string;      // Chunk ID within document
-    score?: number;        // Similarity score from retrieval
 }
 
 // ---------------------------------------------------------------------------
@@ -91,6 +86,15 @@ interface BuddhiAIMessage {
     enableThinking?: boolean;
     /** Captured reasoning content from a model turn (<|channel>thought…<channel|>). */
     thinking?: string;
+}
+
+export type GemmaChannelType = "thought" | "call" | "return" | "text";
+
+export interface GemmaChannelPart {
+    channel: GemmaChannelType;
+    content: string;
+    toolName?: string;
+    raw?: string;
 }
 
 export type {
