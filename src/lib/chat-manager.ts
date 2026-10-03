@@ -146,6 +146,9 @@ function toChatInfo(chat: BuddhiAISavedChat): ChatInfo {
             (isNaN(numericId)
                 ? new Date().toISOString()
                 : new Date(numericId).toISOString()),
+        chatMode: chat.chatMode,
+        paperId: chat.paperId,
+        paperTitle: chat.paperTitle,
     };
 }
 
@@ -262,7 +265,10 @@ export async function loadChat(
  */
 export async function createNewChat(
     messages: UIMessage[],
-    title: string
+    title: string,
+    chatMode?: "library" | "paper",
+    paperId?: string,
+    paperTitle?: string
 ): Promise<string> {
     try {
         const idb = await getDB();
@@ -272,6 +278,9 @@ export async function createNewChat(
             title,
             messages,
             updated_at: new Date().toISOString(),
+            chatMode,
+            paperId,
+            paperTitle,
         };
         await addItemToStore<BuddhiAISavedChat>(idb, "chats", chatData, chatId);
         return chatId;
@@ -283,33 +292,43 @@ export async function createNewChat(
 
 /**
  * Updates the messages of an existing chat in IndexedDB.
- * Fetches the current record to preserve its title unless a new title is provided.
+ * Fetches the current record to preserve its title and metadata unless new ones are provided.
  */
 export async function updateExistingChat(
     chatId: string,
     messages: UIMessage[],
-    title?: string
+    title?: string,
+    chatMode?: "library" | "paper",
+    paperId?: string,
+    paperTitle?: string
 ): Promise<void> {
     try {
         const idb = await getDB();
         let resolvedTitle = title;
-        if (!resolvedTitle) {
-            try {
-                const existing = await getItemByKey<BuddhiAISavedChat>(
-                    idb,
-                    "chats",
-                    chatId
-                );
-                resolvedTitle = existing?.title;
-            } catch {
-                // Non-fatal — title will just be undefined
-            }
+        let resolvedMode = chatMode;
+        let resolvedPaperId = paperId;
+        let resolvedPaperTitle = paperTitle;
+        try {
+            const existing = await getItemByKey<BuddhiAISavedChat>(
+                idb,
+                "chats",
+                chatId
+            );
+            if (!resolvedTitle) resolvedTitle = existing?.title;
+            if (!resolvedMode) resolvedMode = existing?.chatMode;
+            if (!resolvedPaperId) resolvedPaperId = existing?.paperId;
+            if (!resolvedPaperTitle) resolvedPaperTitle = existing?.paperTitle;
+        } catch {
+            // Non-fatal
         }
         const chatData: BuddhiAISavedChat = {
             id: chatId,
             title: resolvedTitle,
             messages,
             updated_at: new Date().toISOString(),
+            chatMode: resolvedMode,
+            paperId: resolvedPaperId,
+            paperTitle: resolvedPaperTitle,
         };
         await updateItemInStore<BuddhiAISavedChat>(
             idb,

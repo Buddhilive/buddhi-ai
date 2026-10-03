@@ -20,6 +20,7 @@ import {
 import type { UIMessage } from "ai";
 import type { Engine } from "@litert-lm/core";
 import type { GemmaTemplateVersion } from "@/types/messages";
+import type { ChatMode } from "@/types/chat";
 
 export function useChatStorage({
     chatId,
@@ -31,6 +32,10 @@ export function useChatStorage({
     templateVersion,
     triggerSummarization,
     resetMemory,
+    chatMode,
+    paperId,
+    paperTitle,
+    onChatLoaded,
 }: {
     chatId: string | null;
     instance: Engine | null;
@@ -41,6 +46,10 @@ export function useChatStorage({
     templateVersion: GemmaTemplateVersion;
     triggerSummarization: (msgs: UIMessage[]) => Promise<void>;
     resetMemory: () => void;
+    chatMode?: ChatMode;
+    paperId?: string | null;
+    paperTitle?: string | null;
+    onChatLoaded?: (chat: { chatMode?: ChatMode; paperId?: string; paperTitle?: string }) => void;
 }) {
     const [isLoadingChat, setIsLoadingChat] = useState(!!chatId);
     const currentChatIdRef = useRef<string | null>(chatId);
@@ -63,6 +72,16 @@ export function useChatStorage({
             try {
                 const chat = await loadChat(chatId);
                 if (isCancelled) return;
+
+                if (chat) {
+                    if (chat.chatMode || chat.paperId || chat.paperTitle) {
+                        onChatLoaded?.({
+                            chatMode: chat.chatMode,
+                            paperId: chat.paperId,
+                            paperTitle: chat.paperTitle,
+                        });
+                    }
+                }
 
                 if (chat?.messages?.length) {
                     setMessages(chat.messages);
@@ -148,10 +167,23 @@ export function useChatStorage({
                 const persistableMessages = await serializeMessagesForStorage(messages);
 
                 if (currentChatIdRef.current) {
-                    await updateExistingChat(currentChatIdRef.current, persistableMessages);
+                    await updateExistingChat(
+                        currentChatIdRef.current,
+                        persistableMessages,
+                        undefined,
+                        chatMode,
+                        paperId ?? undefined,
+                        paperTitle ?? undefined
+                    );
                 } else {
                     const title = generateChatTitle(persistableMessages);
-                    const newId = await createNewChat(persistableMessages, title);
+                    const newId = await createNewChat(
+                        persistableMessages,
+                        title,
+                        chatMode,
+                        paperId ?? undefined,
+                        paperTitle ?? undefined
+                    );
                     currentChatIdRef.current = newId;
                     window.history.replaceState(null, "", `/chat/${newId}`);
                     setCurrentChatId(newId);

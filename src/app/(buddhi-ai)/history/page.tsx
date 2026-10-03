@@ -3,10 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Trash2Icon, MessageSquareIcon, PlusIcon } from "lucide-react";
+import { Trash2Icon, MessageSquareIcon, PlusIcon, FileText } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
     Dialog,
     DialogContent,
@@ -224,11 +225,23 @@ function ChatHistoryRow({
                 href={`/chat/${chat.id}`}
                 className="flex-1 min-w-0 flex items-center gap-3"
             >
-                <MessageSquareIcon className="size-4 shrink-0 text-muted-foreground" />
+                {chat.chatMode === "paper" ? (
+                    <FileText className="size-4 shrink-0 text-purple-500" />
+                ) : (
+                    <MessageSquareIcon className="size-4 shrink-0 text-muted-foreground" />
+                )}
                 <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{chat.title}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium truncate">{chat.title}</p>
+                        {chat.chatMode === "paper" && (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 font-normal text-purple-700 dark:text-purple-300 bg-purple-500/10 border-purple-300/40 shrink-0">
+                                Paper
+                            </Badge>
+                        )}
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">
                         {chat.message_count} message{chat.message_count !== 1 ? "s" : ""} · {timeAgo}
+                        {chat.paperTitle ? ` · ${chat.paperTitle}` : ""}
                     </p>
                 </div>
             </Link>

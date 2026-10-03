@@ -18,14 +18,26 @@ import { useChatStorage } from "@/hooks/chat/use-chat-storage";
 import { ChatMessages } from "./chat-messages";
 import { ChatInput } from "./chat-input";
 import { Spinner } from "@/components/ui/spinner";
+import { Badge } from "@/components/ui/badge";
+import { Library, FileText } from "lucide-react";
+import type { ChatMode } from "@/types/chat";
 
 export function ChatSession({
   instance,
   chatId,
+  initialChatMode,
+  initialPaperId,
+  initialPaperTitle,
 }: {
   instance: Engine;
   chatId: string | null;
+  initialChatMode?: ChatMode;
+  initialPaperId?: string | null;
+  initialPaperTitle?: string | null;
 }) {
+  const [chatMode, setChatMode] = useState<ChatMode>(initialChatMode ?? "library");
+  const [paperId, setPaperId] = useState<string | null>(initialPaperId ?? null);
+  const [paperTitle, setPaperTitle] = useState<string | null>(initialPaperTitle ?? null);
   const [text, setText] = useState<string>("");
   const [isReasoningOn, setIsReasoningOn] = useState<boolean>(true);
 
@@ -56,7 +68,8 @@ export function ChatSession({
     systemPrompt,
     supportsVision,
     chatId: currentChatIdRef.current ?? chatId,
-  }), [isReasoningOn, systemPrompt, supportsVision, chatId]);
+    paperId,
+  }), [isReasoningOn, systemPrompt, supportsVision, chatId, paperId]);
 
   const transport = useMemo(
     () => new LiteRTChatTransport(instance, getOptions, templateVersion),
@@ -84,6 +97,14 @@ export function ChatSession({
     templateVersion,
     triggerSummarization,
     resetMemory,
+    chatMode,
+    paperId,
+    paperTitle,
+    onChatLoaded: (loaded) => {
+      if (loaded.chatMode) setChatMode(loaded.chatMode);
+      if (loaded.paperId) setPaperId(loaded.paperId);
+      if (loaded.paperTitle) setPaperTitle(loaded.paperTitle);
+    },
   });
 
   const {
@@ -174,6 +195,30 @@ export function ChatSession({
 
   return (
     <div className="relative flex flex-col h-[calc(100vh-64px)] w-full overflow-hidden divide-y">
+      <div className="h-9 px-4 flex items-center justify-between border-b bg-muted/20 text-xs shrink-0 select-none">
+        <div className="flex items-center gap-2 min-w-0">
+          {chatMode === "paper" ? (
+            <>
+              <Badge variant="outline" className="gap-1 text-[11px] font-medium bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-300/40 shrink-0">
+                <FileText className="size-3" /> Paper Mode
+              </Badge>
+              <span className="font-medium text-foreground truncate max-w-md" title={paperTitle ?? undefined}>
+                {paperTitle || "Selected Paper"}
+              </span>
+            </>
+          ) : (
+            <>
+              <Badge variant="outline" className="gap-1 text-[11px] font-medium bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-300/40 shrink-0">
+                <Library className="size-3" /> Library Mode
+              </Badge>
+              <span className="text-muted-foreground truncate">
+                Grounded across all research documents
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
       <ChatMessages
         messages={messages}
         status={status}

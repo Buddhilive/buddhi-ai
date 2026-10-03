@@ -2,11 +2,10 @@
 
 import React, { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, BookOpen } from "lucide-react";
+import { ArrowLeft, Loader2, BookOpen, Sparkles } from "lucide-react";
 import { getPaperById, getChunksByPaperId } from "@/lib/paper-storage";
 import { usePaperStore } from "@/stores/paper-store";
 import { PdfReader } from "@/components/research/pdf-reader";
-import { AiAssistantPanel } from "@/components/research/ai-assistant-panel";
 import { Button } from "@/components/ui/button";
 import type { Paper, Chunk } from "@/types/research";
 
@@ -74,26 +73,39 @@ export default function ReaderPage({
   return (
     <div className="flex flex-col h-[calc(100dvh-4rem)] max-h-[calc(100dvh-4rem)] w-full min-h-0 overflow-hidden">
       <div className="h-12 border-b bg-background/80 backdrop-blur px-6 flex items-center justify-between shrink-0 z-10">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push("/library")}
-          className="gap-2 text-xs"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Library
-        </Button>
-        <span
-          className="text-xs font-medium text-muted-foreground truncate max-w-md"
-          title={paper.metadata.title}
-        >
-          {paper.metadata.title}
-        </span>
+        <div className="flex items-center gap-4 min-w-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push("/library")}
+            className="gap-2 text-xs shrink-0"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Library
+          </Button>
+          <span
+            className="text-xs font-medium text-muted-foreground truncate max-w-md hidden sm:inline"
+            title={paper.metadata.title}
+          >
+            {paper.metadata.title}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push(`/chat?mode=paper&paperId=${paper.id}`)}
+            className="gap-2 text-xs font-medium border-primary/30 hover:bg-primary/10 hover:text-primary transition-colors"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            Chat with this Paper
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-1 min-h-0 min-w-0 w-full overflow-hidden">
         <PdfReader paper={paper} chunks={chunks} />
-        <AiAssistantPanel paperId={paper.id} />
       </div>
     </div>
   );
