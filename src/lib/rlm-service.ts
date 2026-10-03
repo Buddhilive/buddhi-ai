@@ -7,6 +7,7 @@ import {
 } from "@buddhilive/sandbox";
 import type { Engine } from "@litert-lm/core";
 import type { RlmAnalysisOptions, RlmMetadata } from "@/types/research";
+import { inferenceQueue } from "@/lib/inference-queue";
 
 export class RlmService {
   private sandboxPromise: Promise<Sandbox> | null = null;
@@ -49,6 +50,12 @@ export class RlmService {
       documentTitle = "Academic Paper",
       papers,
       maxDepth = 5,
+      chunkSize,
+      mode = "auto",
+      maxTurns,
+      maxSubQueries,
+      maxObservationChars,
+      opfsPath,
       signal,
       onProgress,
     } = options;
@@ -88,6 +95,11 @@ export class RlmService {
 
     const config: RlmConfig = {
       maxDepth,
+      chunkSize,
+      mode: mode as any,
+      maxTurns,
+      maxSubQueries,
+      maxObservationChars,
       chunkStrategy: { type: "paragraph" },
     };
 
@@ -109,67 +121,111 @@ export class RlmService {
     }
 
     try {
-      onProgress?.({
-        iteration: 0,
-        phase: "ingesting",
-        message: `Ingesting ${Math.round(fullContext.length / 1024)}KB into WASM linear memory...`,
-      });
+      // If OPFS path provided or file is > 1MB and OPFS is available, write to OPFS
+      let usedOpfs = false;
+      const OPFS_THRESHOLD_BYTES = 1024 * 1024; // 1MB
 
-      await session.addContext(fullContext);
+      if (
+        (opfsPath || fullContext.length > OPFS_THRESHOLD_BYTES) &&
+        typeof navigator !== "undefined" &&
+        navigator.storage?.getDirectory
+      ) {
+        try {
+          onProgress?.({
+            iteration: 0,
+            phase: "indexing",
+            message: `Writing document to OPFS and constructing out-of-core index (~${Math.round(fullContext.length / 1024)}KB)...`,
+          });
+
+          const root = await navigator.storage.getDirectory();
+          const targetFileName = opfsPath ? opfsPath.split("/").filter(Boolean).pop()! : `rlm_doc_${Date.now()}.txt`;
+          const fileHandle = await root.getFileHandle(targetFileName, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(fullContext);
+          await writable.close();
+
+          await session.addContextFromOpfs(targetFileName);
+          usedOpfs = true;
+        } catch (opfsErr) {
+          console.warn("[RlmService] OPFS ingestion fell back to in-memory:", opfsErr);
+          usedOpfs = false;
+        }
+      }
+
+      if (!usedOpfs) {
+        onProgress?.({
+          iteration: 0,
+          phase: "ingesting",
+          message: `Ingesting ${Math.round(fullContext.length / 1024)}KB into WASM linear memory...`,
+        });
+        await session.addContext(fullContext);
+      }
 
       let currentIteration = 0;
 
-      // Inverted LLM callback bridge using Google's LiteRT-LM Engine
-      const llmFn = async (prompt: string): Promise<string> => {
+      // Inverted LLM callback bridge using Google's LiteRT-LM Engine via InferenceQueue
+      const llmFn = async (
+        prompt: string,
+        ctx?: { role?: "root" | "sub"; subId?: string; signal?: AbortSignal }
+      ): Promise<string> => {
         if (signal?.aborted) {
           throw new RlmError("Analysis aborted by caller", "ERR_ABORTED");
         }
 
         currentIteration++;
+        const role = ctx?.role || "root";
+        const phase = role === "sub" ? "sub_query" : "exploring";
+
         onProgress?.({
           iteration: currentIteration,
-          phase: "reasoning",
-          message: `Evaluating recursive reasoning step ${currentIteration}/${maxDepth}...`,
+          phase,
+          message:
+            role === "sub"
+              ? `Executing subquery ${ctx?.subId || currentIteration}...`
+              : `Evaluating exploration step ${currentIteration}...`,
+          subId: ctx?.subId,
         });
 
-        const conversation = await engine.createConversation({
-          preface: { messages: [] },
-        });
+        // Enqueue inference through serialized inferenceQueue
+        return inferenceQueue.enqueue(async () => {
+          const conversation = await engine.createConversation({
+            preface: { messages: [] },
+          });
 
-        try {
-          const stream = conversation.sendMessageStreaming(prompt);
-          const reader = stream.getReader();
-          let responseText = "";
           try {
-            while (true) {
-              const { done, value: chunk } = await reader.read();
-              if (done || !chunk) break;
-              if (signal?.aborted) {
-                conversation.cancel();
-                throw new RlmError("Inference aborted by caller", "ERR_ABORTED");
-              }
-              if (typeof chunk.content === "string") {
-                responseText += chunk.content;
-              } else if (Array.isArray(chunk.content)) {
-                for (const part of chunk.content) {
-                  if (typeof part === "string") {
-                    responseText += part;
-                  } else if ((part as any)?.text) {
-                    responseText += (part as any).text;
-                  }
+            const stream = conversation.sendMessageStreaming(prompt);
+            const reader = stream.getReader();
+            let responseText = "";
+            try {
+              while (true) {
+                const { done, value: chunk } = await reader.read();
+                if (done || !chunk) break;
+                if (signal?.aborted) {
+                  conversation.cancel();
+                  throw new RlmError("Inference aborted by caller", "ERR_ABORTED");
                 }
-              } else if (typeof chunk === "string") {
-                responseText += chunk;
+                if (typeof chunk.content === "string") {
+                  responseText += chunk.content;
+                } else if (Array.isArray(chunk.content)) {
+                  for (const part of chunk.content) {
+                    if (typeof part === "string") {
+                      responseText += part;
+                    } else if ((part as any)?.text) {
+                      responseText += (part as any).text;
+                    }
+                  }
+                } else if (typeof chunk === "string") {
+                  responseText += chunk;
+                }
               }
+            } finally {
+              reader.releaseLock();
             }
+            return responseText;
           } finally {
-            reader.releaseLock();
+            await conversation.delete().catch(() => {});
           }
-          console.log(`[RLM Iteration ${currentIteration}] LLM Output:`, responseText);
-          return responseText;
-        } finally {
-          await conversation.delete().catch(() => {});
-        }
+        }, signal);
       };
 
       onProgress?.({

@@ -52,6 +52,7 @@ import { retrieveRagContext } from "@/lib/rag-retrieval";
 import { RAG_MAX_CONTEXT_CHARS, RAG_SNIPPET_MAX_CHARS } from "@/const/rag";
 import type { BuddhiMessageMetadata, RagCitationAnnotation, RagContext } from "@/types/research";
 import { rlmService } from "@/lib/rlm-service";
+import { inferenceQueue } from "@/lib/inference-queue";
 import { usePaperStore } from "@/stores/paper-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { getAllPapers } from "@/lib/paper-storage";
@@ -592,11 +593,15 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
 
                 let conversation;
                 try {
-                    conversation = await this.engine.createConversation({
-                        preface: {
-                            messages: prefaceMessages,
-                        },
-                    });
+                    conversation = await inferenceQueue.enqueue(
+                        () =>
+                            this.engine.createConversation({
+                                preface: {
+                                    messages: prefaceMessages,
+                                },
+                            }),
+                        abortSignal
+                    );
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     throw new Error(`Failed to create LiteRT conversation: ${msg}`);

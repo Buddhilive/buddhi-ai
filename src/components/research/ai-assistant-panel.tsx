@@ -105,7 +105,17 @@ export function AiAssistantPanel({ paperId }: AiAssistantPanelProps) {
             maxDepth: 5,
             signal: abortController.signal,
             onProgress: (prog) => {
-              setRlmStatus(`Step ${prog.iteration}: ${prog.message}`);
+              const phaseLabel =
+                prog.phase === "sub_query"
+                  ? "Sub-query"
+                  : prog.phase === "exploring"
+                  ? "Exploring"
+                  : prog.phase === "synthesizing"
+                  ? "Synthesizing"
+                  : prog.phase === "indexing"
+                  ? "Indexing"
+                  : `Step ${prog.iteration}`;
+              setRlmStatus(`[${phaseLabel}] ${prog.message}`);
             },
           },
           liteRTModelInstance
