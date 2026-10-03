@@ -1,5 +1,4 @@
 import {
-  getEmbeddingsByPaperId,
   getAllEmbeddings,
   getChunksByPaperId,
 } from "./paper-storage";
@@ -34,7 +33,7 @@ export function cosineSimilarity(a: number[], b: number[]): number {
  */
 export async function searchChunks(
   queryVector: number[],
-  paperId?: string,
+  paperId?: string | string[],
   topK = 5,
   similarityThreshold = 0.3
 ): Promise<SearchResultChunk[]> {
@@ -65,9 +64,17 @@ export async function searchChunks(
     console.warn("[vector-store] PGlite search failed, falling back to IDB scan:", err);
   }
 
-  const embeddings = paperId
-    ? await getEmbeddingsByPaperId(paperId)
-    : await getAllEmbeddings();
+  const idList = Array.isArray(paperId)
+    ? paperId.filter(Boolean)
+    : paperId
+    ? [paperId]
+    : [];
+
+  let embeddings = await getAllEmbeddings();
+  if (idList.length > 0) {
+    const filterSet = new Set(idList);
+    embeddings = embeddings.filter((emb) => filterSet.has(emb.paperId));
+  }
 
   if (embeddings.length === 0) {
     console.warn("[vector-store] Zero embeddings found in IndexedDB store.");

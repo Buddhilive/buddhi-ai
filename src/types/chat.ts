@@ -1,6 +1,6 @@
 import type { UIMessage } from "ai";
 
-export type ChatMode = "library" | "paper";
+export type ChatMode = "library" | "paper" | "gap-analysis";
 
 export interface ChatInfo {
     id: string;
@@ -10,6 +10,8 @@ export interface ChatInfo {
     chatMode?: ChatMode;
     paperId?: string;
     paperTitle?: string;
+    paperIds?: string[];
+    paperTitles?: string[];
 }
 
 export interface BuddhiAISavedChat {
@@ -20,4 +22,6 @@ export interface BuddhiAISavedChat {
     chatMode?: ChatMode;
     paperId?: string;
     paperTitle?: string;
+    paperIds?: string[];
+    paperTitles?: string[];
 }

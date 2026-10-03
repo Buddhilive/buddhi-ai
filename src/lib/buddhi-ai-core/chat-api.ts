@@ -272,6 +272,7 @@ export interface TransportOptions {
     supportsVision?: boolean;
     chatId?: string | null;
     paperId?: string | null;
+    paperIds?: string[] | null;
 }
 
 /**
@@ -284,6 +285,7 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
     private _supportsVision: boolean = false;
     private _chatId: string | null = null;
     private _paperId: string | null = null;
+    private _paperIds: string[] | null = null;
 
     constructor(
         private readonly engine: Engine,
@@ -324,6 +326,13 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
     }
     set paperId(val: string | null) {
         this._paperId = val;
+    }
+
+    get paperIds(): string[] | null {
+        return this.getOptions ? (this.getOptions().paperIds ?? this._paperIds) : this._paperIds;
+    }
+    set paperIds(val: string[] | null) {
+        this._paperIds = val;
     }
 
     /**
@@ -423,11 +432,16 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
 
                 if (ragQuery) {
                     try {
+                        const scopedPaperTarget =
+                            this.paperIds && this.paperIds.length > 0
+                                ? this.paperIds
+                                : (this.paperId ?? undefined);
+
                         ragContexts = await retrieveRagContext(
                             ragQuery,
                             undefined,
                             undefined,
-                            this.paperId ?? undefined
+                            scopedPaperTarget
                         );
                     } catch (err) {
                         console.warn("[LiteRTChatTransport] RAG retrieval failed:", err);

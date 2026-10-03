@@ -77,7 +77,9 @@ export function ChatInterface() {
             initialChatMode={modeState?.mode}
             initialPaperId={modeState?.paperId}
             initialPaperTitle={modeState?.paperTitle}
-            key={chatId ?? modeState?.paperId ?? modeState?.mode ?? "new"}
+            initialPaperIds={modeState?.paperIds}
+            initialPaperTitles={modeState?.paperTitles}
+            key={chatId ?? modeState?.paperId ?? modeState?.paperIds?.join(",") ?? modeState?.mode ?? "new"}
         />
     );
 }

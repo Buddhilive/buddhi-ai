@@ -18,7 +18,7 @@ export async function retrieveRagContext(
   query: string,
   topK: number = RAG_TOP_K,
   threshold: number = RAG_SIMILARITY_THRESHOLD,
-  paperId?: string
+  paperId?: string | string[]
 ): Promise<RagContext[]> {
   const trimmedQuery = query.trim();
   if (!trimmedQuery) {

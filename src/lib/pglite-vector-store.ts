@@ -185,7 +185,7 @@ export async function getTotalVectorCount(): Promise<number> {
  */
 export async function searchVectorChunks(
   queryVector: number[],
-  paperId?: string,
+  paperId?: string | string[],
   limit = 5
 ): Promise<Array<{
   id: string;
@@ -201,16 +201,22 @@ export async function searchVectorChunks(
   let query: string;
   let params: unknown[];
 
-  if (paperId) {
+  const idList = Array.isArray(paperId)
+    ? paperId.filter(Boolean)
+    : paperId
+    ? [paperId]
+    : [];
+
+  if (idList.length > 0) {
     query = `
       SELECT id, paper_id, chunk_index, page_number, text,
              1 - (embedding <=> $1) AS similarity
       FROM chunk_embeddings
-      WHERE paper_id = $2
+      WHERE paper_id = ANY($2::text[])
       ORDER BY embedding <=> $1 ASC
       LIMIT $3;
     `;
-    params = [formattedVec, paperId, limit];
+    params = [formattedVec, idList, limit];
   } else {
     query = `
       SELECT id, paper_id, chunk_index, page_number, text,

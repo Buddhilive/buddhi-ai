@@ -6,7 +6,7 @@ import {
     initializeDB,
     updateItemInStore,
 } from "@/lib/indexeddb";
-import { ChatInfo, BuddhiAISavedChat } from "@/types/chat";
+import { ChatInfo, BuddhiAISavedChat, ChatMode } from "@/types/chat";
 export type { ChatInfo };
 import type { BuddhiAIMessage, BuddhiAIChatTemplate } from "@/types/messages";
 import type { UIMessage } from "ai";
@@ -149,6 +149,8 @@ function toChatInfo(chat: BuddhiAISavedChat): ChatInfo {
         chatMode: chat.chatMode,
         paperId: chat.paperId,
         paperTitle: chat.paperTitle,
+        paperIds: chat.paperIds,
+        paperTitles: chat.paperTitles,
     };
 }
 
@@ -266,9 +268,11 @@ export async function loadChat(
 export async function createNewChat(
     messages: UIMessage[],
     title: string,
-    chatMode?: "library" | "paper",
+    chatMode?: ChatMode,
     paperId?: string,
-    paperTitle?: string
+    paperTitle?: string,
+    paperIds?: string[],
+    paperTitles?: string[]
 ): Promise<string> {
     try {
         const idb = await getDB();
@@ -281,6 +285,8 @@ export async function createNewChat(
             chatMode,
             paperId,
             paperTitle,
+            paperIds,
+            paperTitles,
         };
         await addItemToStore<BuddhiAISavedChat>(idb, "chats", chatData, chatId);
         return chatId;
@@ -298,9 +304,11 @@ export async function updateExistingChat(
     chatId: string,
     messages: UIMessage[],
     title?: string,
-    chatMode?: "library" | "paper",
+    chatMode?: ChatMode,
     paperId?: string,
-    paperTitle?: string
+    paperTitle?: string,
+    paperIds?: string[],
+    paperTitles?: string[]
 ): Promise<void> {
     try {
         const idb = await getDB();
@@ -308,6 +316,8 @@ export async function updateExistingChat(
         let resolvedMode = chatMode;
         let resolvedPaperId = paperId;
         let resolvedPaperTitle = paperTitle;
+        let resolvedPaperIds = paperIds;
+        let resolvedPaperTitles = paperTitles;
         try {
             const existing = await getItemByKey<BuddhiAISavedChat>(
                 idb,
@@ -318,6 +328,8 @@ export async function updateExistingChat(
             if (!resolvedMode) resolvedMode = existing?.chatMode;
             if (!resolvedPaperId) resolvedPaperId = existing?.paperId;
             if (!resolvedPaperTitle) resolvedPaperTitle = existing?.paperTitle;
+            if (!resolvedPaperIds) resolvedPaperIds = existing?.paperIds;
+            if (!resolvedPaperTitles) resolvedPaperTitles = existing?.paperTitles;
         } catch {
             // Non-fatal
         }
@@ -329,6 +341,8 @@ export async function updateExistingChat(
             chatMode: resolvedMode,
             paperId: resolvedPaperId,
             paperTitle: resolvedPaperTitle,
+            paperIds: resolvedPaperIds,
+            paperTitles: resolvedPaperTitles,
         };
         await updateItemInStore<BuddhiAISavedChat>(
             idb,

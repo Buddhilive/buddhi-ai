@@ -35,6 +35,8 @@ export function useChatStorage({
     chatMode,
     paperId,
     paperTitle,
+    paperIds,
+    paperTitles,
     onChatLoaded,
 }: {
     chatId: string | null;
@@ -49,7 +51,15 @@ export function useChatStorage({
     chatMode?: ChatMode;
     paperId?: string | null;
     paperTitle?: string | null;
-    onChatLoaded?: (chat: { chatMode?: ChatMode; paperId?: string; paperTitle?: string }) => void;
+    paperIds?: string[] | null;
+    paperTitles?: string[] | null;
+    onChatLoaded?: (chat: {
+        chatMode?: ChatMode;
+        paperId?: string;
+        paperTitle?: string;
+        paperIds?: string[];
+        paperTitles?: string[];
+    }) => void;
 }) {
     const [isLoadingChat, setIsLoadingChat] = useState(!!chatId);
     const currentChatIdRef = useRef<string | null>(chatId);
@@ -74,11 +84,13 @@ export function useChatStorage({
                 if (isCancelled) return;
 
                 if (chat) {
-                    if (chat.chatMode || chat.paperId || chat.paperTitle) {
+                    if (chat.chatMode || chat.paperId || chat.paperTitle || chat.paperIds || chat.paperTitles) {
                         onChatLoaded?.({
                             chatMode: chat.chatMode,
                             paperId: chat.paperId,
                             paperTitle: chat.paperTitle,
+                            paperIds: chat.paperIds,
+                            paperTitles: chat.paperTitles,
                         });
                     }
                 }
@@ -173,7 +185,9 @@ export function useChatStorage({
                         undefined,
                         chatMode,
                         paperId ?? undefined,
-                        paperTitle ?? undefined
+                        paperTitle ?? undefined,
+                        paperIds ?? undefined,
+                        paperTitles ?? undefined
                     );
                 } else {
                     const title = generateChatTitle(persistableMessages);
@@ -182,7 +196,9 @@ export function useChatStorage({
                         title,
                         chatMode,
                         paperId ?? undefined,
-                        paperTitle ?? undefined
+                        paperTitle ?? undefined,
+                        paperIds ?? undefined,
+                        paperTitles ?? undefined
                     );
                     currentChatIdRef.current = newId;
                     window.history.replaceState(null, "", `/chat/${newId}`);

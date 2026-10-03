@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Trash2Icon, MessageSquareIcon, PlusIcon, FileText } from "lucide-react";
+import { Trash2Icon, MessageSquareIcon, PlusIcon, FileText, GitFork } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -225,7 +225,9 @@ function ChatHistoryRow({
                 href={`/chat/${chat.id}`}
                 className="flex-1 min-w-0 flex items-center gap-3"
             >
-                {chat.chatMode === "paper" ? (
+                {chat.chatMode === "gap-analysis" ? (
+                    <GitFork className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                ) : chat.chatMode === "paper" ? (
                     <FileText className="size-4 shrink-0 text-purple-500" />
                 ) : (
                     <MessageSquareIcon className="size-4 shrink-0 text-muted-foreground" />
@@ -233,6 +235,11 @@ function ChatHistoryRow({
                 <div className="min-w-0">
                     <div className="flex items-center gap-2">
                         <p className="text-sm font-medium truncate">{chat.title}</p>
+                        {chat.chatMode === "gap-analysis" && (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 font-normal text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border-emerald-300/40 shrink-0">
+                                Gap Analysis
+                            </Badge>
+                        )}
                         {chat.chatMode === "paper" && (
                             <Badge variant="outline" className="text-[10px] h-4 px-1.5 font-normal text-purple-700 dark:text-purple-300 bg-purple-500/10 border-purple-300/40 shrink-0">
                                 Paper
@@ -241,7 +248,11 @@ function ChatHistoryRow({
                     </div>
                     <p className="text-xs text-muted-foreground truncate">
                         {chat.message_count} message{chat.message_count !== 1 ? "s" : ""} · {timeAgo}
-                        {chat.paperTitle ? ` · ${chat.paperTitle}` : ""}
+                        {chat.chatMode === "gap-analysis" && chat.paperIds
+                            ? ` · ${chat.paperIds.length} papers`
+                            : chat.paperTitle
+                            ? ` · ${chat.paperTitle}`
+                            : ""}
                     </p>
                 </div>
             </Link>
