@@ -76,11 +76,13 @@ export const useHumanizerStore = create<HumanizerStudioState>()(
 
       setIntensity: (intensity) =>
         set((state) => {
-          const mod = INTENSITY_MODIFIERS[intensity];
+          const validIntensity = intensity || "balanced";
+          const mod = INTENSITY_MODIFIERS[validIntensity] || INTENSITY_MODIFIERS.balanced;
           return {
             config: {
+              ...DEFAULT_STUDIO_CONFIG,
               ...state.config,
-              intensity,
+              intensity: validIntensity,
               burstinessLevel: mod.burstinessLevel,
             },
           };
@@ -140,6 +142,24 @@ export const useHumanizerStore = create<HumanizerStudioState>()(
     }),
     {
       name: "buddhi-humanizer-studio-storage",
+      merge: (persistedState: unknown, currentState) => {
+        const persisted = (persistedState as any) || {};
+        const persistedConfig = persisted.config || {};
+        return {
+          ...currentState,
+          ...persisted,
+          config: {
+            ...DEFAULT_STUDIO_CONFIG,
+            ...persistedConfig,
+            intensity:
+              persistedConfig.intensity === "low" ||
+              persistedConfig.intensity === "balanced" ||
+              persistedConfig.intensity === "aggressive"
+                ? persistedConfig.intensity
+                : "balanced",
+          },
+        };
+      },
       partialize: (state) => ({
         rawInput: state.rawInput,
         outputMarkdown: state.outputMarkdown,

@@ -22,6 +22,9 @@ import {
 import { useHumanizerStore } from "@/stores/humanizer-store";
 import { useLiteRTModelStore } from "@/stores/litert-store";
 import type { HumanizerPresetId, HumanizerIntensity } from "@/types/humanizer";
+import { Slider } from "@/components/ui/slider";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import Link from "next/link";
 
 interface HumanizerControlsProps {
@@ -39,6 +42,7 @@ export function HumanizerControls({ onExecute, onCancel }: HumanizerControlsProp
     stage,
   } = useHumanizerStore();
 
+  const currentIntensity: HumanizerIntensity = config?.intensity || "balanced";
   const liteRTInstance = useLiteRTModelStore((s) => s.liteRTModelInstance);
 
   const isBusy = stage === "analyzing" || stage === "processing" || stage === "reassembling";
@@ -90,22 +94,51 @@ export function HumanizerControls({ onExecute, onCancel }: HumanizerControlsProp
           </Select>
         </div>
 
-        {/* Intensity Selector */}
-        <div className="flex items-center gap-1.5">
+        {/* Intensity Selector with Buttons & Slider */}
+        <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground font-medium hidden sm:inline">Intensity:</span>
           <div className="flex items-center p-0.5 rounded-lg bg-muted border">
-            {(["low", "balanced", "aggressive"] as HumanizerIntensity[]).map((level) => (
-              <Button
-                key={level}
-                variant={config.intensity === level ? "secondary" : "ghost"}
-                size="sm"
-                className="h-7 text-[11px] px-2.5 capitalize rounded-md"
-                onClick={() => setIntensity(level)}
-                disabled={isBusy}
-              >
-                {level}
-              </Button>
-            ))}
+            {(["low", "balanced", "aggressive"] as const).map((level) => {
+              const isSelected = currentIntensity === level;
+              return (
+                <Button
+                  key={level}
+                  type="button"
+                  size="sm"
+                  variant={isSelected ? "default" : "ghost"}
+                  className={cn(
+                    "h-7 text-[11px] px-2.5 capitalize rounded-md transition-all cursor-pointer",
+                    isSelected
+                      ? "bg-primary text-primary-foreground font-semibold shadow-xs hover:bg-primary/90"
+                      : "text-muted-foreground hover:text-foreground hover:bg-background/60"
+                  )}
+                  onClick={() => {
+                    setIntensity(level);
+                    toast.info(`Intensity set to ${level.charAt(0).toUpperCase() + level.slice(1)}`);
+                  }}
+                  disabled={isBusy}
+                >
+                  {level}
+                </Button>
+              );
+            })}
+          </div>
+
+          {/* Intensity Slider */}
+          <div className="hidden xl:flex items-center gap-1.5 w-24 px-1" title="Adjust intensity level">
+            <Slider
+              value={[currentIntensity === "low" ? 1 : currentIntensity === "aggressive" ? 3 : 2]}
+              min={1}
+              max={3}
+              step={1}
+              onValueChange={([val]) => {
+                const mapped: HumanizerIntensity = val === 1 ? "low" : val === 3 ? "aggressive" : "balanced";
+                setIntensity(mapped);
+                toast.info(`Intensity set to ${mapped.charAt(0).toUpperCase() + mapped.slice(1)}`);
+              }}
+              disabled={isBusy}
+              className="w-20 cursor-pointer"
+            />
           </div>
         </div>
       </div>
