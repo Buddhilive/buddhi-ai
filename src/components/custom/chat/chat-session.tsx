@@ -19,10 +19,11 @@ import { ChatMessages } from "./chat-messages";
 import { ChatInput } from "./chat-input";
 import { Spinner } from "@/components/ui/spinner";
 import { Badge } from "@/components/ui/badge";
-import { Library, FileText, GitFork, ChevronDown, BookOpen } from "lucide-react";
+import { Library, FileText, GitFork, ChevronDown, BookOpen, Wand2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { GAP_ANALYSIS_SYSTEM_PROMPT } from "@/const/system-prompt";
 import type { ChatMode } from "@/types/chat";
+import { useSettingsStore } from "@/stores/settings-store";
 
 export function ChatSession({
   instance,
@@ -48,6 +49,8 @@ export function ChatSession({
   const [paperTitles, setPaperTitles] = useState<string[] | null>(initialPaperTitles ?? null);
   const [text, setText] = useState<string>("");
   const [isReasoningOn, setIsReasoningOn] = useState<boolean>(true);
+  const [isHumanizerBypassed, setIsHumanizerBypassed] = useState<boolean>(false);
+  const humanizer = useSettingsStore((s) => s.humanizer);
 
   // Progressive Disclosure Skill Store
   const { corePrompt, domainPrompt, processUserPrompt, loadIndex } = useSkillStore();
@@ -85,7 +88,12 @@ export function ChatSession({
     chatId: currentChatIdRef.current ?? chatId,
     paperId,
     paperIds,
-  }), [isReasoningOn, systemPrompt, supportsVision, chatId, paperId, paperIds]);
+    isHumanizerBypassed,
+  }), [isReasoningOn, systemPrompt, supportsVision, chatId, paperId, paperIds, isHumanizerBypassed]);
+
+  const toggleHumanizerBypass = useCallback(() => {
+    setIsHumanizerBypassed((prev) => !prev);
+  }, []);
 
   const transport = useMemo(
     () => new LiteRTChatTransport(instance, getOptions, templateVersion),
@@ -275,6 +283,24 @@ export function ChatSession({
             </>
           )}
         </div>
+
+        {humanizer.enabled && (
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={toggleHumanizerBypass}
+              title={!isHumanizerBypassed ? "LLM Humanizer active for this chat (click to bypass)" : "LLM Humanizer bypassed for this chat (click to enable)"}
+              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium transition-colors border cursor-pointer ${
+                !isHumanizerBypassed
+                  ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-300/40 hover:bg-purple-500/20"
+                  : "bg-muted/40 text-muted-foreground border-border hover:bg-muted line-through"
+              }`}
+            >
+              <Wand2 className="size-3" />
+              <span>Humanizer {!isHumanizerBypassed ? `(${humanizer.preset})` : "Bypassed"}</span>
+            </button>
+          </div>
+        )}
       </div>
 
       <ChatMessages
@@ -305,6 +331,8 @@ export function ChatSession({
         toggleReasoning={toggleReasoning}
         handleTranscriptionChange={handleTranscriptionChange}
         tokenCount={tokenCount}
+        isHumanizerBypassed={isHumanizerBypassed}
+        toggleHumanizerBypass={toggleHumanizerBypass}
       />
     </div>
   );

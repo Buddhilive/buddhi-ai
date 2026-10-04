@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
+import { HumanizerSettingsCard } from "./humanizer-settings-card";
 
 export function SettingsForm() {
   const { hfToken, isLoading, saveHfToken, removeHfToken } = useSettings();
@@ -201,6 +202,9 @@ export function SettingsForm() {
           </span>
         </CardFooter>
       </Card>
+
+      {/* LLM Humanizer Card */}
+      <HumanizerSettingsCard />
 
       {/* Extended Context Window (RLM) Card */}
       <Card>
