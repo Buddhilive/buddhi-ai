@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { HumanizerConfig, HumanizerPresetId } from "@/types/humanizer";
+import { DEFAULT_HUMANIZER_CONFIG, HUMANIZER_PRESETS } from "@/lib/humanizer/constants";
 
 export const LITERT_MAX_CONTEXT_TOKENS = 4096;
 export const RLM_MAX_CONTEXT_TOKENS = 131072;
@@ -13,6 +15,7 @@ interface SettingsState {
   hasConfiguredHFToken: boolean;
   enableExtendedContext: boolean;
   maxContextTokens: number;
+  humanizer: HumanizerConfig;
   setTheme: (theme: "system" | "light" | "dark") => void;
   setTopK: (topK: number) => void;
   setSimilarityThreshold: (thresh: number) => void;
@@ -20,6 +23,10 @@ interface SettingsState {
   setHasConfiguredHFToken: (hasToken: boolean) => void;
   setEnableExtendedContext: (enabled: boolean) => void;
   setMaxContextTokens: (tokens: number) => void;
+  setHumanizerEnabled: (enabled: boolean) => void;
+  setHumanizerPreset: (preset: HumanizerPresetId) => void;
+  updateHumanizerConfig: (updates: Partial<HumanizerConfig>) => void;
+  resetHumanizerDefaults: () => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -32,6 +39,7 @@ export const useSettingsStore = create<SettingsState>()(
       hasConfiguredHFToken: false,
       enableExtendedContext: true,
       maxContextTokens: DEFAULT_MAX_CONTEXT_TOKENS,
+      humanizer: DEFAULT_HUMANIZER_CONFIG,
       setTheme: (theme) => set({ theme }),
       setTopK: (topK) => set({ topK }),
       setSimilarityThreshold: (similarityThreshold) => set({ similarityThreshold }),
@@ -51,9 +59,50 @@ export const useSettingsStore = create<SettingsState>()(
         const clamped = Math.min(Math.max(tokens, 1024), upperLimit);
         set({ maxContextTokens: clamped });
       },
+      setHumanizerEnabled: (enabled) =>
+        set((state) => ({
+          humanizer: {
+            ...state.humanizer,
+            enabled,
+          },
+        })),
+      setHumanizerPreset: (preset) =>
+        set((state) => {
+          if (preset === "custom") {
+            return {
+              humanizer: {
+                ...state.humanizer,
+                preset: "custom",
+              },
+            };
+          }
+          const presetDef = HUMANIZER_PRESETS[preset];
+          return {
+            humanizer: {
+              ...state.humanizer,
+              preset,
+              ...presetDef.config,
+            },
+          };
+        }),
+      updateHumanizerConfig: (updates) =>
+        set((state) => ({
+          humanizer: {
+            ...state.humanizer,
+            ...updates,
+          },
+        })),
+      resetHumanizerDefaults: () =>
+        set((state) => ({
+          humanizer: {
+            ...DEFAULT_HUMANIZER_CONFIG,
+            enabled: state.humanizer.enabled,
+          },
+        })),
     }),
     {
       name: "buddhi-research-settings",
     }
   )
 );
+

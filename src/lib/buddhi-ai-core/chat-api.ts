@@ -56,6 +56,10 @@ import { inferenceQueue } from "@/lib/inference-queue";
 import { usePaperStore } from "@/stores/paper-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { getAllPapers, getPaperById } from "@/lib/paper-storage";
+import {
+    composeHumanizerSystemDirective,
+    resolveSamplerParameters,
+} from "@/lib/humanizer";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -273,6 +277,7 @@ export interface TransportOptions {
     chatId?: string | null;
     paperId?: string | null;
     paperIds?: string[] | null;
+    isHumanizerBypassed?: boolean;
 }
 
 /**
@@ -286,6 +291,7 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
     private _chatId: string | null = null;
     private _paperId: string | null = null;
     private _paperIds: string[] | null = null;
+    private _isHumanizerBypassed: boolean = false;
 
     constructor(
         private readonly engine: Engine,
@@ -333,6 +339,13 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
     }
     set paperIds(val: string[] | null) {
         this._paperIds = val;
+    }
+
+    get isHumanizerBypassed(): boolean {
+        return this.getOptions ? (this.getOptions().isHumanizerBypassed ?? this._isHumanizerBypassed) : this._isHumanizerBypassed;
+    }
+    set isHumanizerBypassed(val: boolean) {
+        this._isHumanizerBypassed = val;
     }
 
     /**
@@ -391,10 +404,30 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                     }
                 }
 
+                // Active prompt is the last turn, augmented with RAG research context
+                const lastTurn = converted[converted.length - 1];
+                const baseUserPrompt = lastTurn
+                    ? typeof lastTurn.content === "string"
+                        ? lastTurn.content
+                        : JSON.stringify(lastTurn.content)
+                    : "";
+
                 // Partition messages into preface (prior turns) and the active user prompt
                 const prefaceMessages: Message[] = [];
+                const humanizerConfig = useSettingsStore.getState().humanizer;
+                const isHumanizerActive = !!(humanizerConfig?.enabled && !this.isHumanizerBypassed);
+
                 if (this.systemPrompt) {
-                    const fullSystem = this.systemPrompt;
+                    let fullSystem = this.systemPrompt;
+                    if (isHumanizerActive) {
+                        const humanizerDirective = composeHumanizerSystemDirective(humanizerConfig, {
+                            maxChars: 1200,
+                            promptText: baseUserPrompt,
+                        });
+                        if (humanizerDirective) {
+                            fullSystem = `${fullSystem}\n\n${humanizerDirective}`;
+                        }
+                    }
                     prefaceMessages.push({
                         role: "system",
                         content: this.isReasoningOn ? `${fullSystem}\n<|think|>` : fullSystem,
@@ -409,14 +442,6 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                         content: typeof turn.content === "string" ? turn.content : JSON.stringify(turn.content),
                     });
                 }
-
-                // Active prompt is the last turn, augmented with RAG research context
-                const lastTurn = converted[converted.length - 1];
-                const baseUserPrompt = lastTurn
-                    ? typeof lastTurn.content === "string"
-                        ? lastTurn.content
-                        : JSON.stringify(lastTurn.content)
-                    : "";
 
                 // Perform library-wide RAG retrieval on the latest user query
                 const lastUserMsg = messages.findLast((m) => m.role === "user");
@@ -630,13 +655,25 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
 
                 let conversation;
                 try {
+                    const conversationConfig: Parameters<Engine["createConversation"]>[0] = {
+                        preface: {
+                            messages: prefaceMessages,
+                        },
+                    };
+
+                    if (isHumanizerActive) {
+                        try {
+                            const samplerParams = resolveSamplerParameters(humanizerConfig);
+                            conversationConfig.sessionConfig = {
+                                samplerParams,
+                            };
+                        } catch (err) {
+                            console.warn("[LiteRTChatTransport] Failed to resolve humanizer samplerParams:", err);
+                        }
+                    }
+
                     conversation = await inferenceQueue.enqueue(
-                        () =>
-                            this.engine.createConversation({
-                                preface: {
-                                    messages: prefaceMessages,
-                                },
-                            }),
+                        () => this.engine.createConversation(conversationConfig),
                         abortSignal
                     );
                 } catch (err) {
