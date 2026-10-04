@@ -56,6 +56,11 @@ function getBurstinessDirective(level: number): string {
  */
 function getPresetToneDirective(preset: string): string {
   switch (preset) {
+    case "academic_hedged":
+      return "Tone: Academic and scholarly with rigorous epistemic modesty. Replace blunt, absolute claims with cautious, evidence-backed hedging ('suggests that', 'indicates under standard conditions', 'points toward'). Maintain analytical precision without generic AI throat-clearing.";
+    case "executive_concise":
+      return "Tone: Executive, concise, and punchy. Eliminate all filler, throat-clearing, and verbose transitional phrasing. Prioritize active voice, immediate takeaways, and high information density.";
+    case "conversational":
     case "casual":
       return "Tone: Warm, conversational, and approachable. Use natural contractions and casual transitional phrasing as an authentic human speaker would.";
     case "technical_peer":

@@ -47,6 +47,7 @@ export function useNavigation(): NavigationState {
       "/add-doc": "Add Document",
       "/models": "Models",
       "/settings": "Settings",
+      "/humanizer": "Text Humanizer Studio",
     };
 
     if (pathname.startsWith("/chat/")) {
