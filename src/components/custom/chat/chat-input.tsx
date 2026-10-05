@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Brain, Sparkles, CheckCircle2 } from "lucide-react";
+import { Brain, Sparkles, CheckCircle2, Wand2 } from "lucide-react";
 import {
   PromptInput,
   PromptInputBody,
@@ -36,6 +36,8 @@ interface ChatInputProps {
   toggleReasoning: () => void;
   handleTranscriptionChange: (transcript: string) => void;
   tokenCount: number;
+  isHumanizerBypassed?: boolean;
+  toggleHumanizerBypass?: () => void;
 }
 
 export function ChatInput({
@@ -49,8 +51,11 @@ export function ChatInput({
   toggleReasoning,
   handleTranscriptionChange,
   tokenCount,
+  isHumanizerBypassed = false,
+  toggleHumanizerBypass,
 }: ChatInputProps) {
   const maxContextTokens = useSettingsStore((s) => s.maxContextTokens);
+  const humanizer = useSettingsStore((s) => s.humanizer);
   const isSummarizing = useMemoryStore((s) => s.isSummarizing);
   const isSummarized = useMemoryStore((s) => s.isSummarized);
   const tokensSaved = useMemoryStore((s) => s.tokensSaved);
@@ -87,6 +92,29 @@ export function ChatInput({
                 <Brain size={16} />
                 <span>Reasoning</span>
               </PromptInputButton>
+
+              {humanizer.enabled && toggleHumanizerBypass && (
+                <PromptInputButton
+                  onClick={toggleHumanizerBypass}
+                  variant={!isHumanizerBypassed ? "default" : "ghost"}
+                  className={
+                    !isHumanizerBypassed
+                      ? "bg-purple-600 hover:bg-purple-700 text-white font-medium"
+                      : "text-muted-foreground"
+                  }
+                  title={
+                    !isHumanizerBypassed
+                      ? "LLM Humanizer active for this chat (click to bypass)"
+                      : "LLM Humanizer bypassed for this chat (click to enable)"
+                  }
+                >
+                  <Wand2 size={16} />
+                  <span>Humanizer</span>
+                  {isHumanizerBypassed && (
+                    <span className="text-[10px] opacity-70">(Off)</span>
+                  )}
+                </PromptInputButton>
+              )}
             </PromptInputTools>
 
             <div className="flex items-center gap-1">

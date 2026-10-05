@@ -17,7 +17,8 @@ import { toast } from "sonner";
 export async function retrieveRagContext(
   query: string,
   topK: number = RAG_TOP_K,
-  threshold: number = RAG_SIMILARITY_THRESHOLD
+  threshold: number = RAG_SIMILARITY_THRESHOLD,
+  paperId?: string | string[]
 ): Promise<RagContext[]> {
   const trimmedQuery = query.trim();
   if (!trimmedQuery) {
@@ -49,7 +50,7 @@ export async function retrieveRagContext(
   // Perform library-wide vector similarity search
   let searchResults: SearchResultChunk[];
   try {
-    searchResults = await searchChunks(queryVector, undefined, topK, threshold);
+    searchResults = await searchChunks(queryVector, paperId, topK, threshold);
   } catch (err) {
     console.error("[rag-retrieval] Vector search failed:", err);
     return [];

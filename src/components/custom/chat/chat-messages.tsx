@@ -42,6 +42,9 @@ import { CitationRenderer } from "./citation-renderer";
 import { ExtendedContextBadge } from "@/components/research/extended-context-badge";
 import type { BuddhiMessageMetadata } from "@/types/research";
 
+import type { ChatMode } from "@/types/chat";
+import { GitFork, Sparkles, HelpCircle, Layers } from "lucide-react";
+
 interface ChatMessagesProps {
     messages: UIMessage[];
     status: string;
@@ -56,6 +59,7 @@ interface ChatMessagesProps {
     copiedMessageId: string | null;
     handleRegenerate: () => void;
     sendMessage: (msg: { text: string }) => void;
+    chatMode?: ChatMode;
 }
 
 export function ChatMessages({
@@ -72,10 +76,71 @@ export function ChatMessages({
     copiedMessageId,
     handleRegenerate,
     sendMessage,
+    chatMode,
 }: ChatMessagesProps) {
+    const starterPrompts = [
+        {
+            icon: GitFork,
+            title: "Identify Research Gaps",
+            prompt: "Synthesize the selected papers and identify the primary empirical, theoretical, and methodological gaps.",
+        },
+        {
+            icon: Sparkles,
+            title: "Formulate Testable Hypothesis",
+            prompt: "Based on the contradictions or unanswered questions in these papers, propose 2 testable hypotheses with operationalized variables.",
+        },
+        {
+            icon: Layers,
+            title: "Compare Methodologies",
+            prompt: "Compare the methodologies, datasets, and experimental designs used across these studies. What are the key limitations?",
+        },
+        {
+            icon: HelpCircle,
+            title: "Draft Research Question",
+            prompt: "Help me formulate a focused, novel Research Question (RQ) that directly bridges the gaps between these papers.",
+        },
+    ];
+
     return (
         <Conversation>
             <ConversationContent>
+                {messages.length === 0 && chatMode === "gap-analysis" && (
+                    <div className="flex flex-col items-center justify-center p-8 max-w-2xl mx-auto my-auto text-center space-y-6">
+                        <div className="size-12 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-xs">
+                            <GitFork className="size-6" />
+                        </div>
+                        <div className="space-y-2">
+                            <h3 className="text-xl font-bold tracking-tight text-foreground">
+                                Research Gap Analysis
+                            </h3>
+                            <p className="text-sm text-muted-foreground leading-relaxed max-w-md">
+                                Grounded exclusively in your selected papers. Select a prompt below or type your research objective to begin uncovering literature gaps.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full text-left pt-2">
+                            {starterPrompts.map((starter, i) => {
+                                const Icon = starter.icon;
+                                return (
+                                    <button
+                                        key={i}
+                                        type="button"
+                                        onClick={() => sendMessage({ text: starter.prompt })}
+                                        className="group p-3 rounded-xl border border-border/70 hover:border-emerald-500/50 hover:bg-emerald-500/5 dark:hover:bg-emerald-950/20 bg-card/60 transition-all text-left flex flex-col gap-1 cursor-pointer"
+                                    >
+                                        <div className="flex items-center gap-2 text-xs font-semibold text-foreground group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                                            <Icon className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                                            <span>{starter.title}</span>
+                                        </div>
+                                        <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed">
+                                            {starter.prompt}
+                                        </p>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
                 {messages.map((message, msgIndex) => {
                     const isLastMessage = msgIndex === messages.length - 1;
                     const isStreaming = status === "streaming" || status === "submitted";

@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Trash2Icon, HistoryIcon, MessageCircle } from "lucide-react";
+import { Trash2Icon, HistoryIcon, MessageCircle, FileText, GitFork } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -174,15 +174,27 @@ function ChatHistoryItem({
     isActive: boolean
     onDeleteRequest: () => void
 }) {
+    const tooltipText = chat.chatMode === "gap-analysis"
+        ? `${chat.title} (Gap Analysis: ${chat.paperIds?.length ?? 0} papers)`
+        : chat.chatMode === "paper"
+        ? `${chat.title} (Paper: ${chat.paperTitle || "Single Paper"})`
+        : chat.title;
+
     return (
         <SidebarMenuItem>
             <SidebarMenuButton
                 asChild
                 isActive={isActive}
-                tooltip={chat.title}
+                tooltip={tooltipText}
             >
                 <Link href={`/chat/${chat.id}`}>
-                    <MessageCircle />
+                    {chat.chatMode === "gap-analysis" ? (
+                        <GitFork className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    ) : chat.chatMode === "paper" ? (
+                        <FileText className="size-4 shrink-0 text-purple-500/80" />
+                    ) : (
+                        <MessageCircle className="size-4 shrink-0" />
+                    )}
                     <span className="truncate">{chat.title}</span>
                 </Link>
             </SidebarMenuButton>

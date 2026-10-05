@@ -6,3 +6,4 @@
  */
 export * from "./system-prompts/academic-research";
 export { ACADEMIC_RESEARCH_SYSTEM_PROMPT as DEFAULT_SYSTEM_PROMPT } from "./system-prompts/academic-research";
+export { GAP_ANALYSIS_SYSTEM_PROMPT } from "./system-prompts/gap-analysis";

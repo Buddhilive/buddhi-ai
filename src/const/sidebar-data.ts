@@ -5,6 +5,7 @@ import {
   BookOpen,
   Settings,
   Sparkles,
+  Wand2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -62,6 +63,11 @@ export const SIDEBAR_DATA = {
       name: "Models",
       url: "/models",
       icon: BrainCircuit,
+    },
+    {
+      name: "Humanizer",
+      url: "/humanizer",
+      icon: Wand2,
     },
     {
       name: "Settings",

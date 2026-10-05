@@ -147,8 +147,19 @@ export interface RlmMetadata {
 
 export interface RlmProgressEvent {
   iteration: number;
-  phase: string;
+  phase:
+    | "initializing"
+    | "ingesting"
+    | "indexing"
+    | "exploring"
+    | "sub_query"
+    | "synthesizing"
+    | "reasoning"
+    | "orchestrating"
+    | "completed"
+    | string;
   message: string;
+  subId?: string;
 }
 
 export interface RlmAnalysisOptions {
@@ -158,6 +169,11 @@ export interface RlmAnalysisOptions {
   papers?: { id: string; title: string; text: string }[];
   maxDepth?: number;
   chunkSize?: number;
+  mode?: "legacy" | "explore" | "auto";
+  maxTurns?: number;
+  maxSubQueries?: number;
+  maxObservationChars?: number;
+  opfsPath?: string;
   signal?: AbortSignal;
   onProgress?: (progress: RlmProgressEvent) => void;
 }

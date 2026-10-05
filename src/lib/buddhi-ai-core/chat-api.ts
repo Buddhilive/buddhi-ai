@@ -52,9 +52,14 @@ import { retrieveRagContext } from "@/lib/rag-retrieval";
 import { RAG_MAX_CONTEXT_CHARS, RAG_SNIPPET_MAX_CHARS } from "@/const/rag";
 import type { BuddhiMessageMetadata, RagCitationAnnotation, RagContext } from "@/types/research";
 import { rlmService } from "@/lib/rlm-service";
+import { inferenceQueue } from "@/lib/inference-queue";
 import { usePaperStore } from "@/stores/paper-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import { getAllPapers } from "@/lib/paper-storage";
+import { getAllPapers, getPaperById } from "@/lib/paper-storage";
+import {
+    composeHumanizerSystemDirective,
+    resolveSamplerParameters,
+} from "@/lib/humanizer";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -270,6 +275,9 @@ export interface TransportOptions {
     systemPrompt?: string;
     supportsVision?: boolean;
     chatId?: string | null;
+    paperId?: string | null;
+    paperIds?: string[] | null;
+    isHumanizerBypassed?: boolean;
 }
 
 /**
@@ -281,6 +289,9 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
     private _systemPrompt: string = DEFAULT_SYSTEM_PROMPT;
     private _supportsVision: boolean = false;
     private _chatId: string | null = null;
+    private _paperId: string | null = null;
+    private _paperIds: string[] | null = null;
+    private _isHumanizerBypassed: boolean = false;
 
     constructor(
         private readonly engine: Engine,
@@ -314,6 +325,27 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
     }
     set chatId(val: string | null) {
         this._chatId = val;
+    }
+
+    get paperId(): string | null {
+        return this.getOptions ? (this.getOptions().paperId ?? this._paperId) : this._paperId;
+    }
+    set paperId(val: string | null) {
+        this._paperId = val;
+    }
+
+    get paperIds(): string[] | null {
+        return this.getOptions ? (this.getOptions().paperIds ?? this._paperIds) : this._paperIds;
+    }
+    set paperIds(val: string[] | null) {
+        this._paperIds = val;
+    }
+
+    get isHumanizerBypassed(): boolean {
+        return this.getOptions ? (this.getOptions().isHumanizerBypassed ?? this._isHumanizerBypassed) : this._isHumanizerBypassed;
+    }
+    set isHumanizerBypassed(val: boolean) {
+        this._isHumanizerBypassed = val;
     }
 
     /**
@@ -372,10 +404,30 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                     }
                 }
 
+                // Active prompt is the last turn, augmented with RAG research context
+                const lastTurn = converted[converted.length - 1];
+                const baseUserPrompt = lastTurn
+                    ? typeof lastTurn.content === "string"
+                        ? lastTurn.content
+                        : JSON.stringify(lastTurn.content)
+                    : "";
+
                 // Partition messages into preface (prior turns) and the active user prompt
                 const prefaceMessages: Message[] = [];
+                const humanizerConfig = useSettingsStore.getState().humanizer;
+                const isHumanizerActive = !!(humanizerConfig?.enabled && !this.isHumanizerBypassed);
+
                 if (this.systemPrompt) {
-                    const fullSystem = this.systemPrompt;
+                    let fullSystem = this.systemPrompt;
+                    if (isHumanizerActive) {
+                        const humanizerDirective = composeHumanizerSystemDirective(humanizerConfig, {
+                            maxChars: 1200,
+                            promptText: baseUserPrompt,
+                        });
+                        if (humanizerDirective) {
+                            fullSystem = `${fullSystem}\n\n${humanizerDirective}`;
+                        }
+                    }
                     prefaceMessages.push({
                         role: "system",
                         content: this.isReasoningOn ? `${fullSystem}\n<|think|>` : fullSystem,
@@ -391,14 +443,6 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                     });
                 }
 
-                // Active prompt is the last turn, augmented with RAG research context
-                const lastTurn = converted[converted.length - 1];
-                const baseUserPrompt = lastTurn
-                    ? typeof lastTurn.content === "string"
-                        ? lastTurn.content
-                        : JSON.stringify(lastTurn.content)
-                    : "";
-
                 // Perform library-wide RAG retrieval on the latest user query
                 const lastUserMsg = messages.findLast((m) => m.role === "user");
                 const partsText = lastUserMsg?.parts
@@ -413,7 +457,17 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
 
                 if (ragQuery) {
                     try {
-                        ragContexts = await retrieveRagContext(ragQuery);
+                        const scopedPaperTarget =
+                            this.paperIds && this.paperIds.length > 0
+                                ? this.paperIds
+                                : (this.paperId ?? undefined);
+
+                        ragContexts = await retrieveRagContext(
+                            ragQuery,
+                            undefined,
+                            undefined,
+                            scopedPaperTarget
+                        );
                     } catch (err) {
                         console.warn("[LiteRTChatTransport] RAG retrieval failed:", err);
                         ragContexts = [];
@@ -455,8 +509,17 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
 
                 // Check if query should route to in-WASM Extended Context (RLM)
                 const settings = useSettingsStore.getState();
-                const currentPaper = usePaperStore.getState().currentPaper;
-                const isComparativeQuery = /compare|contrast|cross-paper|across papers|all papers|literature review|both papers|synthesize papers/i.test(ragQuery);
+                let targetPaper = usePaperStore.getState().currentPaper;
+                if (this.paperId && (!targetPaper || targetPaper.id !== this.paperId)) {
+                    try {
+                        targetPaper = await getPaperById(this.paperId);
+                    } catch (e) {
+                        console.warn("[LiteRTChatTransport] Failed to fetch paper for RLM:", e);
+                    }
+                }
+
+                const isPaperMode = Boolean(this.paperId);
+                const isComparativeQuery = !isPaperMode && /compare|contrast|cross-paper|across papers|all papers|literature review|both papers|synthesize papers/i.test(ragQuery);
 
                 let rlmMultiPapers: { id: string; title: string; text: string }[] | null = null;
                 if (settings.enableExtendedContext && isComparativeQuery) {
@@ -480,9 +543,9 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                     (
                         rlmMultiPapers !== null ||
                         (
-                            currentPaper?.rawText &&
-                            currentPaper.rawText.length > 500 &&
-                            (currentPaper.rawText.length > RAG_MAX_CONTEXT_CHARS ||
+                            targetPaper?.rawText &&
+                            targetPaper.rawText.length > 500 &&
+                            (targetPaper.rawText.length > RAG_MAX_CONTEXT_CHARS ||
                              /summarize|analysis|entire|whole|all sections|methodology|compare|synthesis/i.test(ragQuery))
                         )
                     )
@@ -496,8 +559,8 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                     let rlmInputChars = baseUserPrompt ? baseUserPrompt.length : 0;
                     if (rlmMultiPapers) {
                         rlmInputChars += rlmMultiPapers.reduce((acc, p) => acc + (p.text?.length || 0), 0);
-                    } else if (currentPaper?.rawText) {
-                        rlmInputChars += currentPaper.rawText.length;
+                    } else if (targetPaper?.rawText) {
+                        rlmInputChars += targetPaper.rawText.length;
                     }
                     baselineTokens = Math.max(baselineTokens, Math.round(rlmInputChars / 3.7));
                     if (!useMemoryStore.getState().isSummarizing) {
@@ -513,11 +576,11 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                             id: reasoningPartId,
                             delta: `[Extended Context (RLM): Ingesting ${rlmMultiPapers.length} library papers into in-browser WASM linear memory...]\n`,
                         });
-                    } else if (currentPaper?.rawText) {
+                    } else if (targetPaper?.rawText) {
                         writer.write({
                             type: "reasoning-delta",
                             id: reasoningPartId,
-                            delta: `[Extended Context (RLM): Ingesting "${currentPaper.fileName}" (~${Math.round(currentPaper.rawText.length / 1024)}KB) into in-browser WASM linear memory...]\n`,
+                            delta: `[Extended Context (RLM): Ingesting "${targetPaper.metadata.title || targetPaper.fileName}" (~${Math.round(targetPaper.rawText.length / 1024)}KB) into in-browser WASM linear memory...]\n`,
                         });
                     }
 
@@ -540,8 +603,8 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
                                   }
                                 : {
                                       query: ragQuery,
-                                      documentText: currentPaper!.rawText!,
-                                      documentTitle: currentPaper!.metadata.title || currentPaper!.fileName,
+                                      documentText: targetPaper!.rawText!,
+                                      documentTitle: targetPaper!.metadata.title || targetPaper!.fileName,
                                       maxDepth: 5,
                                       signal: abortSignal,
                                       onProgress: (prog) => {
@@ -592,11 +655,27 @@ export class LiteRTChatTransport implements ChatTransport<UIMessage> {
 
                 let conversation;
                 try {
-                    conversation = await this.engine.createConversation({
+                    const conversationConfig: Parameters<Engine["createConversation"]>[0] = {
                         preface: {
                             messages: prefaceMessages,
                         },
-                    });
+                    };
+
+                    if (isHumanizerActive) {
+                        try {
+                            const samplerParams = resolveSamplerParameters(humanizerConfig);
+                            conversationConfig.sessionConfig = {
+                                samplerParams,
+                            };
+                        } catch (err) {
+                            console.warn("[LiteRTChatTransport] Failed to resolve humanizer samplerParams:", err);
+                        }
+                    }
+
+                    conversation = await inferenceQueue.enqueue(
+                        () => this.engine.createConversation(conversationConfig),
+                        abortSignal
+                    );
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     throw new Error(`Failed to create LiteRT conversation: ${msg}`);
