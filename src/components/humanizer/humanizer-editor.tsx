@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -56,7 +55,7 @@ export function HumanizerEditor() {
   return (
     <div className="flex flex-col h-full bg-card border rounded-xl overflow-hidden shadow-sm">
       {/* Editor Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-muted/40 border-b gap-2 text-xs">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-muted/40 border-b gap-2 text-xs shrink-0">
         <div className="flex items-center gap-2 font-medium text-foreground">
           <FileText className="size-3.5 text-primary" />
           <span>Original Draft</span>
@@ -114,18 +113,18 @@ export function HumanizerEditor() {
       </div>
 
       {/* Editor Body */}
-      <div className="flex-1 p-3 min-h-0 relative">
-        <Textarea
+      <div className="flex-1 p-3 min-h-0 relative overflow-hidden">
+        <textarea
           value={rawInput}
           onChange={(e) => setRawInput(e.target.value)}
           placeholder="Paste AI-generated prose or Markdown document here... (Markdown headers, code fences, and tables will be preserved verbatim)"
           disabled={isBusy}
-          className="w-full h-full resize-none font-mono text-xs sm:text-sm leading-relaxed border-0 shadow-none focus-visible:ring-0 p-1 bg-transparent"
+          className="w-full h-full resize-none font-mono text-xs sm:text-sm leading-relaxed border-0 outline-none p-1 bg-transparent overflow-y-auto block focus:outline-none focus:ring-0 text-foreground"
         />
       </div>
 
       {/* Editor Footer / Stats */}
-      <div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-t text-[11px] text-muted-foreground">
+      <div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-t text-[11px] text-muted-foreground shrink-0">
         <div className="flex items-center gap-3">
           <span>{stats.charCount.toLocaleString()} chars</span>
           <span>~{stats.estimatedTokens.toLocaleString()} tokens</span>

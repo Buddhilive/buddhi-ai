@@ -21,16 +21,20 @@ import { ModeToggle } from "@/components/custom/toggle-mode";
 import { HardwareStatusBadge } from "@/components/research/hardware-status-badge";
 import { StorageQuotaIndicator } from "@/components/research/storage-quota-indicator";
 
+import { cn } from "@/lib/utils";
+
 export default function BuddhiAILayout({ children }: { children: React.ReactNode }) {
 
-  const { breadcrumbTitle } = useNavigation();
+  const { breadcrumbTitle, currentPage } = useNavigation();
   useModelEngine();
   usePipelineGuard();
+
+  const isFixedLayout = currentPage === "/humanizer" || currentPage.startsWith("/chat") || currentPage.startsWith("/reader");
 
   return (
     <SidebarProvider defaultOpen={false}>
       <AppSidebar />
-      <SidebarInset className="min-w-0">
+      <SidebarInset className={cn("min-w-0", isFixedLayout && "h-svh max-h-svh overflow-hidden flex flex-col")}>
         <header className="flex h-16 shrink-0 items-center gap-2 border-b justify-between">
           <div className="flex items-center gap-2 px-4 min-w-0">
             <SidebarTrigger className="-ml-1" />

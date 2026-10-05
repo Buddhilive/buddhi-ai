@@ -8,7 +8,7 @@ export const metadata = {
 
 export default function HumanizerPage() {
   return (
-    <div className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full h-[calc(100vh-4rem)] flex flex-col min-h-0">
+    <div className="flex-1 min-h-0 h-full w-full p-3 md:p-4 max-w-7xl mx-auto flex flex-col overflow-hidden box-border">
       <HumanizerStudio />
     </div>
   );

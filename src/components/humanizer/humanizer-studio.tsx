@@ -125,22 +125,28 @@ export function HumanizerStudio() {
   };
 
   return (
-    <div className="flex flex-col h-full space-y-3 min-h-0">
+    <div className="flex flex-col h-full gap-3 min-h-0 overflow-hidden">
       {/* Top Controls Bar */}
-      <HumanizerControls onExecute={handleExecute} onCancel={handleCancel} />
+      <div className="shrink-0">
+        <HumanizerControls onExecute={handleExecute} onCancel={handleCancel} />
+      </div>
 
       {/* Progress Stepper (Active during processing or after error/complete) */}
-      {stage !== "idle" && <HumanizerProgress />}
+      {stage !== "idle" && (
+        <div className="shrink-0">
+          <HumanizerProgress />
+        </div>
+      )}
 
       {/* Main Dual-Pane Workspace */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row gap-3 md:gap-4 min-h-0 overflow-hidden">
         {/* Left Pane: Editor */}
-        <div className="h-full min-h-[300px] lg:min-h-0">
+        <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col">
           <HumanizerEditor />
         </div>
 
         {/* Right Pane: Preview & Diff */}
-        <div className="h-full min-h-[300px] lg:min-h-0">
+        <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col">
           <HumanizerPreview />
         </div>
       </div>
