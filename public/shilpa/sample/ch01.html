@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Types of Numbers — Elementary Algebra</title>
+<link rel="stylesheet" href="../lib/engine.css">
+<link rel="expect" href="#bar" blocking="render"><!-- hold the first frame until the player exists, so the page transition can run -->
+</head>
+<body>
+<script src="../lib/engine.js"></script>
+<script src="audio/en/timings.js"></script>
+<script>
+'use strict';
+const CHAPTER = { number: 1, title: 'Types of numbers', minutes: 8, next: '../ch02/' };
+
+const FAM = [
+  ['nat', 'Natural numbers', ['1, 2, 3, 4, …']],
+  ['whole', 'Whole numbers', ['0, 1, 2, 3, …']],
+  ['int', 'Integers', ['…, −2, −1, 0, 1, 2, …']],
+  ['rat', 'Rational numbers', [F('a', 'b'), '   (b ≠ 0)']],
+  ['irr', 'Irrational numbers', null, 'not a ratio of integers'],
+  ['real', 'Real numbers', null, 'every point on the line'],
+];
+function row(k, t0) {
+  const [key, name, parts, note] = FAM[k], y = 150 + 66 * k;
+  const g = G(S.list, { x: -18, y, o: 0 });
+  mk('circle', { cx: 100, cy: -10, r: 8, fill: COL[key] }, g);
+  T(g, name, { x: 122, size: 29, fill: COL[key], weight: 600 });
+  if (parts) M(g, parts, { x: 430, size: 30, fill: COL.dim, anchor: 'start' });
+  if (note) T(g, note, { x: 430, size: 25, fill: COL.dim });
+  tw(g, { o: 1, x: 0 }, t0, .7);
+  return (S.rows[k] = g);
+}
+const T2 = [['−', F(7, 2)], [R(9)], ['1.5'], [R(5)]];
+
+/* ---------- beats: m(mark, offset) gives the time a narration word starts; D is clip length ---------- */
+const BEATS = [
+  ['intro', 'Types of numbers', (m, D) => {
+    const g = S.title = G(scene, { o: 0, y: 24 });
+    T(g, 'Unit 1, Chapter 1', { x: 800, y: 330, size: 28, fill: COL.dim, anchor: 'middle' });
+    T(g, 'Types of numbers', { x: 800, y: 425, size: 96, weight: 600, anchor: 'middle' });
+    tw(g, { o: 1, y: 0 }, .2, 1.1, out);
+    const items = [['nat', ['7']], ['whole', ['0']], ['int', ['−3']], ['rat', [F(3, 4)]], ['irr', [R(2)]], ['irr', ['π']]];
+    S.float = G(scene);
+    items.forEach(([k, parts], i) => {
+      const c = M(S.float, parts, { x: 800 + (i - 2.5) * 150, y: 600, size: 50, fill: COL[k], o: 0, s: .5 });
+      tw(c, { o: 1, s: 1 }, m('most', i * .2), .5, back);
+    });
+    tw(g, { o: 0, y: -24 }, D - .9, .8);
+    hide(S.float, D - .9, .8);
+  }],
+  ['natural', 'Natural numbers', (m) => {
+    S.axR = path(S.line, `M${X(0) - 14} ${Y0}H${X(5.8)}`, { stroke: COL.chalk, 'stroke-width': 3 }, { d: 0, c_stroke: COL.chalk, 'a_stroke-width': 3 });
+    S.arR = path(S.line, arrow(X(5.8), 1), { stroke: COL.chalk, 'stroke-width': 3 }, { o: 0, c_stroke: COL.chalk });
+    draw(S.axR, .1, .9); show(S.arR, .9, .3);
+    for (let v = 1; v <= 5; v++) show(tick(v), .3 + v * .1, .4);
+    ['c1', 'c2', 'c3'].forEach((k, i) => pop(dot('nat', i + 1), m(k)));
+    pop(dot('nat', 4), m('more')); pop(dot('nat', 5), m('more', .25));
+    show(S.more = T(S.line, '…', { x: X(5.42), y: Y0 - 16, size: 34, fill: COL.nat, anchor: 'middle', o: 0 }), m('more', .5));
+    row(0, m('def'));
+    pulse(S.dots[1], m('rule'));
+  }],
+  ['whole', 'Whole numbers', (m, D) => {
+    show(tick(0), .2);
+    const b = G(S.line, { x: X(0), y: Y0 - 100, o: 0 });
+    path(b, 'M-44 -22H44L32 26H-32Z', { stroke: COL.dim, 'stroke-width': 2.5 });
+    path(b, 'M-30 -22C-30 -60 30 -60 30 -22', { stroke: COL.dim, 'stroke-width': 2.5 });
+    show(b, .3, .6);
+    const q = T(b, '?', { y: 14, size: 36, fill: COL.dim, font: MATH, anchor: 'middle', o: 0 });
+    const z = T(b, '0', { y: 16, size: 40, fill: COL.whole, font: MATH, anchor: 'middle', o: 0 });
+    show(q, m('z'), .3); hide(q, m('zero'), .2); show(z, m('zero'), .3);
+    pop(dot('whole', 0), m('zero', .4));
+    hide(b, m('def', .6), .6);
+    row(1, m('def'));
+    for (let v = 0; v <= 5; v++) pulse(S.dots[v], m('def', .5 + v * .12), 1.4);
+  }],
+  ['q1', 'Quick check', () => {}, { ask: done => quiz(BAND, [{
+    id: 'c-zero', prompt: ['On the number line, tap the whole number that is ', h('b', '', 'not'), ' a natural number.'],
+    build: tap([0, 1, 2, 3, 4, 5], 0, 'Zero is a whole number, but natural numbers start at 1.',
+      v => `${v} is a natural number, and every natural number is also whole. Find the one whole number the natural numbers leave out.`,
+      () => { pulseFx(S.dots[0]); floatText('whole, not natural', X(0), Y0 - 64, COL.whole); }),
+  }], done) }],
+  ['integers', 'Integers', (m) => {
+    S.axL = path(S.line, `M${X(0) - 14} ${Y0}H${X(-5.8)}`, { stroke: COL.chalk, 'stroke-width': 3 }, { d: 0, c_stroke: COL.chalk, 'a_stroke-width': 3 });
+    S.arL = path(S.line, arrow(X(-5.8), -1), { stroke: COL.chalk, 'stroke-width': 3 }, { o: 0, c_stroke: COL.chalk });
+    draw(S.axL, m('below'), .9); show(S.arL, m('below', .8), .3);
+    for (let v = 1; v <= 5; v++) show(tick(-v), m('below', .3 + v * .1), .4);
+    const ex = G(S.line, { o: 0 });
+    T(ex, '−4 °C', { x: X(-4), y: Y0 - 92, size: 28, fill: COL.dim, font: MATH, anchor: 'middle' });
+    path(ex, `M${X(-4)} ${Y0 - 78}V${Y0 - 22}`, { stroke: COL.faint, 'stroke-width': 2 });
+    T(ex, 'owe $3', { x: X(-2.2), y: Y0 - 150, size: 28, fill: COL.dim, font: MATH, anchor: 'middle' });
+    path(ex, `M${X(-2.5)} ${Y0 - 136}L${X(-3)} ${Y0 - 22}`, { stroke: COL.faint, 'stroke-width': 2 });
+    show(ex, m('below', 1.2), .6); hide(ex, m('flip'), .5);
+    for (let v = 1; v <= 5; v++) {
+      const g = put(dot('int', -v), { x: X(v), s: 1 });
+      const t0 = m('flip', .2 + (v - 1) * .16);
+      show(g, t0, .12);
+      prog(q => { const a = Math.PI * q; put(g, { x: X(0) + 120 * v * Math.cos(a), y: Y0 - 120 * v * Math.sin(a) * .5 }); }, t0, 1.4);
+    }
+    row(2, m('def'));
+    for (let v = 1; v <= 5; v++) pulse(S.dots[-v], m('def', .5 + v * .1), 1.4);
+  }],
+  ['q2', 'Quick check', () => {}, { ask: done => quiz(BAND, [{
+    id: 'c-neg3', prompt: ['Tap ', $m('−3'), ' on the number line.'],
+    build: tap([-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5], -3, 'Negative numbers sit to the left of 0, and −3 is three steps left.',
+      v => v > 0 ? `That is ${v}, to the right of 0. Negative numbers are on the left side.` : v === 0 ? 'That is 0. Move three steps to the left.' : `That is ${num(v)}. Count the steps from 0: −3 is exactly three steps to the left.`,
+      () => { pulseFx(S.dots[-3]); hopsFx(-3); }),
+  }, {
+    id: 'c-fam4', prompt: ['Which families does ', $m('−4'), ' belong to? Choose all that apply.'],
+    build: grid([{ parts: ['−4'], ans: ['int'], why: '−4 is negative, so it is neither natural nor whole. It is an integer.', fx: () => pulseFx(S.dots[-4]) }], FAM_COLS.slice(0, 3)),
+  }], done) }],
+  ['gaps', 'Between the integers', (m, D) => {
+    const band = G(S.line, { o: 0 });
+    S.line.insertBefore(band, S.line.firstChild);
+    mk('rect', { x: X(0), y: Y0 - 26, width: 120, height: 52, rx: 10, fill: COL.rat, 'fill-opacity': .2 }, band);
+    show(band, m('gap'), .5); hide(band, D - .6, .5);
+    S.fl = {};
+    const add = (v, name, parts, lx, mark) => {
+      pop(dot('rat', v, 7, name), m(mark));
+      show(S.fl[name] = M(S.line, parts, { x: lx, y: Y0 - 38, size: 32, fill: COL.rat, o: 0 }), m(mark, .15));
+    };
+    add(.5, '0.5', [F(1, 2)], X(.5) - 17, 'half');
+    add(.75, '0.75', [F(3, 4)], X(.75) + 19, 'q');
+    add(-1.5, '-1.5', ['−', F(3, 2)], X(-1.5), 'neg');
+  }],
+  ['rational', 'Rational numbers', (m) => {
+    const p = panel(0);
+    show(M(p, [F('a', 'b')], { x: 1070, y: 262, size: 76, fill: COL.rat, o: 0 }), m('frac'), .6);
+    show(T(p, 'a and b are integers', { x: 1135, y: 224, size: 27, fill: COL.dim, o: 0 }), m('frac', .8));
+    show(T(p, 'b ≠ 0', { x: 1135, y: 268, size: 30, fill: COL.task, font: MATH, o: 0 }), m('zero'));
+    row(3, m('frac', .4));
+    show(M(p, ['0.75'], { x: 1120, y: 390, size: 44, anchor: 'end', o: 0 }), m('dec'));
+    show(M(p, ['= ', F(3, 4)], { x: 1138, y: 390, size: 44, anchor: 'start', o: 0 }), m('eq'));
+    pulse(S.dots['0.75'], m('eq'));
+    show(M(p, ['−8'], { x: 1120, y: 490, size: 44, anchor: 'end', o: 0 }), m('int'));
+    show(M(p, ['= ', F('−8', 1)], { x: 1138, y: 490, size: 44, anchor: 'start', o: 0 }), m('over'));
+  }],
+  ['task1', 'Writing fractions', (m) => {
+    const p = S.t1 = panel(0);
+    header(p, 'Examples', .2);
+    ['5', '0.6', '−2.25', '0'].forEach((s, i) => show(M(p, [s], { x: 1130, y: 245 + 78 * i, size: 40, anchor: 'end', o: 0 }), m('abcd'[i])));
+  }],
+  ['check1', 'Writing fractions', (m) => {
+    const p = S.t1;
+    const rhs = [['= ', F(5, 1)], ['= ', F(6, 10), ' = ', F(3, 5)], ['= −', F(9, 4)], ['= ', F(0, 1)]];
+    rhs.forEach((parts, i) => show(M(p, parts, { x: 1150, y: 245 + 78 * i, size: 40, anchor: 'start', o: 0 }), m('abcd'[i], .2)));
+    show(M(p, ['also  5 = ', F(10, 2)], { x: 1000, y: 548, size: 30, fill: COL.dim, anchor: 'start', o: 0 }), m('other'));
+    pop(dot('rat', .6, 7, '0.6'), m('place')); pop(dot('rat', -2.25, 7, '-2.25'), m('place', .3));
+    pulse(S.dots[5], m('place', .6)); pulse(S.dots[0], m('place', .8));
+  }],
+  ['q3', 'Quick check', () => {}, { ask: done => quiz(BAND, [{
+    id: 'c-frac', prompt: ['Which fraction is equal to ', $m('0.2'), '?'],
+    build: choice([[$m(F(1, 5))], [$m(F(2, 1))], [$m(F(1, 2))]], 0,
+      ['0.2 is two tenths, and ', $m(F(2, 10)), ' = ', $m(F(1, 5)), '.'],
+      [null, [$m(F(2, 1)), ' = 2, which is far bigger than 0.2.'], [$m(F(1, 2)), ' = 0.5, not 0.2.']],
+      () => popDotFx('rat', .2, [F(1, 5)])),
+  }, {
+    id: 'c-den0', prompt: ['Which of these has no meaning?'],
+    build: choice([[$m(F(0, 7))], [$m(F(7, 0))], [$m('−', F(7, 1))]], 1,
+      'The bottom of a fraction can never be 0, because dividing by zero has no meaning.',
+      [[$m(F(0, 7)), ' = 0. Zero on top is fine.'], null, [$m('−', F(7, 1)), ' = −7, an ordinary integer.']]),
+  }], done) }],
+  ['sqrt2', 'The square root of 2', (m) => {
+    const p = panel(0);
+    hide(S.fl['0.5'], 0); hide(S.fl['0.75'], 0);
+    const sq = S.sq = G(S.line);
+    draw(path(sq, `M${X(0)} ${Y0}V${Y0 - 120}H${X(1)}V${Y0}`, { stroke: COL.dim, 'stroke-width': 2.5 }, { d: 0 }), m('sq'), 1.1);
+    show(T(sq, '1', { x: X(0) - 22, y: Y0 - 50, size: 26, fill: COL.dim, font: MATH, anchor: 'middle', o: 0 }), m('sq', .9));
+    show(T(sq, '1', { x: X(.5), y: Y0 - 132, size: 26, fill: COL.dim, font: MATH, anchor: 'middle', o: 0 }), m('sq', .9));
+    const r2 = 120 * Math.SQRT2;
+    const dg = S.dg = G(S.line, { x: X(0), y: Y0, r: -45 });
+    draw(path(dg, `M0 0H${r2}`, { stroke: COL.irr, 'stroke-width': 4 }, { d: 0 }), m('diag'), .9);
+    const lab = M(dg, [R(2)], { x: 82, y: -14, size: 30, fill: COL.irr, o: 0 });
+    show(lab, m('diag', .6));
+    draw(path(sq, `M${X(1)} ${Y0 - 120}A${r2} ${r2} 0 0 1 ${X(Math.SQRT2)} ${Y0}`, { stroke: COL.irr, 'stroke-width': 2, 'stroke-opacity': .55 }, { d: 0 }), m('swing'), 1.6);
+    tw(dg, { r: 0 }, m('swing'), 1.6);
+    hide(lab, m('swing', 1.3), .3);
+    pop(dot('irr', Math.SQRT2, 7, 'r2'), m('swing', 1.6));
+    show(M(S.line, [R(2)], { x: X(Math.SQRT2) + 4, y: Y0 - 24, size: 30, fill: COL.irr, o: 0 }), m('swing', 1.7));
+    const h = M(p, [R(2), ' = '], { x: 1000, y: 210, size: 36, fill: COL.irr, anchor: 'start', o: 0 });
+    show(h, m('dec'));
+    stream(T(p, '', { x: 1000 + h._w, y: 210, size: 36, font: MATH }), '1.41421356237309504880…', m('dec', .2), 3.4);
+    show(T(p, 'The digits never end and never repeat.', { x: 1000, y: 262, size: 24, fill: COL.dim, o: 0 }), m('dec', 3.6));
+    row(4, m('def'));
+  }],
+  ['pi', 'Pi', (m) => {
+    hide(S.sq, 0, .6); hide(S.dg, 0, .6);
+    const C = G(S.line, { x: X(0), y: Y0 - 60, o: 0, s: .8 });
+    const rot = G(C);
+    path(rot, 'M0 -60A60 60 0 1 1 0 60A60 60 0 1 1 0 -60', { stroke: COL.irr, 'stroke-width': 3 });
+    path(rot, 'M0 0V60', { stroke: COL.dim, 'stroke-width': 2 });
+    mk('circle', { cx: 0, cy: 60, r: 6, fill: COL.task }, rot);
+    const dm = G(C, { o: 0 });
+    path(dm, 'M-60 -80H60M-60 -88V-72M60 -88V-72', { stroke: COL.dim, 'stroke-width': 2 });
+    T(dm, '1', { y: -94, size: 26, fill: COL.dim, font: MATH, anchor: 'middle' });
+    tw(C, { o: 1, s: 1 }, m('circ'), .6, back); show(dm, m('circ', .6)); hide(dm, m('roll'), .3);
+    const trail = path(S.line, `M${X(0)} ${Y0}H${X(0)}`, { stroke: COL.irr, 'stroke-width': 7, 'stroke-opacity': .55 });
+    S.line.insertBefore(trail, S.dots[1]);
+    prog(q => {
+      const d = Math.PI * 120 * q;
+      put(C, { x: X(0) + d });
+      put(rot, { r: d / 60 * 180 / Math.PI });
+      trail.setAttribute('d', `M${X(0)} ${Y0}H${X(0) + d}`);
+    }, m('roll'), m('land') - m('roll') + .2);
+    pop(dot('irr', Math.PI, 7, 'pi'), m('land', .2));
+    show(M(S.line, ['π'], { x: X(Math.PI) + 4, y: Y0 - 24, size: 32, fill: COL.irr, o: 0 }), m('land', .3));
+    hide(C, m('land', 1.4), .6); hide(trail, m('land', 1.6), .8);
+    const h = M(S.panel, ['π = '], { x: 1000, y: 340, size: 36, fill: COL.irr, anchor: 'start', o: 0 });
+    show(h, m('land'));
+    stream(T(S.panel, '', { x: 1000 + h._w, y: 340, size: 36, font: MATH }), '3.14159265358979323846…', m('land', .2), 3);
+  }],
+  ['real', 'Real numbers', (m) => {
+    const p = S.panel;
+    show(T(p, 'Rational or irrational:', { x: 1000, y: 430, size: 28, o: 0 }), .3);
+    show(T(p, 'never both.', { x: 1000, y: 470, size: 28, o: 0 }), m('nov'));
+    const sweep = path(S.line, `M${X(-5.8)} ${Y0}H${X(5.8)}`, { stroke: COL.real, 'stroke-width': 18, 'stroke-opacity': .22 }, { d: 0 });
+    S.line.insertBefore(sweep, S.line.firstChild);
+    draw(sweep, m('fill'), 1.6);
+    for (const e of [S.axR, S.axL, S.arR, S.arL]) tw(e, { c_stroke: COL.real, 'a_stroke-width': 4 }, m('fill', .4), 1.2);
+    row(5, m('def'));
+  }],
+  ['q4', 'Quick check', () => { hide(S.panel, 0, .4); }, { ask: done => quiz(TOPR, [{
+    id: 'c-ratirr', prompt: ['Is each number rational or irrational?'],
+    build: grid([
+      { parts: ['0.25'], ans: ['rat'], why: ['0.25 = ', $m(F(1, 4)), ', a fraction of integers.'], fx: () => popDotFx('rat', .25) },
+      { parts: ['π'], ans: ['irr'], why: 'The digits of π never end and never repeat.', fx: () => pulseFx(S.dots.pi) },
+      { parts: ['−7'], ans: ['rat'], why: ['−7 = ', $m(F('−7', 1)), '. Every integer is rational.'] },
+      { parts: [R(2)], ans: ['irr'], why: 'No fraction of integers is exactly equal to √2.', fx: () => pulseFx(S.dots.r2) },
+      { parts: [F(2, 3)], ans: ['rat'], why: 'It is already one integer divided by another.', fx: () => popDotFx('rat', 2 / 3) },
+    ], [['rat', 'Rational', COL.rat], ['irr', 'Irrational', COL.irr]], { multi: false }),
+  }], done) }],
+  ['map', 'The number map', (m) => {
+    hide(S.list, 0, .7); hide(S.line, 0, .7); panel(0);
+    S.ring = buildVenn(S.venn, true);
+    const samples = { nat: [[['1  2  3'], 500, 548]], whole: [[['0'], 332, 578]], int: [[['−5'], 248, 560], [['−1'], 752, 560]],
+      rat: [[[F(3, 4)], 150, 512], [['0.6'], 850, 512]], irr: [[[R(2)], 1060, 462]] };
+    const ringIn = (k, t0) => {
+      const r = S.ring[k];
+      draw(r.stroke, t0, 1.1); show(r.fill, t0 + .3, .8); show(r.lab, t0 + .4);
+      (samples[k] || []).forEach(([parts, x, y], i) => { const e = M(r.g, parts, { x, y, size: 30, fill: COL.dim, o: 0 }); S.samples.push(e); show(e, t0 + .7 + i * .2); });
+    };
+    ringIn('nat', m('n')); ringIn('whole', m('w')); ringIn('int', m('i')); ringIn('rat', m('q')); ringIn('irr', m('irr')); ringIn('real', m('r'));
+  }],
+  ['example', 'Where does −2 belong?', (m, D) => {
+    const p = panel(0);
+    show(M(p, ['−2'], { x: 1425, y: 200, size: 56, o: 0 }), m('t'));
+    const c = chip(S.venn, ['−2'], COL.int, { x: 1425, y: 182, o: 0 });
+    S.chips.push(c);
+    show(c, m('t', .5), .2); tw(c, { x: 620, y: 335 }, m('t', .7), 1.2);
+    const items = [['nat', 'Natural', 0, 'notn', 0], ['whole', 'Whole', 0, 'notn', .5], ['int', 'Integer', 1, 'in', 0],
+      ['rat', 'Rational', 1, 'also', 0], ['real', 'Real', 1, 'also', .7], ['irr', 'Irrational', 0, 'also', 1.6]];
+    items.forEach(([k, name, yes, mark, off], i) => {
+      const g = G(p, { o: 0 }), y = 290 + i * 46;
+      T(g, yes ? '✓' : '✗', { x: 1300, y, size: 28, fill: yes ? COL.good : COL.bad, weight: 600 });
+      T(g, name, { x: 1338, y, size: 27, fill: yes ? COL[k] : COL.faint });
+      show(g, m(mark, off));
+    });
+    tw(S.ring.nat.g, { o: .3 }, m('notn'), .5); tw(S.ring.whole.g, { o: .3 }, m('notn', .5), .5);
+    glow('int', m('in')); glow('rat', m('up')); glow('real', m('up', 1.5));
+    ['Its own ring,', 'plus every ring', 'around it.'].forEach((s, i) => show(T(p, s, { x: 1300, y: 600 + i * 34, size: 25, o: 0 }), m('rule', i * .3)));
+    tw(S.ring.nat.g, { o: 1 }, D - .5, .5); tw(S.ring.whole.g, { o: 1 }, D - .5, .5);
+  }],
+  ['more', 'More examples', (m) => {
+    panel(0);
+    const list = [[['24'], 'nat', 430, 625, 'a'], [['0'], 'whole', 668, 578, 'b'], [[F(2, 3)], 'rat', 175, 400, 'c'], [['π'], 'irr', 1060, 572, 'd']];
+    list.forEach(([parts, k, x, y, mark], i) => {
+      const c = chip(S.venn, parts, COL[k], { x: 1425, y: 230 + i * 100, o: 0 });
+      S.chips.push(c);
+      show(c, m(mark), .3); tw(c, { x, y }, m(mark, .5), 1.1);
+      glowRun(k, m(mark, 1.6));
+    });
+  }],
+  ['q5', 'Quick check', () => {}, { ask: done => quiz(RIGHT, [{
+    id: 'c-map', prompt: ['Drag each number into the smallest ring it belongs to.'],
+    build: sorter([[['−6'], 'int', '−6 is negative, so it is not whole, but it is an integer.'],
+      [[F(3, 8)], 'rat', '3/8 is a fraction of integers but not an integer: Rational.'],
+      [['9'], 'nat', '9 is a counting number, so it goes in the center: Natural.']], i => [1425, 230 + i * 100]),
+  }], done) }],
+  ['task2', 'A closer look', (m) => {
+    for (const c of S.chips) hide(c, 0, .5);
+    const p = S.t2 = panel(0);
+    header(p, 'A closer look', .2, 1290, 178);
+    S.t2m = T2.map((parts, i) => {
+      const e = M(p, parts, { x: 1300, y: [245, 340, 450, 540][i], size: 38, anchor: 'start', o: 0 });
+      show(e, m('abcd'[i]));
+      return e;
+    });
+  }],
+  ['check2', 'A closer look', (m) => {
+    const p = S.t2;
+    const ys = [245, 340, 450, 540];
+    const plan = [
+      [null, 'rat', 175, 400, 'a', .8, ['rational, real']],
+      [['= 3'], 'nat', 430, 625, 'b', 4.2, ['natural, whole, integer,', 'rational, real']],
+      [['= ', F(3, 2)], 'rat', 820, 340, 'c', 2, ['rational, real']],
+      [null, 'irr', 1060, 572, 'd', 3.6, ['irrational, real']],
+    ];
+    plan.forEach(([eq, k, x, y, mark, fly, caps], i) => {
+      const src = S.t2m[i], y0 = ys[i];
+      if (eq) show(M(p, eq, { x: 1300 + src._w + 12, y: y0, size: 38, anchor: 'start', o: 0 }), m(mark, i === 1 ? 2.6 : 1));
+      const c = chip(S.venn, T2[i], COL[k], { x: 1300 + src._w / 2, y: y0 - 11, o: 0 });
+      S.chips.push(c);
+      show(c, m(mark, fly), .2); tw(c, { x, y }, m(mark, fly + .1), 1.1);
+      glowRun(k, m(mark, fly + 1.2));
+      caps.forEach((s, j) => show(T(p, s, { x: 1300, y: y0 + 36 + j * 24, size: 20, fill: COL.dim, o: 0 }), m(mark, fly + 1.2)));
+    });
+  }],
+  ['wrap', 'Summary', (m) => {
+    const p = panel(0);
+    const steps = [['1', ['Simplify first.'], 's1'], ['2', ['Find the smallest', 'ring it fits in.'], 's2'], ['3', ['It belongs to that ring', 'and to every ring', 'around it.'], 's3']];
+    let y = 200;
+    steps.forEach(([n, lines, mark]) => {
+      const g = G(p, { o: 0 });
+      T(g, n, { x: 1300, y, size: 30, fill: COL.task, font: MATH, weight: 600 });
+      lines.forEach((s, j) => T(g, s, { x: 1332, y: y + j * 32, size: 25 }));
+      show(g, m(mark));
+      y += lines.length * 32 + 44;
+    });
+    glow('nat', m('s2', .4)); glowRun('nat', m('s3', .5));
+  }],
+  ['final1', 'Chapter practice', () => {
+    hide(S.panel, 0, .4);
+    [...S.chips, ...S.samples].forEach(e => hide(e, 0, .4));
+  }, { ask: done => quiz(SORT_SCREEN, [{ id: 'p-sort', prompt: ['Drag each number into its smallest ring. Simplify first.'],
+    build: sorter(SORT, i => [1362 + (i % 2) * 128, 250 + Math.floor(i / 2) * 100]) }], done, 'Chapter practice   1 of 3') }],
+  ['final2', 'Chapter practice', () => { tw(S.venn, { o: 0 }, 0, .6); }, { ask: done => quiz(SCREEN, [{
+    id: 'p-fam', prompt: ['Choose every family each number belongs to.'], build: grid(FAMQ, FAM_COLS) }], done, 'Chapter practice   2 of 3') }],
+  ['final3', 'Chapter practice', () => {}, { ask: done => quiz(SCREEN, [{
+    id: 'p-tf', prompt: ['True or false?'], build: grid(TFQ, TF, { multi: false, text: true }) }], done, 'Chapter practice   3 of 3') }],
+  ['finish', 'Finished', () => {}, { ask: finishCard }],
+].map(([id, title, run, extra]) => ({ id, title, run, ...extra }));
+
+/* ---------- chapter practice data ---------- */
+const SORT = [
+  [['58'], 'nat', '58 is a counting number, so its smallest ring is Natural.'],
+  [['0'], 'whole', 'Zero is whole but not natural, because natural numbers start at 1.'],
+  [['−11'], 'int', '−11 is negative, so it is not whole. Its smallest ring is Integers.'],
+  [[F(3, 5)], 'rat', '3/5 is a ratio of integers but not an integer: Rational.'],
+  [['−4.6'], 'rat', '−4.6 = −46/10, a ratio of integers that is not an integer: Rational.'],
+  [[R(36)], 'nat', '√36 = 6, a counting number: Natural.'],
+  [[R(7)], 'irr', '7 is not a perfect square, so √7 never ends or repeats: Irrational.'],
+  [[F(12, 4)], 'nat', '12/4 simplifies to 3, a counting number: Natural.'],
+];
+const FAMQ = [
+  { parts: ['17'], ans: ['nat', 'whole', 'int', 'rat', 'real'], why: '17 is a counting number: the center ring and every ring around it.' },
+  { parts: ['−9'], ans: ['int', 'rat', 'real'], why: '−9 is negative, so not natural or whole. It is an integer, so also rational and real.' },
+  { parts: ['0'], ans: ['whole', 'int', 'rat', 'real'], why: 'Zero is whole but not natural, since natural numbers start at 1.' },
+  { parts: ['2.35'], ans: ['rat', 'real'], why: ['2.35 = ', $m(F(235, 100)), ', a ratio of integers, but not an integer.'] },
+  { parts: ['−', R(25)], ans: ['int', 'rat', 'real'], why: ['√25 = 5, so −√25 = −5, an integer.'] },
+  { parts: [R(11)], ans: ['irr', 'real'], why: '11 is not a perfect square, so √11 is irrational. Every irrational number is real.' },
+];
+const TFQ = [
+  { parts: ['Every integer is a rational number.'], ans: ['t'], why: ['Any integer n can be written as ', $m(F('n', 1)), '.'] },
+  { parts: ['0 is a natural number.'], ans: ['f'], why: 'In this course natural numbers start at 1. Zero is a whole number.' },
+  { parts: ['Some numbers are both rational and irrational.'], ans: ['f'], why: 'Irrational means “not rational”, so no number can be both.' },
+  { parts: ['Every whole number is an integer.'], ans: ['t'], why: 'The integers contain 0, 1, 2, 3, … and their negatives.' },
+  { parts: [$m(R(16)), ' is irrational.'], ans: ['f'], why: '√16 = 4, a natural number.' },
+];
+boot();
+</script>
+</body>
+</html>

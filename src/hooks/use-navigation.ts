@@ -48,6 +48,7 @@ export function useNavigation(): NavigationState {
       "/models": "Models",
       "/settings": "Settings",
       "/humanizer": "Text Humanizer Studio",
+      "/shilpa": "Shilpa Studio",
     };
 
     if (pathname.startsWith("/chat/")) {
@@ -60,6 +61,8 @@ export function useNavigation(): NavigationState {
       }
     } else if (pathname.startsWith("/reader/")) {
       breadcrumbTitle = "Paper Reader";
+    } else if (pathname.startsWith("/shilpa/")) {
+      breadcrumbTitle = "Shilpa Studio";
     } else {
       breadcrumbTitle = pathTitleMap[pathname] || "Buddhi AI";
     }

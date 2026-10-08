@@ -6,6 +6,7 @@ import {
   Settings,
   Sparkles,
   Wand2,
+  Layers,
   type LucideIcon,
 } from "lucide-react";
 
@@ -68,6 +69,11 @@ export const SIDEBAR_DATA = {
       name: "Humanizer",
       url: "/humanizer",
       icon: Wand2,
+    },
+    {
+      name: "Shilpa Studio",
+      url: "/shilpa",
+      icon: Layers,
     },
     {
       name: "Settings",
