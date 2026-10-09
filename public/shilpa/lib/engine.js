@@ -1453,16 +1453,18 @@ const sorter = (items, trayXY) => (body, api) => {
 const P = { i: 0, t: 0, end: 1, playing: false, waiting: false, done: false, started: false, audio: null, afail: false, stall: 0, cleanup: [] };
 function runBeat(i) {
   TW = [];
-  const b = BEATS[i], tm = TIMINGS[b.id];
+  const b = BEATS[i];
+  if (!b) return 1;
+  const tm = (typeof TIMINGS !== 'undefined' && TIMINGS && TIMINGS[b.id]) ? TIMINGS[b.id] : { dur: 10, marks: {}, cues: [] };
   const m = (k, off = 0) => {
-    if (!(k in tm.marks)) throw new Error(`${b.id}: missing mark ${k}`);
-    return tm.marks[k] + off;
+    if (tm.marks && (k in tm.marks)) return tm.marks[k] + off;
+    return off;
   };
   S.cleared = false;
-  b.run(m, tm.dur);
+  if (typeof b.run === 'function') b.run(m, tm.dur || 10);
   if (S.cleared && b.lead !== false) leadIn();
   TW.sort((a, c) => a.t0 - c.t0);
-  return Math.max(tm.dur, ...TW.map(w => w.t0 + w.dur)) + .6;
+  return Math.max(tm.dur || 10, ...TW.map(w => w.t0 + w.dur)) + .6;
 }
 // A beat that clears the picture must not leave it empty while the narration has started.
 // If nothing appears before LEAD_MAX, the opening group (every tween that starts within LEAD_GROUP s of the
@@ -1502,13 +1504,19 @@ function seek(i, play = P.playing) {
 }
 function start(i, play) {
   stopAudio(); clearCards();
+  if (!BEATS || !BEATS[i]) return;
   Object.assign(P, { i, t: 0, waiting: false, done: false, afail: false, stall: 0 });
   P.end = runBeat(i);
   evalTo(0);
-  const a = P.audio = new Audio(`audio/en/${BEATS[i].id}.mp3`);
-  a.preload = 'auto';
-  a.volume = +$('volume').value;
-  a.onerror = () => { if (P.audio === a) soundFailed(); };
+  const beatId = BEATS[i]?.id;
+  if (beatId) {
+    const a = P.audio = new Audio(`audio/en/${beatId}.mp3`);
+    a.preload = 'auto';
+    a.volume = +$('volume').value;
+    a.onerror = () => { if (P.audio === a) soundFailed(); };
+  } else {
+    soundFailed();
+  }
   const b = BEATS[i];
   if (b.ask) b.ask(() => { if (P.i === i) { evalTo(Infinity); start(i + 1, true); } });
   setPlaying(play);
@@ -1549,24 +1557,30 @@ function frame(now) {
 }
 let segs = [];
 function buildSegs() {
+  $('segs').replaceChildren();
+  if (!Array.isArray(BEATS) || BEATS.length === 0) return;
   segs = BEATS.map((b, i) => {
-  const s = h('button', 'seg' + (b.ask ? ' ask' : ''), [h('i')]);
-  s.style.flex = TIMINGS[b.id].dur + (b.ask ? 12 : 0);
-  s.title = b.title;
-  s.setAttribute('aria-label', `Go to step ${i + 1}: ${b.title}`);
-  s.onclick = () => { hideCover(); seek(i, true); };
-  $('segs').append(s);
-  return s.firstChild;
+    const s = h('button', 'seg' + (b.ask ? ' ask' : ''), [h('i')]);
+    const tm = (typeof TIMINGS !== 'undefined' && TIMINGS && TIMINGS[b.id]) ? TIMINGS[b.id] : null;
+    const dur = tm && typeof tm.dur === 'number' ? tm.dur : 10;
+    s.style.flex = dur + (b.ask ? 12 : 0);
+    s.title = b.title || `Step ${i + 1}`;
+    s.setAttribute('aria-label', `Go to step ${i + 1}: ${b.title || ''}`);
+    s.onclick = () => { hideCover(); seek(i, true); };
+    $('segs').append(s);
+    return s.firstChild;
   });
 }
 function ui() {
   segs.forEach((f, k) => { f.style.width = (k < P.i || P.done ? 100 : k > P.i ? 0 : Math.min(100, P.t / P.end * 100)) + '%'; });
   $('frame').classList.toggle('is-playing', P.playing && !P.done && !P.waiting);
-  $('frame').classList.toggle('paused', P.started && !P.playing && !P.waiting && !P.done && !BEATS[P.i].ask);
-  $('stepName').textContent = `${P.i + 1} / ${BEATS.length}   ${BEATS[P.i].title}`;
+  $('frame').classList.toggle('paused', P.started && !P.playing && !P.waiting && !P.done && !BEATS[P.i]?.ask);
+  if (BEATS[P.i]) {
+    $('stepName').textContent = `${P.i + 1} / ${BEATS.length}   ${BEATS[P.i].title || ''}`;
+  }
   const b = BEATS[P.i];
   let text = '';
-  if (captions && P.started && !b.ask && !P.done) {
+  if (captions && P.started && !b?.ask && !P.done && b?.id && typeof TIMINGS !== 'undefined' && TIMINGS[b.id]?.cues) {
     for (const [t, line] of TIMINGS[b.id].cues) { if (t > P.t + .05) break; text = line; }
   }
   if (text !== capText) { capText = text; $('caption').textContent = text; $('caption').hidden = !text; }
@@ -1653,14 +1667,37 @@ function progress(f) {
     f(p); localStorage.setItem('progress', JSON.stringify(p));
   } catch {}
 }
+let booted = false;
 function boot() {
+  if (booted) return;
+  booted = true;
+  if (typeof CHAPTER === 'undefined') {
+    window.CHAPTER = { number: 1, title: 'Lesson', minutes: 5 };
+  }
+  if (typeof BEATS === 'undefined') {
+    window.BEATS = [];
+  }
+  if (Array.isArray(BEATS)) {
+    BEATS = BEATS.map(b => {
+      if (Array.isArray(b)) {
+        const [id, title, run, extra] = b;
+        return { id, title, run, ...(extra || {}) };
+      }
+      return b;
+    });
+  }
+  if (typeof TIMINGS === 'undefined') {
+    window.TIMINGS = {};
+  }
   $('coverK').textContent = `Chapter ${CHAPTER.number}`;
   $('coverT').textContent = CHAPTER.title;
-  $('bHome').href = `../#ch${String(CHAPTER.number).padStart(2, '0')}`;
+  if ($('bHome')) $('bHome').href = `../#ch${String(CHAPTER.number).padStart(2, '0')}`;
   progress(p => { p.last = CHAPTER.number; });
-  document.getElementById('stage').setAttribute('aria-label', `Lesson animation: ${CHAPTER.title}`);
+  const stageEl = document.getElementById('stage');
+  if (stageEl) stageEl.setAttribute('aria-label', `Lesson animation: ${CHAPTER.title}`);
   $('coverMeta').textContent = `About ${CHAPTER.minutes} minutes, with sound and quick checks.`;
   buildSegs();
+  if (BEATS.length === 0) return;
   const qs = new URLSearchParams(location.search);
   if (qs.has('beat')) {
     $('cover').hidden = true;

@@ -108,7 +108,7 @@ Generate the complete executable JavaScript code that defines CHAPTER, drawing h
 Ensure the code:
 1. Defines:
    \`const CHAPTER = { number: ${section.chapterNumber}, title: '${section.title.replace(/'/g, "\\'")}', minutes: ${section.estimatedMinutes} };\`
-2. Implements all beats in \`const BEATS = [ ... ];\`.
+2. Implements all beats in \`const BEATS = [ ... ].map(([id, title, run, extra]) => ({ id, title, run, ...(extra || {}) }));\`.
 3. Sets up inline timing fallback \`window.TIMINGS = { ... };\` with durations (8 to 15s per beat), marks, and sentence cues.
 4. Uses valid SVG helpers (\`G\`, \`path\`, \`T\`, \`M\`, \`tw\`, \`panel\`, \`show\`, \`hide\`, \`pop\`, \`pulse\`, \`draw\`).
 5. Implements question beats using \`quiz(BAND, [...], done)\`.

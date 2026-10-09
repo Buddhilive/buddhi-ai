@@ -104,7 +104,7 @@ const CHAPTER = {
 
 const BEATS = [
 ${beatDefinitions.join(",\n")}
-];
+].map(([id, title, run, extra]) => ({ id, title, run, ...(extra || {}) }));
 
 boot();
 `;

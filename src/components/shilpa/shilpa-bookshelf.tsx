@@ -113,7 +113,7 @@ export function ShilpaBookshelf() {
 
       setProcessingStatus("Saving book project to IndexedDB...");
       await saveShilpaBook(newBook);
-      await cacheBookPdf(bookSlug, arrayBuffer);
+      await cacheBookPdf(bookSlug, arrayBuffer.slice(0));
       await loadBooks();
 
       router.push(`/shilpa/${bookSlug}`);

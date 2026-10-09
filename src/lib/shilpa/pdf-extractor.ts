@@ -37,7 +37,7 @@ export async function extractPdfOutlineAndChapters(
   fileName: string
 ): Promise<ExtractedOutlineResult> {
   const pdfjs = await getPdfJs();
-  const loadingTask = pdfjs.getDocument({ data });
+  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(data.slice(0)) });
   const pdf = await loadingTask.promise;
   const pageCount = pdf.numPages;
 
@@ -207,7 +207,7 @@ export async function extractChapterText(
   endPage: number
 ): Promise<string> {
   const pdfjs = await getPdfJs();
-  const loadingTask = pdfjs.getDocument({ data: pdfBuffer });
+  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(pdfBuffer.slice(0)) });
   const pdf = await loadingTask.promise;
 
   const validStart = Math.max(1, startPage);
