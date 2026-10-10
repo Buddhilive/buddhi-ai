@@ -1481,7 +1481,23 @@ function leadIn() {
   if (first <= LEAD_MAX) return;
   for (const w of TW) if (w.t0 >= first && w.t0 < first + LEAD_GROUP) w.t0 -= first - LEAD_AT;
 }
+function speakNarration(b) {
+  if (typeof window.speechSynthesis === 'undefined') return;
+  try {
+    window.speechSynthesis.cancel();
+    if (!b || b.ask || !b.narration) return;
+    const clean = b.narration.replace(/\[\[\w+\]\]/g, '').trim();
+    if (!clean) return;
+    const u = new SpeechSynthesisUtterance(clean);
+    u.rate = 0.95;
+    u.volume = +$('volume').value;
+    window.speechSynthesis.speak(u);
+  } catch {}
+}
 function stopAudio() {
+  if (typeof window.speechSynthesis !== 'undefined') {
+    try { window.speechSynthesis.cancel(); } catch {}
+  }
   const a = P.audio;
   if (!a) return;
   a.onerror = null; a.pause(); a.removeAttribute('src'); a.load();
@@ -1509,21 +1525,37 @@ function start(i, play) {
   P.end = runBeat(i);
   evalTo(0);
   const beatId = BEATS[i]?.id;
-  if (beatId) {
+  const hasAudio = typeof window.HAS_AUDIO_FILES !== 'undefined' ? window.HAS_AUDIO_FILES : true;
+  if (beatId && hasAudio) {
     const a = P.audio = new Audio(`audio/en/${beatId}.mp3`);
     a.preload = 'auto';
     a.volume = +$('volume').value;
     a.onerror = () => { if (P.audio === a) soundFailed(); };
   } else {
-    soundFailed();
+    soundFailed(true);
   }
   const b = BEATS[i];
+  if (play && !P.audio && b?.narration) speakNarration(b);
   if (b.ask) b.ask(() => { if (P.i === i) { evalTo(Infinity); start(i + 1, true); } });
   setPlaying(play);
 }
-function soundFailed() { P.afail = true; $('soundNote').hidden = false; }
+function soundFailed(silent = false) {
+  P.afail = true;
+  if (!silent) $('soundNote').hidden = false;
+}
 function setPlaying(v) {
   P.playing = v;
+  if (typeof window.speechSynthesis !== 'undefined') {
+    if (v && !P.waiting && !P.done) {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      } else if (!P.audio && BEATS[P.i]?.narration) {
+        speakNarration(BEATS[P.i]);
+      }
+    } else {
+      window.speechSynthesis.pause();
+    }
+  }
   const a = P.audio;
   if (!a) return;
   if (v && !P.waiting && !a.ended && !P.afail) a.play().catch(e => { if (P.audio === a && e.name === 'NotAllowedError') soundFailed(); });
