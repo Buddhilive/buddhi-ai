@@ -1674,17 +1674,13 @@ function boot() {
   if (typeof CHAPTER === 'undefined') {
     window.CHAPTER = { number: 1, title: 'Lesson', minutes: 5 };
   }
-  if (typeof BEATS === 'undefined') {
-    window.BEATS = [];
-  }
-  if (Array.isArray(BEATS)) {
-    BEATS = BEATS.map(b => {
-      if (Array.isArray(b)) {
-        const [id, title, run, extra] = b;
-        return { id, title, run, ...(extra || {}) };
-      }
-      return b;
-    });
+  const beatsList = (typeof BEATS !== 'undefined' && Array.isArray(BEATS)) ? BEATS : [];
+  for (let i = 0; i < beatsList.length; i++) {
+    const b = beatsList[i];
+    if (Array.isArray(b)) {
+      const [id, title, run, extra] = b;
+      beatsList[i] = { id, title, run, ...(extra || {}) };
+    }
   }
   if (typeof TIMINGS === 'undefined') {
     window.TIMINGS = {};
@@ -1697,7 +1693,7 @@ function boot() {
   if (stageEl) stageEl.setAttribute('aria-label', `Lesson animation: ${CHAPTER.title}`);
   $('coverMeta').textContent = `About ${CHAPTER.minutes} minutes, with sound and quick checks.`;
   buildSegs();
-  if (BEATS.length === 0) return;
+  if (beatsList.length === 0) return;
   const qs = new URLSearchParams(location.search);
   if (qs.has('beat')) {
     $('cover').hidden = true;
