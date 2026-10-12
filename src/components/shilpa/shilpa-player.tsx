@@ -63,11 +63,7 @@ export function ShilpaPlayer({
     'use strict';
     ${scriptContent}
     if (typeof boot === 'function') {
-      if (document.readyState === 'loading') {
-        window.addEventListener('DOMContentLoaded', () => boot());
-      } else {
-        boot();
-      }
+      window.addEventListener('DOMContentLoaded', () => boot());
     }
   </script>
 </body>
