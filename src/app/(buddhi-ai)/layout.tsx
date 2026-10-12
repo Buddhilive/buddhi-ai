@@ -29,11 +29,7 @@ export default function BuddhiAILayout({ children }: { children: React.ReactNode
   useModelEngine();
   usePipelineGuard();
 
-  const isFixedLayout =
-    currentPage === "/humanizer" ||
-    currentPage.startsWith("/chat") ||
-    currentPage.startsWith("/reader") ||
-    currentPage.startsWith("/shilpa");
+  const isFixedLayout = currentPage === "/humanizer" || currentPage.startsWith("/chat") || currentPage.startsWith("/reader");
 
   return (
     <SidebarProvider defaultOpen={false}>
